@@ -182,7 +182,7 @@ class Tool(BaseModel):
 class DatabaseConfig(BaseModel):
     """Vector database connection configuration.
 
-    Supports all Semantic Kernel vector store providers including PostgreSQL,
+    Supports the vector store providers HoloDeck has adapters for: PostgreSQL,
     Azure AI Search, Qdrant, Weaviate, ChromaDB, Pinecone, and more.
 
     Provider-specific parameters are passed via the config dict:

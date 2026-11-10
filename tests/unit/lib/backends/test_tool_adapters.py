@@ -531,3 +531,33 @@ class TestCreateToolAdapters:
         )
 
         assert adapters == []
+
+
+class TestBuildHolodeckSdkServerCompat:
+    """The in-process MCP server must build on the installed mcp major."""
+
+    def test_server_registers_tool_list_and_call_handlers(self) -> None:
+        from claude_agent_sdk import tool
+
+        from holodeck.lib.backends.tool_adapters import build_holodeck_sdk_server
+
+        @tool("echo", "Echo input", {"text": str})
+        async def echo(args: dict[str, str]) -> dict[str, object]:
+            return {"content": [{"type": "text", "text": args["text"]}]}
+
+        adapter = MagicMock()
+        adapter.to_sdk_tool.return_value = echo
+        adapter.config.name = "echo"
+
+        config, allowed = build_holodeck_sdk_server([adapter])
+
+        assert config["type"] == "sdk"
+        assert allowed == ["mcp__holodeck_tools__echo_search"]
+        server = config["instance"]
+        # mcp 1.x keeps handlers in `request_handlers`, 2.x in `_request_handlers`.
+        handlers = vars(server).get("_request_handlers") or vars(server).get(
+            "request_handlers"
+        )
+        assert handlers is not None
+        keys = {str(k) for k in handlers}
+        assert "tools/list" in keys or any("ListTools" in k for k in keys)

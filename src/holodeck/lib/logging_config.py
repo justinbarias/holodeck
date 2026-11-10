@@ -32,7 +32,6 @@ DEFAULT_LOG_FILE_BACKUP_COUNT = 5
 THIRD_PARTY_LOGGERS = [
     "httpx",
     "httpcore",
-    "semantic_kernel",
     "openai",
     "anthropic",
     "ollama",

@@ -17,7 +17,7 @@ _PROTOCOL_MAP: dict[OTLPProtocol, str] = {
 }
 
 # Default filter_namespaces value from LogsConfig model.
-_DEFAULT_FILTER_NAMESPACES = ["semantic_kernel"]
+_DEFAULT_FILTER_NAMESPACES: list[str] = []
 
 
 def _collect_unsupported_fields(config: ObservabilityConfig) -> list[str]:

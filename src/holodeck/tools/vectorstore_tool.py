@@ -36,6 +36,7 @@ from holodeck.lib.retrieval import (
     clamp_similarity,
 )
 from holodeck.lib.retrieval.fingerprint import PipelineInputs, record_layout_id
+from holodeck.lib.retrieval.results import QueryResult, StructuredQueryResult
 from holodeck.lib.retrieval.schemas import (
     DocumentChunkRecord,
     document_schema,
@@ -47,7 +48,6 @@ from holodeck.lib.retrieval.schemas import (
 )
 from holodeck.lib.structured_loader import STRUCTURED_ROWS_POLICY
 from holodeck.lib.text_chunker import SPLITTER_POLICY, TextChunker
-from holodeck.lib.vector_store import QueryResult, StructuredQueryResult
 from holodeck.tools.base_tool import DatabaseConfigMixin, EmbeddingServiceMixin
 from holodeck.tools.common import (
     SUPPORTED_EXTENSIONS,

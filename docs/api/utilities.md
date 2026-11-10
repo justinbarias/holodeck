@@ -79,11 +79,6 @@ Hybrid search combining semantic (vector) similarity with keyword (full-text) ma
       docstring_style: google
       show_source: true
 
-::: holodeck.lib.keyword_search.get_keyword_search_strategy
-    options:
-      docstring_style: google
-      show_source: true
-
 ---
 
 ## Chunking
@@ -92,7 +87,7 @@ Text splitting and structure-aware chunking for preparing documents for embeddin
 
 ### Text Chunker
 
-A token-based paragraph splitter (built on the SK connector library internally).
+A token-based paragraph splitter.
 
 ::: holodeck.lib.text_chunker.TextChunker
     options:
@@ -207,74 +202,27 @@ Resolves agent instructions from `Instructions` config objects, supporting both 
 
 ## Vector Store
 
-Unified interface for working with various vector storage backends through vector store connectors (PostgreSQL/pgvector, Azure AI Search, Qdrant, Weaviate, ChromaDB, Pinecone, …).
+Tools reach every vector store through the `VectorStoreAdapter` contract in
+`holodeck.lib.retrieval`. Each provider has a native adapter under
+`holodeck.lib.retrieval.adapters`; `create_adapter` picks it from the tool's
+`database.provider`.
 
-::: holodeck.lib.vector_store.ChromaConnectionParams
+::: holodeck.lib.retrieval.create_adapter
     options:
       docstring_style: google
       show_source: true
 
-::: holodeck.lib.vector_store.QdrantConnectionParams
+::: holodeck.lib.retrieval.VectorStoreAdapter
     options:
       docstring_style: google
       show_source: true
 
-::: holodeck.lib.vector_store.PineconeConnectionParams
+::: holodeck.lib.retrieval.QueryResult
     options:
       docstring_style: google
       show_source: true
 
-::: holodeck.lib.vector_store.PostgresConnectionParams
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.QueryResult
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.StructuredQueryResult
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.create_document_record_class
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.create_structured_record_class
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.create_hierarchical_document_record_class
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.get_collection_class
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.get_collection_factory
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.parse_chromadb_connection_string
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.parse_qdrant_connection_string
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.vector_store.parse_pinecone_connection_string
+::: holodeck.lib.retrieval.StructuredQueryResult
     options:
       docstring_style: google
       show_source: true

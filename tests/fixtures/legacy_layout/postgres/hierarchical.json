@@ -1,0 +1,746 @@
+{
+ "collection": "legacy_hierarchical_dc4b63b6",
+ "expected": {
+  "count": 4,
+  "find": [
+   [
+    "rec_1",
+    {
+     "chunk_index": 1,
+     "chunk_type": "chunk_type 1 kestrel",
+     "content": "content 1 kestrel",
+     "content_hash": "content_hash 1 kestrel",
+     "contextualized_content": "contextualized_content 1 kestrel",
+     "cross_references": "cross_references 1 kestrel",
+     "defined_term": "defined_term 1 kestrel",
+     "defined_term_normalized": "defined_term_normalized 1 kestrel",
+     "file_type": "file_type 1 kestrel",
+     "mtime": 1.5,
+     "parent_chain": "parent_chain 1 kestrel",
+     "searchable_text": "searchable_text 1 kestrel",
+     "section_id": "section_id 1 kestrel",
+     "source_path": "doc1.md",
+     "subsection_ids": "subsection_ids 1 kestrel"
+    }
+   ],
+   [
+    "rec_3",
+    {
+     "chunk_index": 3,
+     "chunk_type": "v3",
+     "content": "v3",
+     "content_hash": "v3",
+     "contextualized_content": "v3",
+     "cross_references": "v3",
+     "defined_term": "v3",
+     "defined_term_normalized": "v3",
+     "file_type": "v3",
+     "mtime": 3.5,
+     "parent_chain": "v3",
+     "searchable_text": "v3",
+     "section_id": "v3",
+     "source_path": "doc1.md",
+     "subsection_ids": "v3"
+    }
+   ]
+  ],
+  "get": [
+   [
+    "rec_0",
+    {
+     "chunk_index": 0,
+     "chunk_type": "v0",
+     "content": "v0",
+     "content_hash": "v0",
+     "contextualized_content": "v0",
+     "cross_references": "v0",
+     "defined_term": "v0",
+     "defined_term_normalized": "v0",
+     "file_type": "v0",
+     "mtime": 0.5,
+     "parent_chain": "v0",
+     "searchable_text": "v0",
+     "section_id": "v0",
+     "source_path": "doc0.md",
+     "subsection_ids": "v0"
+    }
+   ],
+   [
+    "rec_1",
+    {
+     "chunk_index": 1,
+     "chunk_type": "chunk_type 1 kestrel",
+     "content": "content 1 kestrel",
+     "content_hash": "content_hash 1 kestrel",
+     "contextualized_content": "contextualized_content 1 kestrel",
+     "cross_references": "cross_references 1 kestrel",
+     "defined_term": "defined_term 1 kestrel",
+     "defined_term_normalized": "defined_term_normalized 1 kestrel",
+     "file_type": "file_type 1 kestrel",
+     "mtime": 1.5,
+     "parent_chain": "parent_chain 1 kestrel",
+     "searchable_text": "searchable_text 1 kestrel",
+     "section_id": "section_id 1 kestrel",
+     "source_path": "doc1.md",
+     "subsection_ids": "subsection_ids 1 kestrel"
+    }
+   ],
+   [
+    "rec_2",
+    {
+     "chunk_index": 2,
+     "chunk_type": "v2",
+     "content": "v2",
+     "content_hash": "v2",
+     "contextualized_content": "v2",
+     "cross_references": "v2",
+     "defined_term": "v2",
+     "defined_term_normalized": "v2",
+     "file_type": "v2",
+     "mtime": 2.5,
+     "parent_chain": "v2",
+     "searchable_text": "v2",
+     "section_id": "v2",
+     "source_path": "doc0.md",
+     "subsection_ids": "v2"
+    }
+   ],
+   [
+    "rec_3",
+    {
+     "chunk_index": 3,
+     "chunk_type": "v3",
+     "content": "v3",
+     "content_hash": "v3",
+     "contextualized_content": "v3",
+     "cross_references": "v3",
+     "defined_term": "v3",
+     "defined_term_normalized": "v3",
+     "file_type": "v3",
+     "mtime": 3.5,
+     "parent_chain": "v3",
+     "searchable_text": "v3",
+     "section_id": "v3",
+     "source_path": "doc1.md",
+     "subsection_ids": "v3"
+    }
+   ]
+  ],
+  "list": [
+   [
+    "rec_0",
+    {
+     "chunk_index": 0,
+     "chunk_type": "v0",
+     "content": "v0",
+     "content_hash": "v0",
+     "contextualized_content": "v0",
+     "cross_references": "v0",
+     "defined_term": "v0",
+     "defined_term_normalized": "v0",
+     "file_type": "v0",
+     "mtime": 0.5,
+     "parent_chain": "v0",
+     "searchable_text": "v0",
+     "section_id": "v0",
+     "source_path": "doc0.md",
+     "subsection_ids": "v0"
+    }
+   ],
+   [
+    "rec_1",
+    {
+     "chunk_index": 1,
+     "chunk_type": "chunk_type 1 kestrel",
+     "content": "content 1 kestrel",
+     "content_hash": "content_hash 1 kestrel",
+     "contextualized_content": "contextualized_content 1 kestrel",
+     "cross_references": "cross_references 1 kestrel",
+     "defined_term": "defined_term 1 kestrel",
+     "defined_term_normalized": "defined_term_normalized 1 kestrel",
+     "file_type": "file_type 1 kestrel",
+     "mtime": 1.5,
+     "parent_chain": "parent_chain 1 kestrel",
+     "searchable_text": "searchable_text 1 kestrel",
+     "section_id": "section_id 1 kestrel",
+     "source_path": "doc1.md",
+     "subsection_ids": "subsection_ids 1 kestrel"
+    }
+   ],
+   [
+    "rec_2",
+    {
+     "chunk_index": 2,
+     "chunk_type": "v2",
+     "content": "v2",
+     "content_hash": "v2",
+     "contextualized_content": "v2",
+     "cross_references": "v2",
+     "defined_term": "v2",
+     "defined_term_normalized": "v2",
+     "file_type": "v2",
+     "mtime": 2.5,
+     "parent_chain": "v2",
+     "searchable_text": "v2",
+     "section_id": "v2",
+     "source_path": "doc0.md",
+     "subsection_ids": "v2"
+    }
+   ],
+   [
+    "rec_3",
+    {
+     "chunk_index": 3,
+     "chunk_type": "v3",
+     "content": "v3",
+     "content_hash": "v3",
+     "contextualized_content": "v3",
+     "cross_references": "v3",
+     "defined_term": "v3",
+     "defined_term_normalized": "v3",
+     "file_type": "v3",
+     "mtime": 3.5,
+     "parent_chain": "v3",
+     "searchable_text": "v3",
+     "section_id": "v3",
+     "source_path": "doc1.md",
+     "subsection_ids": "v3"
+    }
+   ]
+  ],
+  "vector_search": [
+   [
+    "rec_0",
+    0.9667365192029654
+   ],
+   [
+    "rec_3",
+    0.13534312190793307
+   ],
+   [
+    "rec_2",
+    0.12970131955002895
+   ]
+  ],
+  "vectors": [
+   [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    1.0,
+    0.25,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    1.0,
+    0.5,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.75,
+    0.0,
+    0.0,
+    0.0
+   ]
+  ]
+ },
+ "layout": {
+  "columns": [
+   [
+    "id",
+    "text",
+    "text",
+    "NO",
+    null,
+    null,
+    null,
+    1
+   ],
+   [
+    "source_path",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    2
+   ],
+   [
+    "chunk_index",
+    "integer",
+    "int4",
+    "YES",
+    null,
+    null,
+    32,
+    3
+   ],
+   [
+    "section_id",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    4
+   ],
+   [
+    "content",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    5
+   ],
+   [
+    "parent_chain",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    6
+   ],
+   [
+    "chunk_type",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    7
+   ],
+   [
+    "cross_references",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    8
+   ],
+   [
+    "contextualized_content",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    9
+   ],
+   [
+    "searchable_text",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    10
+   ],
+   [
+    "mtime",
+    "double precision",
+    "float8",
+    "YES",
+    null,
+    null,
+    53,
+    11
+   ],
+   [
+    "file_type",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    12
+   ],
+   [
+    "defined_term",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    13
+   ],
+   [
+    "defined_term_normalized",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    14
+   ],
+   [
+    "subsection_ids",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    15
+   ],
+   [
+    "content_hash",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    16
+   ],
+   [
+    "embedding",
+    "USER-DEFINED",
+    "vector",
+    "YES",
+    null,
+    null,
+    null,
+    17
+   ]
+  ],
+  "constraints": [
+   [
+    "p",
+    "PRIMARY KEY (id)"
+   ]
+  ],
+  "indexes": [
+   [
+    "<table>_embedding_idx",
+    "CREATE INDEX <table>_embedding_idx ON public.<table> USING hnsw (embedding vector_cosine_ops)"
+   ],
+   [
+    "<table>_pkey",
+    "CREATE UNIQUE INDEX <table>_pkey ON public.<table> USING btree (id)"
+   ]
+  ],
+  "types": [
+   [
+    "id",
+    "text"
+   ],
+   [
+    "source_path",
+    "text"
+   ],
+   [
+    "chunk_index",
+    "integer"
+   ],
+   [
+    "section_id",
+    "text"
+   ],
+   [
+    "content",
+    "text"
+   ],
+   [
+    "parent_chain",
+    "text"
+   ],
+   [
+    "chunk_type",
+    "text"
+   ],
+   [
+    "cross_references",
+    "text"
+   ],
+   [
+    "contextualized_content",
+    "text"
+   ],
+   [
+    "searchable_text",
+    "text"
+   ],
+   [
+    "mtime",
+    "double precision"
+   ],
+   [
+    "file_type",
+    "text"
+   ],
+   [
+    "defined_term",
+    "text"
+   ],
+   [
+    "defined_term_normalized",
+    "text"
+   ],
+   [
+    "subsection_ids",
+    "text"
+   ],
+   [
+    "content_hash",
+    "text"
+   ],
+   [
+    "embedding",
+    "vector(8)"
+   ]
+  ]
+ },
+ "meta": {
+  "base_commit": "62a2af5f9a5347fb677da9c689af8ba836422ed8",
+  "client": "psycopg 3.3.8",
+  "generated_at": "2026-11-10",
+  "generator": "scripts/freeze_legacy_layouts.py",
+  "semantic_kernel": "1.47.0",
+  "server_version": "PostgreSQL 17.11 (Debian 17.11-1.pgdg12+2), pgvector 0.8.7",
+  "store": "postgres"
+ },
+ "rows": [
+  {
+   "chunk_index": 0,
+   "chunk_type": "v0",
+   "content": "v0",
+   "content_hash": "v0",
+   "contextualized_content": "v0",
+   "cross_references": "v0",
+   "defined_term": "v0",
+   "defined_term_normalized": "v0",
+   "embedding": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "file_type": "v0",
+   "id": "rec_0",
+   "mtime": 0.5,
+   "parent_chain": "v0",
+   "searchable_text": "v0",
+   "section_id": "v0",
+   "source_path": "doc0.md",
+   "subsection_ids": "v0"
+  },
+  {
+   "chunk_index": 1,
+   "chunk_type": "chunk_type 1 kestrel",
+   "content": "content 1 kestrel",
+   "content_hash": "content_hash 1 kestrel",
+   "contextualized_content": "contextualized_content 1 kestrel",
+   "cross_references": "cross_references 1 kestrel",
+   "defined_term": "defined_term 1 kestrel",
+   "defined_term_normalized": "defined_term_normalized 1 kestrel",
+   "embedding": [
+    0,
+    1,
+    0.25,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "file_type": "file_type 1 kestrel",
+   "id": "rec_1",
+   "mtime": 1.5,
+   "parent_chain": "parent_chain 1 kestrel",
+   "searchable_text": "searchable_text 1 kestrel",
+   "section_id": "section_id 1 kestrel",
+   "source_path": "doc1.md",
+   "subsection_ids": "subsection_ids 1 kestrel"
+  },
+  {
+   "chunk_index": 2,
+   "chunk_type": "v2",
+   "content": "v2",
+   "content_hash": "v2",
+   "contextualized_content": "v2",
+   "cross_references": "v2",
+   "defined_term": "v2",
+   "defined_term_normalized": "v2",
+   "embedding": [
+    0,
+    0,
+    1,
+    0.5,
+    0,
+    0,
+    0,
+    0
+   ],
+   "file_type": "v2",
+   "id": "rec_2",
+   "mtime": 2.5,
+   "parent_chain": "v2",
+   "searchable_text": "v2",
+   "section_id": "v2",
+   "source_path": "doc0.md",
+   "subsection_ids": "v2"
+  },
+  {
+   "chunk_index": 3,
+   "chunk_type": "v3",
+   "content": "v3",
+   "content_hash": "v3",
+   "contextualized_content": "v3",
+   "cross_references": "v3",
+   "defined_term": "v3",
+   "defined_term_normalized": "v3",
+   "embedding": [
+    0,
+    0,
+    0,
+    1,
+    0.75,
+    0,
+    0,
+    0
+   ],
+   "file_type": "v3",
+   "id": "rec_3",
+   "mtime": 3.5,
+   "parent_chain": "v3",
+   "searchable_text": "v3",
+   "section_id": "v3",
+   "source_path": "doc1.md",
+   "subsection_ids": "v3"
+  }
+ ],
+ "schema": {
+  "dimensions": 8,
+  "fields": [
+   [
+    "source_path",
+    "string",
+    true,
+    false
+   ],
+   [
+    "chunk_index",
+    "integer",
+    true,
+    false
+   ],
+   [
+    "section_id",
+    "string",
+    true,
+    false
+   ],
+   [
+    "content",
+    "string",
+    false,
+    false
+   ],
+   [
+    "parent_chain",
+    "string",
+    false,
+    false
+   ],
+   [
+    "chunk_type",
+    "string",
+    false,
+    false
+   ],
+   [
+    "cross_references",
+    "string",
+    false,
+    false
+   ],
+   [
+    "contextualized_content",
+    "string",
+    false,
+    false
+   ],
+   [
+    "searchable_text",
+    "string",
+    false,
+    true
+   ],
+   [
+    "mtime",
+    "float",
+    false,
+    false
+   ],
+   [
+    "file_type",
+    "string",
+    false,
+    false
+   ],
+   [
+    "defined_term",
+    "string",
+    true,
+    false
+   ],
+   [
+    "defined_term_normalized",
+    "string",
+    true,
+    false
+   ],
+   [
+    "subsection_ids",
+    "string",
+    false,
+    false
+   ],
+   [
+    "content_hash",
+    "string",
+    false,
+    false
+   ]
+  ]
+ }
+}

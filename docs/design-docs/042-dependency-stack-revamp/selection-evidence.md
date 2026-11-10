@@ -122,7 +122,7 @@ Adapter sizes are estimates from the required operation list, not measurements. 
 
 ## Current storage capability evidence
 
-Sources: [collection factory](../../../src/holodeck/lib/vector_store.py), [filter helpers](../../../src/holodeck/lib/retrieval/adapters/sk_bridge.py) (formerly `lib/collection_filter.py`, removed in T4), [keyword routing](../../../src/holodeck/lib/keyword_search.py), [hierarchical tool](../../../src/holodeck/tools/hierarchical_document_tool.py). “Native” describes inspected routing, not a live test result.
+Sources: collection factory (`src/holodeck/lib/vector_store.py`, removed in T16), filter helpers (`src/holodeck/lib/retrieval/adapters/sk_bridge.py`, formerly `lib/collection_filter.py`; removed in T16), [keyword routing](../../../src/holodeck/lib/keyword_search.py), [hierarchical tool](../../../src/holodeck/tools/hierarchical_document_tool.py). “Native” describes inspected routing, not a live test result.
 
 | Provider | Current collection owner | Hybrid route | Native filtered enumeration / full scan | 2026-09 candidate direction (superseded by the 2026-11 scan below) |
 | --- | --- | --- | --- | --- |
@@ -144,8 +144,8 @@ Unsupported reads affect incremental ingestion, source deletion, and cold-start 
 
 ## Qdrant compatibility details
 
-- [Client construction](../../../src/holodeck/lib/vector_store.py) creates an async client explicitly because SK otherwise closes a client across collection contexts.
-- [Filtered reads](../../../src/holodeck/lib/retrieval/adapters/sk_bridge.py) (formerly `lib/collection_filter.py`) use native paginated `scroll` and omit vectors.
+- Client construction (`src/holodeck/lib/vector_store.py`, removed in T16) created an async client explicitly because SK otherwise closes a client across collection contexts.
+- Filtered reads (`src/holodeck/lib/retrieval/adapters/sk_bridge.py`, formerly `lib/collection_filter.py`; removed in T16) used native paginated `scroll` and omit vectors.
 - [Hierarchical ingestion](../../../src/holodeck/tools/hierarchical_document_tool.py) derives UUIDv5 IDs from tool/chunk identity. It creates keyword indexes for section/definition/source fields and a WORD full-text index for `searchable_text`, with lowercase tokens and lengths 2–20.
 - Searchable text includes contextual body, ancestry and section ID twice, the defined term three times, cross references, and filename.
 - [Hybrid retrieval](../../../src/holodeck/lib/keyword_search.py) uses dense vector `embedding` plus tokenized `MatchText` OR filters, candidate count `max(4 * top_k, 20)`, and RRF fusion. Empty token queries use dense-only candidates. Payload decoding supplies source/context without loading the full corpus.

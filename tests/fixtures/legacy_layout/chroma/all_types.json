@@ -1,0 +1,548 @@
+{
+ "after_writes": {
+  "a_0": [
+   {
+    "chunk_index": 0,
+    "content": "rewritten",
+    "mtime": 9.5,
+    "pinned": false,
+    "source_path": "a.md"
+   },
+   [
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ]
+  ],
+  "b": [
+   [
+    "b_0",
+    "beta v2"
+   ]
+  ],
+  "count": 3,
+  "gone": [],
+  "vector_search": [
+   [
+    [
+     "a_1",
+     0.993883729
+    ],
+    [
+     "a_0",
+     0.0
+    ],
+    [
+     "b_0",
+     0.0
+    ]
+   ],
+   [
+    [
+     "a_0",
+     1.0
+    ],
+    [
+     "a_1",
+     0.0
+    ],
+    [
+     "b_0",
+     0.0
+    ]
+   ]
+  ]
+ },
+ "collection": "legacy_all_types_c97aadc2",
+ "expected": {
+  "count": 5,
+  "find": [
+   [
+    [
+     "b_0",
+     {
+      "chunk_index": 0,
+      "content": "beta",
+      "mtime": 2.25,
+      "pinned": false,
+      "source_path": "b.md"
+     }
+    ],
+    [
+     "b_1",
+     {
+      "chunk_index": 1,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": true,
+      "source_path": "b.md"
+     }
+    ]
+   ],
+   [
+    [
+     "a_1",
+     {
+      "chunk_index": 1,
+      "content": "alpha banana",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     }
+    ]
+   ],
+   [
+    [
+     "b_1",
+     {
+      "chunk_index": 1,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": true,
+      "source_path": "b.md"
+     }
+    ]
+   ],
+   [
+    [
+     "b_0",
+     {
+      "chunk_index": 0,
+      "content": "beta",
+      "mtime": 2.25,
+      "pinned": false,
+      "source_path": "b.md"
+     }
+    ]
+   ],
+   [
+    [
+     "a_0",
+     {
+      "chunk_index": 0,
+      "content": "alpha apple",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     }
+    ],
+    [
+     "a_1",
+     {
+      "chunk_index": 1,
+      "content": "alpha banana",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     }
+    ],
+    [
+     "b_0",
+     {
+      "chunk_index": 0,
+      "content": "beta",
+      "mtime": 2.25,
+      "pinned": false,
+      "source_path": "b.md"
+     }
+    ],
+    [
+     "b_1",
+     {
+      "chunk_index": 1,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": true,
+      "source_path": "b.md"
+     }
+    ],
+    [
+     "c_0",
+     {
+      "chunk_index": 0,
+      "content": "gamma",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "c.md"
+     }
+    ]
+   ]
+  ],
+  "get": [
+   [
+    "a_0",
+    {
+     "chunk_index": 0,
+     "content": "alpha apple",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "a.md"
+    }
+   ],
+   [
+    "a_1",
+    {
+     "chunk_index": 1,
+     "content": "alpha banana",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "a.md"
+    }
+   ],
+   [
+    "b_0",
+    {
+     "chunk_index": 0,
+     "content": "beta",
+     "mtime": 2.25,
+     "pinned": false,
+     "source_path": "b.md"
+    }
+   ],
+   [
+    "b_1",
+    {
+     "chunk_index": 1,
+     "content": "",
+     "mtime": 1.5,
+     "pinned": true,
+     "source_path": "b.md"
+    }
+   ],
+   [
+    "c_0",
+    {
+     "chunk_index": 0,
+     "content": "gamma",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "c.md"
+    }
+   ]
+  ],
+  "get_has_vectors": [
+   false,
+   false,
+   false,
+   false,
+   false
+  ],
+  "list": [
+   "a_0",
+   "a_1",
+   "b_0",
+   "b_1",
+   "c_0"
+  ],
+  "vector_search": [
+   [
+    [
+     "a_0",
+     {
+      "chunk_index": 0,
+      "content": "alpha apple",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     },
+     0.980580688
+    ],
+    [
+     "a_1",
+     {
+      "chunk_index": 1,
+      "content": "alpha banana",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     },
+     0.974583209
+    ],
+    [
+     "c_0",
+     {
+      "chunk_index": 0,
+      "content": "gamma",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "c.md"
+     },
+     0.19611615000000004
+    ]
+   ],
+   [
+    [
+     "b_1",
+     {
+      "chunk_index": 1,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": true,
+      "source_path": "b.md"
+     },
+     0.999999940395355
+    ],
+    [
+     "b_0",
+     {
+      "chunk_index": 0,
+      "content": "beta",
+      "mtime": 2.25,
+      "pinned": false,
+      "source_path": "b.md"
+     },
+     0.70710677
+    ],
+    [
+     "a_1",
+     {
+      "chunk_index": 1,
+      "content": "alpha banana",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     },
+     0.07808685000000004
+    ],
+    [
+     "a_0",
+     {
+      "chunk_index": 0,
+      "content": "alpha apple",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     },
+     0.0
+    ],
+    [
+     "c_0",
+     {
+      "chunk_index": 0,
+      "content": "gamma",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "c.md"
+     },
+     0.0
+    ]
+   ],
+   [
+    [
+     "b_0",
+     {
+      "chunk_index": 0,
+      "content": "beta",
+      "mtime": 2.25,
+      "pinned": false,
+      "source_path": "b.md"
+     },
+     0.0
+    ],
+    [
+     "b_1",
+     {
+      "chunk_index": 1,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": true,
+      "source_path": "b.md"
+     },
+     0.0
+    ]
+   ]
+  ],
+  "vectors": [
+   [
+    "a_0",
+    [
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   ],
+   [
+    "a_1",
+    [
+     0.9,
+     0.1,
+     0.0,
+     0.0
+    ]
+   ],
+   [
+    "b_0",
+    [
+     0.0,
+     1.0,
+     0.0,
+     0.0
+    ]
+   ],
+   [
+    "b_1",
+    [
+     0.0,
+     0.49999997,
+     0.49999997,
+     0.0
+    ]
+   ],
+   [
+    "c_0",
+    [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  ]
+ },
+ "layout": {
+  "embedding_function": null,
+  "hnsw": {
+   "ef_construction": 100,
+   "ef_search": 100,
+   "max_neighbors": 16,
+   "resize_factor": 1.2,
+   "space": "cosine",
+   "sync_threshold": 1000
+  },
+  "metadata": null,
+  "spann": null
+ },
+ "meta": {
+  "base_commit": "62a2af5f9a5347fb677da9c689af8ba836422ed8",
+  "client": "chromadb 1.5.9",
+  "generated_at": "2026-11-10",
+  "generator": "scripts/freeze_legacy_layouts.py",
+  "semantic_kernel": "1.47.0",
+  "server_version": "1.0.0",
+  "store": "chroma (HTTP)"
+ },
+ "rows": [
+  {
+   "document": null,
+   "embedding": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "id": "a_0",
+   "metadata": {
+    "chunk_index": 0,
+    "content": "alpha apple",
+    "mtime": 1.5,
+    "pinned": false,
+    "source_path": "a.md"
+   }
+  },
+  {
+   "document": null,
+   "embedding": [
+    0.9,
+    0.1,
+    0.0,
+    0.0
+   ],
+   "id": "a_1",
+   "metadata": {
+    "chunk_index": 1,
+    "content": "alpha banana",
+    "mtime": 1.5,
+    "pinned": false,
+    "source_path": "a.md"
+   }
+  },
+  {
+   "document": null,
+   "embedding": [
+    0.0,
+    1.0,
+    0.0,
+    0.0
+   ],
+   "id": "b_0",
+   "metadata": {
+    "chunk_index": 0,
+    "content": "beta",
+    "mtime": 2.25,
+    "pinned": false,
+    "source_path": "b.md"
+   }
+  },
+  {
+   "document": null,
+   "embedding": [
+    0.0,
+    0.49999997,
+    0.49999997,
+    0.0
+   ],
+   "id": "b_1",
+   "metadata": {
+    "chunk_index": 1,
+    "content": "",
+    "mtime": 1.5,
+    "pinned": true,
+    "source_path": "b.md"
+   }
+  },
+  {
+   "document": null,
+   "embedding": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "id": "c_0",
+   "metadata": {
+    "chunk_index": 0,
+    "content": "gamma",
+    "mtime": 1.5,
+    "pinned": false,
+    "source_path": "c.md"
+   }
+  }
+ ],
+ "schema": {
+  "dimensions": 4,
+  "fields": [
+   [
+    "source_path",
+    "string",
+    true,
+    false
+   ],
+   [
+    "chunk_index",
+    "integer",
+    true,
+    false
+   ],
+   [
+    "content",
+    "string",
+    false,
+    true
+   ],
+   [
+    "mtime",
+    "float",
+    false,
+    false
+   ],
+   [
+    "pinned",
+    "boolean",
+    false,
+    false
+   ]
+  ]
+ }
+}

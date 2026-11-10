@@ -182,28 +182,26 @@ class TestInitializeObservability:
 
     @patch("holodeck.lib.observability.config.configure_exporters")
     @patch("holodeck.lib.observability.config.configure_logging")
-    def test_sets_semantic_kernel_env_var(
-        self, mock_configure_logging: MagicMock, mock_configure_exporters: MagicMock
+    def test_sets_no_semantic_kernel_diagnostics_env_var(
+        self,
+        mock_configure_logging: MagicMock,
+        mock_configure_exporters: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test sets SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS."""
+        """Semantic Kernel is gone; its diagnostics switch is no longer set."""
         import os
 
         from holodeck.lib.observability.providers import initialize_observability
 
         mock_configure_exporters.return_value = ([], [], [], [])
+        name = "SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS"
+        monkeypatch.delenv(name, raising=False)
 
-        # Clear env var if set
-        os.environ.pop(
-            "SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS", None
-        )
-
-        config = ObservabilityConfig(enabled=True)
+        config = ObservabilityConfig(enabled=True, traces={"capture_content": True})
         initialize_observability(config, agent_name="test")
 
-        assert (
-            os.environ.get("SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS")
-            == "true"
-        )
+        assert name not in os.environ
+        assert f"{name}_SENSITIVE" not in os.environ
 
     @patch("holodeck.lib.observability.config.configure_exporters")
     @patch("holodeck.lib.observability.config.configure_logging")

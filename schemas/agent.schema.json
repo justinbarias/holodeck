@@ -656,7 +656,7 @@
     },
     "DatabaseConfig": {
       "additionalProperties": true,
-      "description": "Vector database connection configuration.\n\nSupports all Semantic Kernel vector store providers including PostgreSQL,\nAzure AI Search, Qdrant, Weaviate, ChromaDB, Pinecone, and more.\n\nProvider-specific parameters are passed via the config dict:\n- postgres: connection_string\n- azure-ai-search: connection_string, api_key\n- qdrant: url, api_key (optional)\n- weaviate: url, api_key (optional)\n- chromadb: path or host\n- pinecone: api_key, index_name\n- And more...",
+      "description": "Vector database connection configuration.\n\nSupports the vector store providers HoloDeck has adapters for: PostgreSQL,\nAzure AI Search, Qdrant, Weaviate, ChromaDB, Pinecone, and more.\n\nProvider-specific parameters are passed via the config dict:\n- postgres: connection_string\n- azure-ai-search: connection_string, api_key\n- qdrant: url, api_key (optional)\n- weaviate: url, api_key (optional)\n- chromadb: path or host\n- pinecone: api_key, index_name\n- And more...",
       "properties": {
         "provider": {
           "description": "Vector database provider: postgres, azure-ai-search, qdrant, weaviate, chromadb, azure-cosmos-nosql, pinecone, in-memory",
@@ -2373,7 +2373,7 @@
     },
     "MetricsConfig": {
       "additionalProperties": false,
-      "description": "Metrics-specific configuration.\n\nControls metrics collection settings including export interval\nand Semantic Kernel metrics inclusion.",
+      "description": "Metrics-specific configuration.\n\nControls metrics collection settings including the export interval.",
       "properties": {
         "enabled": {
           "default": true,

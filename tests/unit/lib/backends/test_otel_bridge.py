@@ -266,8 +266,8 @@ class TestTranslateObservabilityWarnings:
     def test_default_filter_namespaces_no_warning(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Default filter_namespaces (['semantic_kernel']) does NOT trigger warning."""
-        config = _make_config(filter_namespaces=["semantic_kernel"])
+        """Default filter_namespaces ([]) does NOT trigger warning."""
+        config = _make_config(filter_namespaces=[])
         with caplog.at_level(logging.WARNING):
             translate_observability(config)
 

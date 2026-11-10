@@ -1,0 +1,618 @@
+{
+ "after_writes": {
+  "added": [
+   "d_chunk_0",
+   {
+    "chunk_index": 3,
+    "content": "",
+    "mtime": 1.5,
+    "pinned": false,
+    "source_path": "d.md"
+   }
+  ],
+  "ids": [
+   "a_chunk_0",
+   "b_chunk_9",
+   "c_chunk_0",
+   "d_chunk_0"
+  ],
+  "rewritten": [
+   [
+    "a_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "rewritten",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "a.md"
+    }
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  ],
+  "snapshot": {
+   "count": 4,
+   "filtered": [
+    [
+     "b_chunk_9",
+     0.0
+    ]
+   ],
+   "find": [
+    [
+     "b_chunk_9",
+     {
+      "chunk_index": 9,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "b.md"
+     }
+    ]
+   ],
+   "find_two": [],
+   "get": [
+    [
+     "a_chunk_0",
+     {
+      "chunk_index": 0,
+      "content": "rewritten",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     }
+    ],
+    [
+     "c_chunk_0",
+     {
+      "chunk_index": 0,
+      "content": "gamma delta",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "c.md"
+     }
+    ]
+   ],
+   "pages": [
+    [
+     "a_chunk_0",
+     {
+      "chunk_index": 0,
+      "content": "rewritten",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     }
+    ],
+    [
+     "b_chunk_9",
+     {
+      "chunk_index": 9,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "b.md"
+     }
+    ],
+    [
+     "c_chunk_0",
+     {
+      "chunk_index": 0,
+      "content": "gamma delta",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "c.md"
+     }
+    ],
+    [
+     "d_chunk_0",
+     {
+      "chunk_index": 3,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "d.md"
+     }
+    ]
+   ],
+   "search": [
+    [
+     "d_chunk_0",
+     {
+      "chunk_index": 3,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "d.md"
+     },
+     0.7730012043710306
+    ],
+    [
+     "b_chunk_9",
+     {
+      "chunk_index": 9,
+      "content": "",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "b.md"
+     },
+     0.0702728362850269
+    ],
+    [
+     "a_chunk_0",
+     {
+      "chunk_index": 0,
+      "content": "rewritten",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "a.md"
+     },
+     0.04969039907035466
+    ],
+    [
+     "c_chunk_0",
+     {
+      "chunk_index": 0,
+      "content": "gamma delta",
+      "mtime": 1.5,
+      "pinned": false,
+      "source_path": "c.md"
+     },
+     0.04969039907035466
+    ]
+   ],
+   "vectors": {
+    "a_chunk_0": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "c_chunk_0": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ]
+   }
+  }
+ },
+ "collection": "legacy_all_types_7aaece8d",
+ "expected": {
+  "count": 5,
+  "filtered": [
+   [
+    "b_chunk_0",
+    0.0
+   ],
+   [
+    "b_chunk_1",
+    0.0
+   ]
+  ],
+  "find": [
+   [
+    "b_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "beta cherry tree",
+     "mtime": 2.25,
+     "pinned": true,
+     "source_path": "b.md"
+    }
+   ],
+   [
+    "b_chunk_1",
+    {
+     "chunk_index": 1,
+     "content": "beta zeppelin hangar",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "b.md"
+    }
+   ]
+  ],
+  "find_two": [
+   [
+    "b_chunk_1",
+    {
+     "chunk_index": 1,
+     "content": "beta zeppelin hangar",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "b.md"
+    }
+   ]
+  ],
+  "get": [
+   [
+    "b_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "beta cherry tree",
+     "mtime": 2.25,
+     "pinned": true,
+     "source_path": "b.md"
+    }
+   ],
+   [
+    "a_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "alpha apple orchard",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "a.md"
+    }
+   ],
+   [
+    "c_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "gamma delta",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "c.md"
+    }
+   ]
+  ],
+  "pages": [
+   [
+    "a_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "alpha apple orchard",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "a.md"
+    }
+   ],
+   [
+    "a_chunk_1",
+    {
+     "chunk_index": 1,
+     "content": "alpha banana grove",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "a.md"
+    }
+   ],
+   [
+    "b_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "beta cherry tree",
+     "mtime": 2.25,
+     "pinned": true,
+     "source_path": "b.md"
+    }
+   ],
+   [
+    "b_chunk_1",
+    {
+     "chunk_index": 1,
+     "content": "beta zeppelin hangar",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "b.md"
+    }
+   ],
+   [
+    "c_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "gamma delta",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "c.md"
+    }
+   ]
+  ],
+  "search": [
+   [
+    "a_chunk_1",
+    {
+     "chunk_index": 1,
+     "content": "alpha banana grove",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "a.md"
+    },
+    0.9987043504493064
+   ],
+   [
+    "a_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "alpha apple orchard",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "a.md"
+    },
+    0.9938079665981999
+   ],
+   [
+    "b_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "beta cherry tree",
+     "mtime": 2.25,
+     "pinned": true,
+     "source_path": "b.md"
+    },
+    0.09938079814070921
+   ],
+   [
+    "c_chunk_0",
+    {
+     "chunk_index": 0,
+     "content": "gamma delta",
+     "mtime": 1.5,
+     "pinned": false,
+     "source_path": "c.md"
+    },
+    0.04969039907035466
+   ]
+  ],
+  "vectors": {
+   "a_chunk_0": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "b_chunk_0": [
+    0.0,
+    1.0,
+    0.0,
+    0.0
+   ],
+   "c_chunk_0": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  }
+ },
+ "layout": {
+  "columns": [
+   [
+    "id",
+    "text",
+    "text",
+    "NO",
+    null,
+    null,
+    null,
+    1
+   ],
+   [
+    "source_path",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    2
+   ],
+   [
+    "chunk_index",
+    "integer",
+    "int4",
+    "YES",
+    null,
+    null,
+    32,
+    3
+   ],
+   [
+    "content",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    4
+   ],
+   [
+    "mtime",
+    "double precision",
+    "float8",
+    "YES",
+    null,
+    null,
+    53,
+    5
+   ],
+   [
+    "pinned",
+    "boolean",
+    "bool",
+    "YES",
+    null,
+    null,
+    null,
+    6
+   ],
+   [
+    "embedding",
+    "USER-DEFINED",
+    "vector",
+    "YES",
+    null,
+    null,
+    null,
+    7
+   ]
+  ],
+  "constraints": [
+   [
+    "p",
+    "PRIMARY KEY (id)"
+   ]
+  ],
+  "indexes": [
+   [
+    "<table>_embedding_idx",
+    "CREATE INDEX <table>_embedding_idx ON public.<table> USING hnsw (embedding vector_cosine_ops)"
+   ],
+   [
+    "<table>_pkey",
+    "CREATE UNIQUE INDEX <table>_pkey ON public.<table> USING btree (id)"
+   ]
+  ],
+  "types": [
+   [
+    "id",
+    "text"
+   ],
+   [
+    "source_path",
+    "text"
+   ],
+   [
+    "chunk_index",
+    "integer"
+   ],
+   [
+    "content",
+    "text"
+   ],
+   [
+    "mtime",
+    "double precision"
+   ],
+   [
+    "pinned",
+    "boolean"
+   ],
+   [
+    "embedding",
+    "vector(4)"
+   ]
+  ]
+ },
+ "meta": {
+  "base_commit": "62a2af5f9a5347fb677da9c689af8ba836422ed8",
+  "client": "psycopg 3.3.8",
+  "generated_at": "2026-11-10",
+  "generator": "scripts/freeze_legacy_layouts.py",
+  "semantic_kernel": "1.47.0",
+  "server_version": "PostgreSQL 17.11 (Debian 17.11-1.pgdg12+2), pgvector 0.8.7",
+  "store": "postgres"
+ },
+ "rows": [
+  {
+   "chunk_index": 0,
+   "content": "alpha apple orchard",
+   "embedding": [
+    1,
+    0,
+    0,
+    0
+   ],
+   "id": "a_chunk_0",
+   "mtime": 1.5,
+   "pinned": false,
+   "source_path": "a.md"
+  },
+  {
+   "chunk_index": 1,
+   "content": "alpha banana grove",
+   "embedding": [
+    0.9,
+    0.1,
+    0,
+    0
+   ],
+   "id": "a_chunk_1",
+   "mtime": 1.5,
+   "pinned": false,
+   "source_path": "a.md"
+  },
+  {
+   "chunk_index": 0,
+   "content": "beta cherry tree",
+   "embedding": [
+    0,
+    1,
+    0,
+    0
+   ],
+   "id": "b_chunk_0",
+   "mtime": 2.25,
+   "pinned": true,
+   "source_path": "b.md"
+  },
+  {
+   "chunk_index": 1,
+   "content": "beta zeppelin hangar",
+   "embedding": [
+    0,
+    0,
+    1,
+    0
+   ],
+   "id": "b_chunk_1",
+   "mtime": 1.5,
+   "pinned": false,
+   "source_path": "b.md"
+  },
+  {
+   "chunk_index": 0,
+   "content": "gamma delta",
+   "embedding": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "id": "c_chunk_0",
+   "mtime": 1.5,
+   "pinned": false,
+   "source_path": "c.md"
+  }
+ ],
+ "schema": {
+  "dimensions": 4,
+  "fields": [
+   [
+    "source_path",
+    "string",
+    true,
+    false
+   ],
+   [
+    "chunk_index",
+    "integer",
+    true,
+    false
+   ],
+   [
+    "content",
+    "string",
+    false,
+    true
+   ],
+   [
+    "mtime",
+    "float",
+    true,
+    false
+   ],
+   [
+    "pinned",
+    "boolean",
+    false,
+    false
+   ]
+  ]
+ }
+}

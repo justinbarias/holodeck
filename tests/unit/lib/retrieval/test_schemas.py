@@ -1,14 +1,20 @@
-"""Schemas match the SK record factories they replace; converters round-trip."""
+"""Schemas keep the SK record classes' layout; converters round-trip.
+
+The SK record classes are gone (042 T16). Their field names, types and index
+flags were frozen with the legacy store layouts in
+``tests/fixtures/legacy_layout/`` while SK was still installed, when this test
+compared each schema with its SK record class directly.
+"""
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
-from semantic_kernel.data.vector import VectorStoreCollectionDefinition
 
 from holodeck.lib.retrieval import CollectionSchema, Record, SchemaError
-from holodeck.lib.retrieval.adapters.sk_bridge import build_definition
 from holodeck.lib.retrieval.schemas import (
     DocumentChunkRecord,
     chunk_from_record,
@@ -19,60 +25,38 @@ from holodeck.lib.retrieval.schemas import (
     structured_schema,
 )
 from holodeck.lib.structured_chunker import ChunkType, DocumentChunk
-from holodeck.lib.vector_store import (
-    create_document_record_class,
-    create_hierarchical_document_record_class,
-    create_structured_record_class,
-)
 
 DIMENSIONS = 8
+LEGACY = Path(__file__).resolve().parents[3] / "fixtures" / "legacy_layout"
 
 
-def _described(definition: VectorStoreCollectionDefinition) -> dict[str, Any]:
+def _facts(schema: CollectionSchema) -> dict[str, Any]:
     return {
-        field.name: (
-            field.field_type,
-            field.type_,
-            field.is_indexed,
-            field.is_full_text_indexed,
-            field.dimensions,
-            field.distance_function,
-        )
-        for field in definition.fields
+        "dimensions": schema.dimensions,
+        "fields": [
+            [spec.name, spec.type.value, spec.indexed, spec.full_text]
+            for spec in schema.fields
+        ],
     }
 
 
 @pytest.mark.parametrize(
-    ("schema", "definition"),
+    ("schema", "frozen"),
     [
+        (document_schema(DIMENSIONS), "postgres/document.json"),
+        (hierarchical_schema(DIMENSIONS, "my_tool"), "postgres/hierarchical.json"),
         (
-            document_schema(DIMENSIONS),
-            create_document_record_class(
-                DIMENSIONS
-            ).__kernel_vectorstoremodel_definition__,
-        ),
-        (
-            hierarchical_schema(DIMENSIONS, "my_tool"),
-            create_hierarchical_document_record_class(
-                DIMENSIONS, "my_tool"
-            ).__kernel_vectorstoremodel_definition__,
-        ),
-        (
-            structured_schema(DIMENSIONS, ["title", "category"], "products"),
-            create_structured_record_class(
-                DIMENSIONS, ["title", "category"], "products"
-            )[1],
+            structured_schema(DIMENSIONS, ["region", "year"], "products"),
+            "postgres/structured.json",
         ),
     ],
     ids=["document", "hierarchical", "structured"],
 )
-def test_schema_matches_the_record_factory_layout(
-    schema: CollectionSchema, definition: VectorStoreCollectionDefinition
+def test_schema_matches_the_frozen_sk_record_layout(
+    schema: CollectionSchema, frozen: str
 ) -> None:
-    built = build_definition(schema)
-
-    assert schema.name == definition.collection_name
-    assert _described(built) == _described(definition)
+    expected = json.loads((LEGACY / frozen).read_text())["schema"]
+    assert _facts(schema) == expected
 
 
 def test_collection_names_used_today() -> None:
