@@ -46,6 +46,10 @@ Please give a short succinct context to situate this chunk within the overall \
 document for the purposes of improving search retrieval of the chunk. \
 Answer only with the succinct context and nothing else."""
 
+CONTEXT_RECIPE_POLICY = "litellm-context/1"
+"""Pipeline policy ID of this generator's prompt and truncation recipe. Bump it
+when ``CONTEXT_PROMPT_TEMPLATE`` or the truncation changes (spec 042 FR-023)."""
+
 
 @dataclass
 class RetryConfig:
@@ -121,6 +125,17 @@ class LLMContextGenerator:
         )
         self._retry_config = retry_config or RetryConfig()
         self._encoder = tiktoken.get_encoding("cl100k_base")
+
+    def context_policy(self) -> str:
+        """Return the identity of the stored context text: recipe and model.
+
+        Part of the pipeline fingerprint of a hierarchical document tool.
+        """
+        return (
+            f"{CONTEXT_RECIPE_POLICY};model={self._model_spec.model};"
+            f"max_tokens={self._max_context_tokens};"
+            f"max_document_tokens={self._max_document_tokens}"
+        )
 
     def _count_tokens(self, text: str) -> int:
         """Count tokens in text using tiktoken.

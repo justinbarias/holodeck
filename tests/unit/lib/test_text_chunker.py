@@ -399,3 +399,64 @@ class TestTextChunkerTokenSplitting:
         assert TextChunker(chunk_size=50, chunk_overlap=5).split_text(
             "  Hello world.  "
         ) == ["Hello world."]
+
+
+class TestTextChunkerFinalBound:
+    """The bound holds on the final, stripped text of every chunk (042 review)."""
+
+    def test_stripping_cannot_push_a_chunk_over_the_budget(self) -> None:
+        # " differ" + " foo" * 511 is 512 tokens; stripped, "differ" is two
+        # tokens, so the stripped single chunk would be 513 tokens.
+        text = " differ" + " foo" * 511
+        chunks = TextChunker(chunk_size=512, chunk_overlap=0).split_text(text)
+        assert all(_tokens(c) <= 512 for c in chunks)
+        assert "".join(chunks).replace(" ", "") == text.replace(" ", "")
+
+    def test_a_character_that_cannot_fit_raises_with_the_minimum_size(self) -> None:
+        with pytest.raises(ValueError, match=r"chunk_size of at least \d+"):
+            TextChunker(chunk_size=1, chunk_overlap=0).split_text("😀")
+
+    def test_a_wide_character_fits_once_the_overlap_is_dropped(self) -> None:
+        # 3 tokens; the unit budget (size - overlap) is 2, the chunk size 4.
+        chunks = TextChunker(chunk_size=4, chunk_overlap=2).split_text("😀 😀 😀")
+        assert chunks and all(_tokens(c) <= 4 for c in chunks)
+
+    def test_large_input_without_separators_terminates(self) -> None:
+        import time
+
+        text = "abcdefghij" * 20_000  # 200k characters, no separator
+        start = time.monotonic()
+        chunks = TextChunker(chunk_size=256, chunk_overlap=0).split_text(text)
+        assert time.monotonic() - start < 60
+        assert "".join(chunks) == text
+        assert all(_tokens(c) <= 256 for c in chunks)
+
+    @pytest.mark.parametrize("seed", range(200))
+    def test_random_unicode_and_whitespace_inputs(self, seed: int) -> None:
+        import random
+
+        rng = random.Random(seed)  # noqa: S311 - reproducible test input
+        alphabet = (
+            list("abc xyz.!?")
+            + [" ", "  ", "\n", "\n\n", "\t", "　", " "]
+            + ["é", "ß", "漢", "字", "😀", "👍🏽", "​", "。", "…"]
+            + [" differ", " foo", "<|endoftext|>"]
+        )
+        text = "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 400)))
+        if not text.strip():
+            text += "x"
+        size = rng.randint(4, 64)
+        overlap = rng.randint(0, size - 1) if rng.random() < 0.5 else 0
+        chunks = TextChunker(chunk_size=size, chunk_overlap=overlap).split_text(text)
+        assert chunks
+        assert all(c and c.strip() == c for c in chunks)
+        assert all(_tokens(c) <= size for c in chunks), (seed, size, overlap)
+        joined = "".join("".join(c.split()) for c in chunks)
+        content = "".join(text.split())
+        if overlap == 0:
+            assert joined == content
+        else:
+            # Overlap repeats text; every non-whitespace character survives in
+            # order, so the content is a subsequence of the joined chunks.
+            it = iter(joined)
+            assert all(ch in it for ch in content)

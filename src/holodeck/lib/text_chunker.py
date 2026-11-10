@@ -8,6 +8,11 @@ repeated at the start of the next.
 Text is split at the coarsest boundary that keeps a piece within the budget:
 paragraph, then line, then sentence, then word, then a hard split by tokens
 for a single unit that is larger than the budget.
+
+The bound holds on the final, stripped text of every chunk: stripping can
+change tokenization (``" differ"`` is one token, ``"differ"`` two), so a chunk
+that exceeds the budget once stripped is split again. A single character that
+needs more tokens than ``chunk_size`` raises ``ValueError``.
 """
 
 from __future__ import annotations
@@ -128,6 +133,37 @@ def _units(text: str, level: int, budget: int) -> list[tuple[str, int]]:
     return units
 
 
+def _fit(text: str, limit: int) -> list[str]:
+    """Split ``text`` into pieces whose stripped text is at most ``limit`` tokens.
+
+    Stripping can change tokenization (``" differ"`` is one token, ``"differ"``
+    two), so a unit within budget can exceed it once stripped. Such a unit is
+    split again at a smaller budget until every stripped piece fits.
+
+    Raises:
+        ValueError: A single character needs more than ``limit`` tokens.
+    """
+    stripped = text.strip()
+    if not stripped or _count(stripped) <= limit:
+        return [text]
+    budget = min(limit, _count(text))
+    while True:
+        parts = [piece for piece, _ in _units(text, 0, budget)]
+        if len(parts) > 1:
+            break
+        budget -= 1
+        if budget <= 0:
+            raise ValueError(
+                f"Text {stripped[:20]!r} cannot be split below "
+                f"{_count(stripped)} tokens; it needs a chunk_size of at least "
+                f"{_count(stripped)} (chunk_size is {limit})."
+            )
+    fitted: list[str] = []
+    for part in parts:
+        fitted.extend(_fit(part, limit))
+    return fitted
+
+
 def _tail(text: str, max_tokens: int) -> str:
     """Return the last max_tokens tokens of text as clean, stripped text."""
     if max_tokens <= 0:
@@ -206,7 +242,8 @@ class TextChunker:
             the end of the previous chunk.
 
         Raises:
-            ValueError: If text is empty
+            ValueError: If text is empty, or a single character needs more
+                tokens than chunk_size (the message names the minimum size).
         """
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
@@ -235,8 +272,12 @@ class TextChunker:
                     end -= 1
                 elif lead:
                     lead = ""
-                else:  # pragma: no cover - a single unit always fits
-                    break
+                else:
+                    # One unit that exceeds the budget once stripped: split it
+                    # further and assemble again from its first piece.
+                    pieces = _fit(units[pos][0], self.chunk_size)
+                    units[pos : pos + 1] = [(p, _count(p)) for p in pieces]
+                    end = pos + 1
             raw = lead + "".join(u for u, _ in units[pos:end])
             pos = end
             if not chunk:

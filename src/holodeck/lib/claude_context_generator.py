@@ -42,6 +42,12 @@ logger = logging.getLogger(__name__)
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
 
 
+CLAUDE_CONTEXT_POLICY = "claude-sdk-context/1"
+"""Pipeline policy ID of this generator's prompts and parsing. Bump it when
+the system prompt, batch or single prompt, or truncation changes (spec 042
+FR-023)."""
+
+
 @dataclass
 class ClaudeContextConfig:
     """Configuration for ClaudeSDKContextGenerator.
@@ -100,6 +106,19 @@ class ClaudeSDKContextGenerator:
         self._config = config or ClaudeContextConfig()
         self._max_context_tokens = max_context_tokens
         self._encoder = tiktoken.get_encoding("cl100k_base")
+
+    def context_policy(self) -> str:
+        """Return the identity of the stored context text: recipe and model.
+
+        Part of the pipeline fingerprint of a hierarchical document tool.
+        """
+        config = self._config
+        return (
+            f"{CLAUDE_CONTEXT_POLICY};model={config.model};"
+            f"max_tokens={self._max_context_tokens};"
+            f"batch_size={config.batch_size};"
+            f"max_document_tokens={config.max_document_tokens}"
+        )
 
     def _truncate_document(self, document: str) -> str:
         """Truncate document to fit within max_document_tokens.

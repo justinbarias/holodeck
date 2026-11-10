@@ -77,6 +77,7 @@ class FileProcessor:
         download_timeout_ms: int = 30000,
         max_retries: int = 3,
         processing_timeout_ms: int = 30000,
+        read_only: bool = False,
     ) -> None:
         """Initialize file processor.
 
@@ -86,9 +87,14 @@ class FileProcessor:
             max_retries: Maximum number of retry attempts for downloads
             processing_timeout_ms: Timeout for file processing in milliseconds.
                 Defaults to 30000ms.
+            read_only: Convert local files only: create no cache directory,
+                write no cache file and download nothing. ``holodeck
+                vectorstore inspect`` uses it.
         """
+        self.read_only = read_only
         self.cache_dir = Path(cache_dir or ".holodeck/cache")
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        if not read_only:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.download_timeout_ms = download_timeout_ms
         self.max_retries = max_retries
@@ -116,6 +122,7 @@ class FileProcessor:
         config: "ExecutionConfig",
         cache_dir: str | None = None,
         max_retries: int = 3,
+        read_only: bool = False,
     ) -> "FileProcessor":
         """Create FileProcessor from ExecutionConfig.
 
@@ -126,6 +133,7 @@ class FileProcessor:
             config: ExecutionConfig with timeout settings in seconds
             cache_dir: Override cache directory (defaults to config.cache_dir)
             max_retries: Maximum retry attempts for downloads
+            read_only: See ``__init__``.
 
         Returns:
             Configured FileProcessor instance
@@ -139,6 +147,7 @@ class FileProcessor:
             download_timeout_ms=download_timeout_ms,
             processing_timeout_ms=processing_timeout_ms,
             max_retries=max_retries,
+            read_only=read_only,
         )
 
     def _get_markitdown(self) -> Any:
@@ -249,6 +258,8 @@ class FileProcessor:
             metadata: File metadata
             processing_time_ms: Processing time in milliseconds
         """
+        if self.read_only:
+            return
         cache_file = self.cache_dir / f"{cache_key}.json"
         data = {
             "markdown_content": markdown_content,
@@ -273,6 +284,8 @@ class FileProcessor:
         Returns:
             File content bytes or None if download fails
         """
+        if self.read_only:
+            raise ValueError(f"Read-only file processor does not download {url}")
         timeout_sec = self.download_timeout_ms / 1000.0
 
         logger.debug(f"Downloading file from URL: {url}")

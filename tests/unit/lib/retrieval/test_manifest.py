@@ -10,6 +10,7 @@ from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
 from holodeck.lib.retrieval.manifest import (
     MANIFEST_SCHEMA,
     CollectionEntry,
+    LockHeldError,
     ManifestStore,
     SourceEntry,
     collection_entry_id,
@@ -49,9 +50,10 @@ async def test_collection_entry_round_trip() -> None:
         migration_fingerprint_inputs='{"a":2}',
         updated_at=12.5,
     )
-    await store.put_collection(entry)
+    written = await store.put_collection(entry)
     assert await store.exists()
-    assert await store.get_collection("docs") == entry
+    assert written.revision and written == entry.with_revision(written.revision)
+    assert await store.get_collection("docs") == written
     await store.delete_collection_entry("docs")
     assert await store.get_collection("docs") is None
 
@@ -94,6 +96,58 @@ def test_ids_are_stable_and_bounded() -> None:
 def test_manifest_ignores_collection_name_settings() -> None:
     connection = {"url": "x", "collection_name": "kb", "index_name": "idx"}
     assert manifest_connection(connection) == {"url": "x"}
+
+
+def test_manifest_ignores_settings_that_pin_one_index() -> None:
+    """A Pinecone ``index_host`` addresses the tool's index, not the manifest."""
+    connection = {"api_key": "k", "index_name": "idx", "index_host": "https://h"}
+    assert manifest_connection(connection) == {"api_key": "k"}
+
+
+@pytest.mark.asyncio
+async def test_every_write_of_an_entry_gets_a_new_revision() -> None:
+    store = _store()
+    entry = CollectionEntry("docs", "f", "{}", "docs")
+    first = await store.put_collection(entry)
+    second = await store.put_collection(first)
+    assert first.revision and second.revision and first.revision != second.revision
+    assert (await store.get_collection("docs")) == second
+
+
+@pytest.mark.asyncio
+async def test_lock_is_exclusive_until_released_or_stale() -> None:
+    store = _store()
+    lock = await store.acquire_lock("docs", "migrate", ttl=7200)
+    assert lock.operation == "migrate" and lock.expires_at > lock.acquired_at
+    with pytest.raises(LockHeldError, match="migrate") as raised:
+        await store.acquire_lock("docs", "prune", ttl=7200)
+    assert raised.value.holder.owner == lock.owner
+    # Another logical collection has its own lock.
+    other = await store.acquire_lock("kb", "prune", ttl=7200)
+    await store.release_lock(other)
+
+    refreshed = await store.refresh_lock(lock, ttl=7200)
+    assert refreshed.expires_at >= lock.expires_at
+    await store.release_lock(refreshed)
+    again = await store.acquire_lock("docs", "rollback", ttl=7200)
+    await store.release_lock(again)
+
+    stale = await store.acquire_lock("docs", "migrate", ttl=-1)
+    taken = await store.acquire_lock("docs", "prune", ttl=7200)
+    assert taken.owner != stale.owner
+    # Releasing a lock someone else took over does not remove theirs.
+    await store.release_lock(stale)
+    assert (await store.get_lock("docs")) == taken
+
+
+@pytest.mark.asyncio
+async def test_lock_records_are_not_collection_or_source_entries() -> None:
+    store = _store()
+    lock = await store.acquire_lock("docs", "migrate", ttl=60)
+    assert await store.get_collection("docs") is None
+    assert await store.sources("docs") == {}
+    await store.release_lock(lock)
+    assert await store.get_lock("docs") is None
 
 
 def test_open_returns_none_and_warns_for_an_unknown_provider(

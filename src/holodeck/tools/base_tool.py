@@ -81,6 +81,8 @@ class DatabaseConfigMixin:
     _provider: str
     _adapter: VectorStoreAdapter | None
     _embedding_dimensions: int | None
+    _manifest_enabled: bool = True
+    """False when the database settings set ``manifest: false``."""
 
     def _resolve_database_config(
         self, database: DatabaseConfig | str | None
@@ -118,6 +120,7 @@ class DatabaseConfigMixin:
 
         if database is not None:
             # DatabaseConfig object - use its settings
+            self._manifest_enabled = database.manifest
             provider = database.provider
             connection_kwargs: dict[str, Any] = {}
             if database.connection_string:

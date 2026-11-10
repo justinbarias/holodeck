@@ -118,3 +118,44 @@ async def test_hierarchical_tool_ranks_like_the_in_memory_golden(
             frozen["section_id"],
             frozen["chunk_sha"],
         ), query_id
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_named_namespace_keeps_the_index_and_other_namespaces() -> (
+    None
+):
+    """A Pinecone collection is (index, namespace) (042 phase 4 review)."""
+    import uuid
+
+    from holodeck.lib.retrieval import CollectionSchema, Record
+    from holodeck.lib.retrieval.adapters.pinecone import PineconeSettings
+
+    schema = CollectionSchema(f"ns-scope-{uuid.uuid4().hex[:8]}", 4, ())
+    first = LocalPineconeAdapter(
+        schema, PineconeSettings(api_key=pinecone_local.LOCAL_API_KEY, namespace="a")
+    )
+    second = LocalPineconeAdapter(
+        schema, PineconeSettings(api_key=pinecone_local.LOCAL_API_KEY, namespace="b")
+    )
+    whole = LocalPineconeAdapter.build(schema)
+    try:
+        await first.ensure_collection()
+        assert await first.collection_exists() is False  # empty namespace
+        await first.upsert([Record(id="x", fields={}, vector=[1.0, 0, 0, 0])])
+        await second.upsert([Record(id="y", fields={}, vector=[0, 1.0, 0, 0])])
+        assert await first.collection_exists() and await first.count() == 1
+
+        await first.delete_collection()
+
+        assert await first.collection_exists() is False
+        assert await first.count() == 0
+        assert await whole.collection_exists()  # the index stays
+        assert await second.count() == 1
+        assert [r.id for r in await second.get(["y"])] == ["y"]
+    finally:
+        for adapter in (first, second):
+            await adapter.close()
+        try:
+            await whole.delete_collection()
+        finally:
+            await whole.close()

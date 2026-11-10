@@ -9,7 +9,15 @@ through the same adapter contract:
   physical collection kept for rollback, and migration progress;
 * a ``source`` entry per ingested source of a physical collection: the
   expected chunk count and a completion flag. The flag is 0 while the
-  source's chunks are written and 1 after the last write succeeded.
+  source's chunks are written and 1 after the last write succeeded;
+* a ``lock`` record per logical collection while ``holodeck vectorstore
+  migrate``, ``rollback`` or ``prune`` runs on it.
+
+Stores have no portable compare-and-set. Each write of a collection entry
+carries a new random ``revision``; a writer reads the entry back and acts only
+when the stored revision is its own. The same write-then-read-back rule takes
+a lock. This narrows races between processes; on a store without
+transactions it cannot close them.
 
 Every manifest record has the fixed vector ``[1.0, 0.0]``: the manifest is
 only read by ID and by exact filter.
@@ -18,12 +26,15 @@ only read by ID and by exact filter.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import hashlib
 import logging
 import time
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from holodeck.lib.errors import HoloDeckError
 from holodeck.lib.retrieval import registry
 from holodeck.lib.retrieval.adapter import VectorStoreAdapter
 from holodeck.lib.retrieval.schemas import int_field, text_field
@@ -44,6 +55,7 @@ MANIFEST_VECTOR: tuple[float, float] = (1.0, 0.0)
 
 KIND_COLLECTION = "collection"
 KIND_SOURCE = "source"
+KIND_LOCK = "lock"
 
 STATE_ACTIVE = "active"
 STATE_MIGRATING = "migrating"
@@ -55,9 +67,15 @@ REQUIRED_OPERATIONS = (
     Operation.FIND,
 )
 
-# Connection keys that name the collection itself. The manifest is its own
-# collection, so it ignores them.
-COLLECTION_NAME_KEYS = ("collection_name", "index_name")
+# Connection keys that address one collection: its name (every provider's
+# ``collection_name``; Azure AI Search and Pinecone ``index_name``) or its
+# endpoint (Pinecone ``index_host``, the data plane URL of one index). The
+# manifest and a migrated collection are other collections, so they drop
+# them. Audited over the eight adapters: Chroma ``tenant``/``database``,
+# Cosmos ``database_name``/``partition_key``, Postgres ``db_schema`` and
+# Pinecone ``namespace`` scope a whole store or every collection in it, not
+# one collection, so they are kept.
+COLLECTION_NAME_KEYS = ("collection_name", "index_name", "index_host")
 
 _S = FieldType.STRING
 MANIFEST_SCHEMA = CollectionSchema(
@@ -81,10 +99,25 @@ MANIFEST_SCHEMA = CollectionSchema(
         FieldSpec("complete", FieldType.INTEGER),
         FieldSpec("content_marker", _S),
         FieldSpec("updated_at", FieldType.FLOAT),
+        FieldSpec("revision", _S),
+        FieldSpec("pending_delete", _S),
+        FieldSpec("owner", _S),
+        FieldSpec("operation", _S),
+        FieldSpec("acquired_at", FieldType.FLOAT),
+        FieldSpec("expires_at", FieldType.FLOAT),
     ),
 )
 
-_warned_providers: set[str] = set()
+_EMPTY_FIELDS: dict[str, str | int | float] = {
+    spec.name: (
+        0
+        if spec.type is FieldType.INTEGER
+        else 0.0 if spec.type is FieldType.FLOAT else ""
+    )
+    for spec in MANIFEST_SCHEMA.fields
+}
+
+_warned: set[str] = set()
 
 
 def collection_entry_id(logical: str) -> str:
@@ -98,12 +131,30 @@ def source_entry_id(physical: str, source_key: str) -> str:
     return f"{KIND_SOURCE}::{physical}::{digest}"
 
 
+def lock_entry_id(logical: str) -> str:
+    """Return the manifest record ID of a logical collection's lock."""
+    return f"{KIND_LOCK}::{logical}"
+
+
+def new_token() -> str:
+    """Return a random token for a revision or a lock owner."""
+    return uuid.uuid4().hex
+
+
+def _record(record_id: str, values: Mapping[str, str | int | float]) -> Record:
+    fields = dict(_EMPTY_FIELDS)
+    fields.update(values)
+    return Record(id=record_id, fields=fields, vector=list(MANIFEST_VECTOR))
+
+
 @dataclass(frozen=True, slots=True)
 class CollectionEntry:
     """Manifest state of one logical collection.
 
     Attributes:
-        logical: Logical collection name (the name the tool's schema gives).
+        logical: Logical collection name: the effective name the tool's
+            settings give (``index_name``, else ``collection_name``, else the
+            schema default), before provider-specific normalization.
         fingerprint: Fingerprint of the pipeline that wrote ``active``.
         fingerprint_inputs: Canonical JSON of those pipeline inputs.
         active_collection: Physical collection that serves the logical name.
@@ -115,6 +166,10 @@ class CollectionEntry:
         migration_fingerprint: Fingerprint the migration builds.
         migration_fingerprint_inputs: Inputs the migration builds.
         updated_at: Seconds since the epoch of the last write.
+        revision: Random token of the write that stored this entry. Every
+            write sets a new one (see ``ManifestStore.put_collection``).
+        pending_delete: A kept collection that ``prune`` reserved for
+            deletion and has not finished deleting, or "".
     """
 
     logical: str
@@ -129,12 +184,18 @@ class CollectionEntry:
     migration_fingerprint: str = ""
     migration_fingerprint_inputs: str = ""
     updated_at: float = 0.0
+    revision: str = ""
+    pending_delete: str = ""
+
+    def with_revision(self, revision: str) -> CollectionEntry:
+        """Return this entry carrying ``revision``."""
+        return dataclasses.replace(self, revision=revision)
 
     def to_record(self) -> Record:
         """Return the stored form."""
-        return Record(
-            id=collection_entry_id(self.logical),
-            fields={
+        return _record(
+            collection_entry_id(self.logical),
+            {
                 "kind": KIND_COLLECTION,
                 "collection": self.logical,
                 "fingerprint": self.fingerprint,
@@ -147,13 +208,10 @@ class CollectionEntry:
                 "migration_target": self.migration_target,
                 "migration_fingerprint": self.migration_fingerprint,
                 "migration_fingerprint_inputs": self.migration_fingerprint_inputs,
-                "source_key": "",
-                "chunk_count": 0,
-                "complete": 0,
-                "content_marker": "",
                 "updated_at": self.updated_at or time.time(),
+                "revision": self.revision,
+                "pending_delete": self.pending_delete,
             },
-            vector=list(MANIFEST_VECTOR),
         )
 
     @classmethod
@@ -176,6 +234,8 @@ class CollectionEntry:
                 record, "migration_fingerprint_inputs"
             ),
             updated_at=_float(record, "updated_at"),
+            revision=text_field(record, "revision"),
+            pending_delete=text_field(record, "pending_delete"),
         )
 
 
@@ -186,7 +246,8 @@ class SourceEntry:
     Attributes:
         physical: Physical collection that holds the source's chunks.
         source_key: The tool's source key (path or relative path).
-        chunk_count: Number of chunks the ingestion writes.
+        chunk_count: Number of chunks (or structured rows) the ingestion
+            writes.
         complete: True once every chunk was written.
         content_marker: The mtime or content hash the chunks were made from.
         updated_at: Seconds since the epoch of the last write.
@@ -201,28 +262,17 @@ class SourceEntry:
 
     def to_record(self) -> Record:
         """Return the stored form."""
-        return Record(
-            id=source_entry_id(self.physical, self.source_key),
-            fields={
+        return _record(
+            source_entry_id(self.physical, self.source_key),
+            {
                 "kind": KIND_SOURCE,
                 "collection": self.physical,
-                "fingerprint": "",
-                "fingerprint_inputs": "",
-                "active_collection": "",
-                "previous_collection": "",
-                "previous_fingerprint": "",
-                "previous_fingerprint_inputs": "",
-                "state": "",
-                "migration_target": "",
-                "migration_fingerprint": "",
-                "migration_fingerprint_inputs": "",
                 "source_key": self.source_key,
                 "chunk_count": self.chunk_count,
                 "complete": 1 if self.complete else 0,
                 "content_marker": self.content_marker,
                 "updated_at": self.updated_at or time.time(),
             },
-            vector=list(MANIFEST_VECTOR),
         )
 
     @classmethod
@@ -238,6 +288,74 @@ class SourceEntry:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class LockRecord:
+    """The lifecycle lock of one logical collection.
+
+    Attributes:
+        logical: Logical collection name.
+        owner: Random token of the process that holds the lock.
+        operation: ``migrate``, ``rollback`` or ``prune``.
+        acquired_at: Seconds since the epoch when it was taken.
+        expires_at: Seconds since the epoch after which it is stale.
+    """
+
+    logical: str
+    owner: str
+    operation: str
+    acquired_at: float
+    expires_at: float
+
+    @property
+    def stale(self) -> bool:
+        """True once ``expires_at`` has passed."""
+        return time.time() >= self.expires_at
+
+    def to_record(self) -> Record:
+        """Return the stored form."""
+        return _record(
+            lock_entry_id(self.logical),
+            {
+                "kind": KIND_LOCK,
+                "collection": self.logical,
+                "owner": self.owner,
+                "operation": self.operation,
+                "acquired_at": self.acquired_at,
+                "expires_at": self.expires_at,
+                "updated_at": time.time(),
+            },
+        )
+
+    @classmethod
+    def from_record(cls, record: Record) -> LockRecord:
+        """Rebuild a lock from its stored form."""
+        return cls(
+            logical=text_field(record, "collection"),
+            owner=text_field(record, "owner"),
+            operation=text_field(record, "operation"),
+            acquired_at=_float(record, "acquired_at"),
+            expires_at=_float(record, "expires_at"),
+        )
+
+
+class LockHeldError(HoloDeckError):
+    """Another process holds the lifecycle lock of a logical collection."""
+
+    def __init__(self, holder: LockRecord) -> None:
+        self.holder = holder
+        super().__init__(
+            f"Collection '{holder.logical}' is locked by a running "
+            f"'{holder.operation}' (owner {holder.owner[:12]}, since "
+            f"{_when(holder.acquired_at)}; the lock is stale after "
+            f"{_when(holder.expires_at)}). Wait for it to finish, then run the "
+            f"command again."
+        )
+
+
+def _when(seconds: float) -> str:
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(seconds))
+
+
 def _float(record: Record, name: str) -> float:
     value = record.fields.get(name)
     if isinstance(value, bool) or not isinstance(value, int | float):
@@ -246,7 +364,7 @@ def _float(record: Record, name: str) -> float:
 
 
 def manifest_connection(connection: Mapping[str, object]) -> dict[str, object]:
-    """Return ``connection`` without the keys that name a tool's collection."""
+    """Return ``connection`` without the keys that address a tool's collection."""
     return {
         key: value
         for key, value in connection.items()
@@ -284,7 +402,9 @@ class ManifestStore:
                 provider, MANIFEST_SCHEMA, manifest_connection(connection)
             )
         except Exception as error:  # noqa: BLE001 - degrade, never block startup
-            _warn_once(provider, f"the manifest adapter could not be built: {error}")
+            warn_unprotected(
+                provider, f"the manifest adapter could not be built: {error}"
+            )
             return None
         missing = [
             operation.value
@@ -292,7 +412,9 @@ class ManifestStore:
             if not adapter.capabilities.supports(operation)
         ]
         if missing:
-            _warn_once(provider, f"the provider does not support {', '.join(missing)}")
+            warn_unprotected(
+                provider, f"the provider does not support {', '.join(missing)}"
+            )
             return None
         return cls(adapter)
 
@@ -302,6 +424,8 @@ class ManifestStore:
 
     async def exists(self) -> bool:
         """Return True when the manifest collection exists."""
+        if self._ensured:
+            return True
         return await self._adapter.collection_exists()
 
     async def _ensure(self) -> None:
@@ -321,27 +445,92 @@ class ManifestStore:
 
     async def get_collection(self, logical: str) -> CollectionEntry | None:
         """Return the entry of ``logical``, or None."""
-        if not self._ensured and not await self.exists():
+        if not await self.exists():
             return None
         found = await self._adapter.get([collection_entry_id(logical)])
         return CollectionEntry.from_record(found[0]) if found else None
 
-    async def put_collection(self, entry: CollectionEntry) -> None:
-        """Insert or replace the entry of ``entry.logical`` in one write."""
+    async def put_collection(self, entry: CollectionEntry) -> CollectionEntry:
+        """Insert or replace the entry of ``entry.logical`` in one write.
+
+        The stored entry gets a new random revision, which is returned. Read
+        the entry back and compare revisions to learn whether another process
+        wrote after this one.
+        """
         await self._ensure()
-        await self._adapter.upsert([entry.to_record()])
+        written = dataclasses.replace(
+            entry, revision=new_token(), updated_at=entry.updated_at or time.time()
+        )
+        await self._adapter.upsert([written.to_record()])
+        return written
 
     async def delete_collection_entry(self, logical: str) -> None:
         """Delete the entry of ``logical``. No error when it is absent."""
-        if not self._ensured and not await self.exists():
+        if not await self.exists():
             return
         await self._adapter.delete([collection_entry_id(logical)])
+
+    # -- lifecycle locks ---------------------------------------------------
+
+    async def get_lock(self, logical: str) -> LockRecord | None:
+        """Return the lock of ``logical``, or None."""
+        if not await self.exists():
+            return None
+        found = await self._adapter.get([lock_entry_id(logical)])
+        return LockRecord.from_record(found[0]) if found else None
+
+    async def acquire_lock(
+        self, logical: str, operation: str, ttl: float
+    ) -> LockRecord:
+        """Take the lifecycle lock of ``logical`` for ``ttl`` seconds.
+
+        The lock is written, read back and kept only when the stored owner is
+        this caller. A stale lock (past ``expires_at``) is taken over.
+
+        Raises:
+            LockHeldError: Another owner holds a lock that is not stale.
+        """
+        held = await self.get_lock(logical)
+        if held is not None and not held.stale:
+            raise LockHeldError(held)
+        now = time.time()
+        lock = LockRecord(logical, new_token(), operation, now, now + ttl)
+        await self._ensure()
+        await self._adapter.upsert([lock.to_record()])
+        stored = await self.get_lock(logical)
+        if stored is None or stored.owner != lock.owner:
+            if stored is not None:
+                raise LockHeldError(stored)
+            raise HoloDeckError(
+                f"The lock of collection '{logical}' was removed while it was "
+                f"being taken; run the command again."
+            )
+        return lock
+
+    async def refresh_lock(self, lock: LockRecord, ttl: float) -> LockRecord:
+        """Extend ``lock`` to ``ttl`` seconds from now.
+
+        Raises:
+            LockHeldError: Another owner took the lock over.
+        """
+        stored = await self.get_lock(lock.logical)
+        if stored is not None and stored.owner != lock.owner:
+            raise LockHeldError(stored)
+        refreshed = dataclasses.replace(lock, expires_at=time.time() + ttl)
+        await self._adapter.upsert([refreshed.to_record()])
+        return refreshed
+
+    async def release_lock(self, lock: LockRecord) -> None:
+        """Remove ``lock`` if this caller still owns it."""
+        stored = await self.get_lock(lock.logical)
+        if stored is not None and stored.owner == lock.owner:
+            await self._adapter.delete([lock_entry_id(lock.logical)])
 
     # -- source entries ----------------------------------------------------
 
     async def sources(self, physical: str) -> dict[str, SourceEntry]:
         """Return the source entries of ``physical`` by source key."""
-        if not self._ensured and not await self.exists():
+        if not await self.exists():
             return {}
         records = await self._adapter.find(
             RecordFilter.where(kind=KIND_SOURCE, collection=physical)
@@ -356,13 +545,13 @@ class ManifestStore:
 
     async def delete_source(self, physical: str, source_key: str) -> None:
         """Delete one source entry. No error when it is absent."""
-        if not self._ensured and not await self.exists():
+        if not await self.exists():
             return
         await self._adapter.delete([source_entry_id(physical, source_key)])
 
     async def delete_sources(self, physical: str) -> int:
         """Delete every source entry of ``physical``. Return the count."""
-        if not self._ensured and not await self.exists():
+        if not await self.exists():
             return 0
         records = await self._adapter.find(
             RecordFilter.where(kind=KIND_SOURCE, collection=physical)
@@ -372,14 +561,16 @@ class ManifestStore:
         return len(records)
 
 
-def _warn_once(provider: str, reason: str) -> None:
-    if provider in _warned_providers:
+def warn_unprotected(subject: str, reason: str) -> None:
+    """Log once per ``subject`` that collections run without a manifest."""
+    if subject in _warned:
         return
-    _warned_providers.add(provider)
+    _warned.add(subject)
     logger.warning(
-        "Vector store provider '%s' has no pipeline manifest (%s). Collections "
-        "on it are not protected against pipeline changes and interrupted "
-        "ingestion is detected from stored chunks only.",
-        provider,
+        "Vector store '%s' has no pipeline manifest (%s). Fingerprint "
+        "protection is off: collections on it are not protected against "
+        "pipeline changes and interrupted ingestion is detected from stored "
+        "chunks only.",
+        subject,
         reason,
     )

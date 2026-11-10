@@ -437,7 +437,7 @@ async def test_provider_without_manifest_operations_keeps_old_behavior(
             "holodeck.lib.retrieval.registry.create_adapter",
             side_effect=registry.create,
         ),
-        patch("holodeck.lib.retrieval.manifest._warned_providers", set()),
+        patch("holodeck.lib.retrieval.manifest._warned", set()),
         caplog.at_level(logging.WARNING),
     ):
         await _vector_tool(source, CountingEmbeddings(DIMS)).initialize(

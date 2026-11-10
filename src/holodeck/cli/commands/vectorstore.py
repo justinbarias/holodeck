@@ -71,8 +71,9 @@ def vectorstore() -> None:
 def inspect(agent_config: str, tool_name: str | None, as_json: bool) -> None:
     """Report collection state and migration work. Read-only dry run.
 
-    Creates no collection or manifest entry and calls no model. Chunks are
-    counted by parsing and splitting the sources locally.
+    Downloads nothing, writes no file, creates no collection or manifest
+    entry and calls no model. Chunks are counted by parsing and splitting
+    local sources; remote sources are not estimated.
     """
     from holodeck.lib.vectorstore_migration import inspect_tool, retrieval_tools
 
@@ -126,6 +127,8 @@ def _print_report(report: InspectReport) -> None:
         f"  Migration work:      {report.source_files} source files, "
         f"{report.chunks} chunks, ~{report.estimated_tokens} tokens"
     )
+    for uri in report.remote_sources:
+        click.echo(f"  Remote source: not estimated ({uri})")
     click.echo(f"  {report.estimate_note}")
     click.echo()
 
@@ -139,23 +142,50 @@ def _print_report(report: InspectReport) -> None:
     is_flag=True,
     help="Abandon an unfinished migration that targets a different pipeline.",
 )
-def migrate(agent_config: str, tool_name: str, yes: bool, restart: bool) -> None:
+@click.option(
+    "--drop-unlisted-sources",
+    is_flag=True,
+    help=(
+        "Switch even if the old collection holds sources that no tool of this "
+        "agent ingests; those records are not carried over."
+    ),
+)
+def migrate(
+    agent_config: str,
+    tool_name: str,
+    yes: bool,
+    restart: bool,
+    drop_unlisted_sources: bool,
+) -> None:
     """Rebuild a tool's collection with the current pipeline and switch to it.
 
-    Re-embeds every source into a new collection, verifies it and then points
-    the tool at it. The old collection is kept for rollback. An interrupted
-    migration resumes where it stopped.
+    --tool selects the collection. Every retrieval tool of the agent that uses
+    the same collection is rebuilt with it. Re-embeds every source into a new
+    collection, verifies it and then points the tools at it. The old
+    collection is kept for rollback. An interrupted migration resumes where it
+    stopped.
     """
-    from holodeck.lib.vectorstore_migration import migrate_tool, retrieval_tools
+    from holodeck.lib.vectorstore_migration import (
+        migrate_tool,
+        plan_migration,
+        retrieval_tools,
+    )
 
     agent, execution_config, base_dir = _load(agent_config)
     (tool,) = _run_selection(lambda: retrieval_tools(agent, tool_name))
+    plan = _run(
+        lambda: plan_migration(
+            agent, tool, base_dir=base_dir, execution_config=execution_config
+        )
+    )
     click.echo(
-        f"Migrate tool '{tool.name}': re-embed its sources into a new collection "
-        f"with the current pipeline, verify it, then switch the tool to it. "
+        f"Migrate collection '{plan.logical_collection}' ({plan.provider}): "
+        f"re-embed the sources of every tool that uses it into a new collection "
+        f"with the current pipeline, verify it, then switch the tools to it. "
         f"The current collection is kept for rollback. This calls the "
         f"embedding model."
     )
+    click.echo(f"  Tools rebuilt together: {', '.join(plan.tools)}")
     _confirm("Continue?", yes)
     result = _run(
         lambda: migrate_tool(
@@ -164,6 +194,7 @@ def migrate(agent_config: str, tool_name: str, yes: bool, restart: bool) -> None
             base_dir=base_dir,
             execution_config=execution_config,
             restart=restart,
+            drop_unlisted_sources=drop_unlisted_sources,
         )
     )
     if result.skipped:
@@ -172,10 +203,17 @@ def migrate(agent_config: str, tool_name: str, yes: bool, restart: bool) -> None
     click.secho("Migration complete", fg="green", bold=True)
     click.echo(f"  Active collection: {result.active_collection}")
     click.echo(f"  Kept for rollback: {result.previous_collection}")
+    click.echo(f"  Tools:             {', '.join(result.tools)}")
     click.echo(
         f"  Records: {result.record_count} from {result.sources} sources "
         f"({result.embedded_sources} embedded in this run)"
     )
+    if result.dropped_sources:
+        click.secho(
+            f"  Not carried over (--drop-unlisted-sources): "
+            f"{len(result.dropped_sources)} sources",
+            fg="yellow",
+        )
 
 
 def _run_selection(select: Callable[[], list[T]]) -> list[T]:

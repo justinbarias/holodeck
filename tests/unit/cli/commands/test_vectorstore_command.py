@@ -64,6 +64,7 @@ INSPECT_KEYS = {
     "estimated_tokens",
     "previous_collection",
     "migration_target",
+    "remote_sources",
     "estimate_note",
 }
 
@@ -224,6 +225,28 @@ def test_migrate_rollback_and_prune(env: Env) -> None:
     nothing = _invoke("prune", agent, "--tool", "kb", "--yes")
     assert nothing.exit_code == 1
     assert "no kept previous collection" in nothing.output
+
+
+def test_a_second_lifecycle_command_reports_the_lock_holder(env: Env) -> None:
+    from holodeck.lib.retrieval.manifest import MANIFEST_SCHEMA, ManifestStore
+
+    asyncio.run(env.ingest(40))
+    agent = env.write_agent(60)
+    manifest = ManifestStore(env.registry.create("in-memory", MANIFEST_SCHEMA))
+    asyncio.run(manifest.acquire_lock("cli_kb", "prune", ttl=7200))
+    env.registry.writes.clear()
+    for command in ("migrate", "rollback", "prune"):
+        result = _invoke(command, agent, "--tool", "kb", "--yes")
+        assert result.exit_code == 1, result.output
+        assert "locked by a running 'prune'" in result.output
+    assert [w for w in env.registry.writes if w[0] != "holodeck_manifest"] == []
+
+
+def test_migrate_lists_every_tool_it_rebuilds(env: Env) -> None:
+    asyncio.run(env.ingest(40))
+    result = _invoke("migrate", env.write_agent(60), "--tool", "kb", input="n\n")
+    assert "Tools rebuilt together: kb" in result.output
+    assert "Migrate collection 'cli_kb'" in result.output
 
 
 def test_migrate_requires_a_tool_name(env: Env) -> None:

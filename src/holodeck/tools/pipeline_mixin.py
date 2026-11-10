@@ -16,13 +16,16 @@ from holodeck.lib.retrieval.fingerprint import PipelineInputs
 from holodeck.lib.retrieval.guard import (
     IngestionGuard,
     bind_collection,
+    effective_collection_name,
     physical_connection,
     physical_schema,
+    read_snapshot,
     resolve_physical,
 )
 from holodeck.lib.retrieval.manifest import ManifestStore
 
 if TYPE_CHECKING:
+    from holodeck.lib.file_processor import FileProcessor
     from holodeck.lib.retrieval import CollectionSchema, VectorStoreAdapter
 
 logger = logging.getLogger(__name__)
@@ -42,12 +45,15 @@ class PipelineGuardMixin:
     _adapter: VectorStoreAdapter | None
     _provider: str
     _embedding_service: object
+    _file_processor: FileProcessor | None
+    _manifest_enabled: bool = True
     _collection_schema: CollectionSchema | None = None
     _connection: dict[str, object] | None = None
     _manifest: ManifestStore | None = None
     _guard: IngestionGuard | None = None
     _embedding_identity: tuple[str, str] | None = None
     _migration_target: str | None = None
+    _read_only: bool = False
 
     def set_embedding_identity(self, provider: str, model: str) -> None:
         """Record the embedding provider and model the injected service uses.
@@ -65,6 +71,14 @@ class PipelineGuardMixin:
         """
         self._migration_target = physical
 
+    def set_read_only(self) -> None:
+        """Parse sources without writing: no file cache, no download.
+
+        ``holodeck vectorstore inspect`` uses it before ``preview_chunks``.
+        """
+        self._read_only = True
+        self._file_processor = None
+
     def embedding_identity(self) -> tuple[str, str]:
         """Return ``(provider, model)`` of the embeddings this tool stores."""
         if self._embedding_identity is not None:
@@ -79,10 +93,14 @@ class PipelineGuardMixin:
 
     @property
     def logical_collection(self) -> str:
-        """Logical collection name (the name the tool's schema gives)."""
+        """Logical collection name: the effective name the provider is asked
+        for (``index_name``, else ``collection_name``, else the schema
+        default), before provider-specific normalization."""
         if self._collection_schema is None:
             raise RuntimeError("Collection not initialized")
-        return self._collection_schema.name
+        return effective_collection_name(
+            self._collection_schema, self._connection or {}
+        )
 
     @property
     def collection_provider(self) -> str:
@@ -95,8 +113,15 @@ class PipelineGuardMixin:
         return dict(self._connection or {})
 
     @property
+    def manifest_enabled(self) -> bool:
+        """False when the database settings set ``manifest: false``."""
+        return self._manifest_enabled
+
+    @property
     def physical_collection(self) -> str:
         """Physical collection the tool reads and writes."""
+        if self._guard is not None and self._guard.physical:
+            return self._guard.physical
         if self._adapter is None:
             raise RuntimeError("Collection not initialized")
         return self._adapter.schema.name
@@ -115,8 +140,9 @@ class PipelineGuardMixin:
     async def _bind_pipeline(self, tool_name: str) -> IngestionGuard:
         """Resolve the physical collection and apply the fingerprint rules.
 
-        Call after the adapter for the logical collection is built and
-        before any write.
+        The physical name and the stored fingerprint come from one read of
+        the manifest entry. Call after the adapter for the logical collection
+        is built and before any write.
         """
         from holodeck.lib.retrieval import create_adapter
 
@@ -127,14 +153,15 @@ class PipelineGuardMixin:
             self._guard = None
             return self._pipeline_guard()
         connection = self._connection or {}
-        logical = schema.name
+        logical = self.logical_collection
 
-        if self._manifest is None:
+        if self._manifest is None and self._manifest_enabled:
             self._manifest = ManifestStore.open(self._provider, connection)
         manifest = self._manifest
 
-        physical = self._migration_target or await resolve_physical(manifest, logical)
-        if physical != adapter.schema.name:
+        snapshot = await read_snapshot(manifest, logical)
+        physical = self._migration_target or resolve_physical(snapshot, logical)
+        if physical != logical:
             await adapter.close()
             adapter = create_adapter(
                 self._provider,
@@ -153,6 +180,8 @@ class PipelineGuardMixin:
             adapter,
             logical,
             self.pipeline_inputs(),
+            snapshot=snapshot,
+            physical=physical,
             tool_name=tool_name,
             migration_target=self._migration_target is not None,
         )

@@ -45,7 +45,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from holodeck.lib.file_processor import PARSER_POLICY
 from holodeck.lib.keyword_search import HybridSearchExecutor
@@ -100,6 +100,16 @@ from holodeck.tools.common import (
 from holodeck.tools.pipeline_mixin import PipelineGuardMixin
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class _PolicyIdentified(Protocol):
+    """A context generator that names what decides its output text."""
+
+    def context_policy(self) -> str:
+        """Return the generator's recipe, model and output settings."""
+        ...
+
 
 SEARCHABLE_TEXT_RECIPE = "searchable-text/1"
 """Pipeline policy ID of ``_build_searchable_text``. Bump it when the recipe
@@ -206,10 +216,10 @@ class HierarchicalDocumentTool(
         if self._file_processor is None:
             if self._execution_config is not None:
                 self._file_processor = FileProcessor.from_execution_config(
-                    self._execution_config
+                    self._execution_config, read_only=self._read_only
                 )
             else:
-                self._file_processor = FileProcessor()
+                self._file_processor = FileProcessor(read_only=self._read_only)
         return self._file_processor
 
     # set_embedding_service is inherited from EmbeddingServiceMixin
@@ -255,6 +265,15 @@ class HierarchicalDocumentTool(
         if self._is_remote and self._source_root is not None:
             return str(file_path.relative_to(self._source_root))
         return str(file_path)
+
+    def source_inventory(self) -> list[str]:
+        """Return the source keys a full ingestion writes, without parsing."""
+        return [self._compute_source_key(path) for path in self._discover_files()]
+
+    @property
+    def source_field(self) -> str:
+        """Record field that holds a chunk's source key."""
+        return "source_path"
 
     def _compute_content_hash(self, file_path: Path) -> str:
         """Compute SHA-256 hash of file content for change detection.
@@ -421,6 +440,7 @@ class HierarchicalDocumentTool(
         contextual = (
             self.config.contextual_embeddings and self._context_generator is not None
         )
+        context_model = self.config.context_model if contextual else None
         return PipelineInputs(
             embedding_provider=provider,
             embedding_model=model,
@@ -435,9 +455,32 @@ class HierarchicalDocumentTool(
             record_layout=record_layout_id(self._collection_schema),
             retrieval_settings=(
                 ("contextual_embeddings", contextual),
+                ("context_generator", self._context_policy() if contextual else None),
+                (
+                    "context_provider",
+                    context_model.provider.value if context_model else None,
+                ),
+                ("context_model", context_model.name if context_model else None),
+                (
+                    "context_max_tokens",
+                    self.config.context_max_tokens if contextual else None,
+                ),
                 ("searchable_text", SEARCHABLE_TEXT_RECIPE),
             ),
         )
+
+    def _context_policy(self) -> str:
+        """Return the identity of the context generator, for the fingerprint.
+
+        A generator that does not name its policy is identified by its class.
+        """
+        generator: object = self._context_generator
+        if isinstance(generator, _PolicyIdentified):
+            # A test double can claim the method and return anything.
+            policy: object = generator.context_policy()
+            if isinstance(policy, str) and policy:
+                return policy
+        return f"custom:{type(generator).__qualname__}"
 
     def _require_adapter(self) -> VectorStoreAdapter:
         """Return the adapter or raise when the collection is not set up."""
@@ -535,7 +578,7 @@ class HierarchicalDocumentTool(
         source_key = self._compute_source_key(file_path)
         deleted_count = 0
         guard = self._pipeline_guard()
-        guard.require_writable()
+        await guard.validate_before_write(source_key)
 
         try:
             deleted_count = await self._adapter.delete_where(

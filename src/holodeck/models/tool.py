@@ -221,6 +221,16 @@ class DatabaseConfig(BaseModel):
             "https://search-service.search.windows.net"
         ),
     )
+    manifest: bool = Field(
+        True,
+        description=(
+            "Keep the holodeck_manifest collection that records each "
+            "collection's ingestion pipeline and per-source completion "
+            "markers. false turns fingerprint protection, interrupted-ingestion "
+            "markers and 'holodeck vectorstore migrate' off for this store; "
+            "on Pinecone it avoids the extra manifest index."
+        ),
+    )
 
     @field_validator("provider", mode="wrap")
     @classmethod
