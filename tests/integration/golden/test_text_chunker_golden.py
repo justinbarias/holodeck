@@ -4,10 +4,11 @@ Four inputs (short, multi-paragraph, one long paragraph, unicode) are split
 with several ``(chunk_size, chunk_overlap)`` settings. The exact chunk lists
 are frozen in ``tests/fixtures/golden/text_chunker/expected.json``.
 
-Note: the current splitter ignores ``chunk_overlap`` (it only uses
-``chunk_size``), so settings that differ only in overlap give equal chunks.
-The overlap value is still part of the case so a replacement splitter that
-starts honoring it shows up as a reviewed golden change.
+Note: the splitter is HoloDeck's own tiktoken (cl100k_base) splitter. It
+honors ``chunk_size`` as a hard token limit and repeats ``chunk_overlap`` tokens
+from the end of the previous chunk, so settings that differ only in overlap now
+give different chunks. The earlier Semantic Kernel splitter counted characters/4
+and ignored overlap; its boundaries are no longer frozen here.
 
 Regenerate with ``HOLODECK_UPDATE_GOLDEN=1`` (see ``_golden.py``).
 """

@@ -1,8 +1,17 @@
 """Tests for TextChunker text splitting utility."""
 
+import re
+
 import pytest
+import tiktoken
 
 from holodeck.lib.text_chunker import TextChunker
+
+_ENC = tiktoken.get_encoding("cl100k_base")
+
+
+def _tokens(text: str) -> int:
+    return len(_ENC.encode(text, disallowed_special=()))
 
 
 class TestTextChunkerInitialization:
@@ -27,23 +36,21 @@ class TestTextChunkerInitialization:
         assert chunker.chunk_overlap == 100
         assert chunker.chunk_size == 512  # Default
 
-    def test_chunker_custom_separator_list(self) -> None:
-        """Test TextChunker with custom separator_list."""
-        custom_separators = ["\n", " ", ""]
-        chunker = TextChunker(separator_list=custom_separators)
-        assert chunker.separator_list == custom_separators
+    def test_chunker_custom_separator_list_rejected(self) -> None:
+        """Non-default separators cannot be honored, so they are rejected."""
+        with pytest.raises(ValueError, match="separator_list"):
+            TextChunker(separator_list=["\n", " ", ""])
+
+    def test_chunker_default_separator_list_accepted(self) -> None:
+        """The default separator list is accepted explicitly."""
+        chunker = TextChunker(separator_list=["\n\n", "\n", " ", ""])
+        assert chunker.separator_list == ["\n\n", "\n", " ", ""]
 
     def test_chunker_all_custom_parameters(self) -> None:
         """Test TextChunker with all custom parameters."""
-        custom_separators = ["\n\n\n", "\n\n"]
-        chunker = TextChunker(
-            chunk_size=1024,
-            chunk_overlap=200,
-            separator_list=custom_separators,
-        )
+        chunker = TextChunker(chunk_size=1024, chunk_overlap=200)
         assert chunker.chunk_size == 1024
         assert chunker.chunk_overlap == 200
-        assert chunker.separator_list == custom_separators
 
     def test_chunker_invalid_chunk_size_zero(self) -> None:
         """Test that chunk_size cannot be zero."""
@@ -59,6 +66,14 @@ class TestTextChunkerInitialization:
         """Test that chunk_overlap cannot be negative."""
         with pytest.raises(ValueError, match="chunk_overlap must be non-negative"):
             TextChunker(chunk_overlap=-1)
+
+    @pytest.mark.parametrize("size,overlap", [(10, 10), (10, 50)])
+    def test_chunker_overlap_not_smaller_than_size_rejected(
+        self, size: int, overlap: int
+    ) -> None:
+        """chunk_overlap must be smaller than chunk_size."""
+        with pytest.raises(ValueError, match="chunk_overlap"):
+            TextChunker(chunk_size=size, chunk_overlap=overlap)
 
     def test_chunker_chunk_overlap_zero_allowed(self) -> None:
         """Test that chunk_overlap can be zero."""
@@ -105,7 +120,7 @@ Third paragraph with additional content."""
 
     def test_split_with_small_chunk_size(self) -> None:
         """Test splitting with very small chunk_size."""
-        chunker = TextChunker(chunk_size=10)
+        chunker = TextChunker(chunk_size=10, chunk_overlap=2)
         text = "This is a test with multiple words to split into small chunks."
         chunks = chunker.split_text(text)
         assert len(chunks) > 1
@@ -150,7 +165,9 @@ Line 4"""
 
     def test_split_long_document(self) -> None:
         """Test splitting a longer document."""
-        chunker = TextChunker(chunk_size=50)  # Smaller chunk size to force splitting
+        chunker = TextChunker(
+            chunk_size=50, chunk_overlap=5
+        )  # Smaller chunk size to force splitting
         # Create a moderately long document
         text = "\n\n".join(
             [f"Paragraph {i}: " + "This is sample text. " * 20 for i in range(5)]
@@ -206,28 +223,15 @@ class TestTextChunkerEdgeCases:
 
     def test_chunker_with_very_small_chunk_size_one(self) -> None:
         """Test chunker with chunk_size of 1."""
-        chunker = TextChunker(chunk_size=1)
+        chunker = TextChunker(chunk_size=1, chunk_overlap=0)
         text = "Test text with multiple words."
         chunks = chunker.split_text(text)
         assert len(chunks) > 0
 
     def test_chunker_overlap_larger_than_chunk_size(self) -> None:
-        """Test chunker where overlap is larger than chunk_size (allowed)."""
-        chunker = TextChunker(chunk_size=10, chunk_overlap=50)
-        assert chunker.chunk_overlap == 50
-        text = "This is a test."
-        chunks = chunker.split_text(text)
-        assert len(chunks) > 0
-
-    def test_chunker_separator_list_not_used(self) -> None:
-        """Test that separator_list is stored but not used by Semantic Kernel."""
-        custom_separators = ["|", "-", "_"]
-        chunker = TextChunker(separator_list=custom_separators)
-        text = "First|Second-Third_Fourth"
-        chunks = chunker.split_text(text)
-        # Should still work even though our custom separators aren't used
-        # (Semantic Kernel uses its own splitting logic)
-        assert len(chunks) > 0
+        """Overlap larger than chunk_size is rejected."""
+        with pytest.raises(ValueError, match="chunk_overlap"):
+            TextChunker(chunk_size=10, chunk_overlap=50)
 
     def test_split_single_word(self) -> None:
         """Test splitting a single word."""
@@ -265,7 +269,7 @@ class TestTextChunkerEdgeCases:
         It should be chunked differently based on the chunk size.
         Smaller chunk sizes should produce more chunks."""
 
-        chunker_small = TextChunker(chunk_size=50)
+        chunker_small = TextChunker(chunk_size=50, chunk_overlap=5)
         chunker_large = TextChunker(chunk_size=500)
 
         chunks_small = chunker_small.split_text(text)
@@ -306,3 +310,92 @@ class TestTextChunkerConfiguration:
         assert chunker2.chunk_size == 1024
         chunker1.chunk_size = 512
         assert chunker2.chunk_size == 1024  # Should not be affected
+
+
+class TestTextChunkerTokenSplitting:
+    """Behavior of the HoloDeck token-based splitter."""
+
+    LONG = " ".join(f"word{i}" for i in range(600))
+
+    @pytest.mark.parametrize("size,overlap", [(16, 0), (32, 8), (64, 10), (100, 99)])
+    def test_every_chunk_within_token_limit(self, size: int, overlap: int) -> None:
+        text = "\n\n".join(
+            [f"Paragraph {i}. " + "A sentence here. " * 30 for i in range(6)]
+            + [self.LONG, "x" * 500]
+        )
+        chunks = TextChunker(chunk_size=size, chunk_overlap=overlap).split_text(text)
+        assert len(chunks) > 1
+        for chunk in chunks:
+            assert chunk == chunk.strip() and chunk
+            assert _tokens(chunk) <= size
+
+    def test_overlap_repeated_inside_long_unit(self) -> None:
+        overlap = 6
+        chunks = TextChunker(chunk_size=40, chunk_overlap=overlap).split_text(self.LONG)
+        assert len(chunks) > 2
+        for prev, nxt in zip(chunks, chunks[1:], strict=False):
+            shared = None
+            for k in range(min(len(prev), len(nxt)), 0, -1):
+                if prev.endswith(nxt[:k]):
+                    shared = nxt[:k]
+                    break
+            assert shared is not None
+            assert 0 < _tokens(shared) <= overlap
+            assert _tokens(shared) >= overlap - 1
+
+    def test_zero_overlap_has_no_repetition(self) -> None:
+        chunks = TextChunker(chunk_size=40, chunk_overlap=0).split_text(self.LONG)
+        assert " ".join(chunks).split() == self.LONG.split()
+
+    def test_paragraph_boundaries_preferred(self) -> None:
+        paras = [
+            (f"Paragraph {i} " + "alpha beta gamma. " * 8).strip() for i in range(6)
+        ]
+        size = max(_tokens(p) for p in paras) * 2 + 4
+        chunks = TextChunker(chunk_size=size, chunk_overlap=0).split_text(
+            "\n\n".join(paras)
+        )
+        assert len(chunks) > 1
+        for chunk in chunks:
+            for part in chunk.split("\n\n"):
+                assert part in paras
+
+    def test_sentence_boundary_used_before_words(self) -> None:
+        sentences = [f"Sentence number {i} is here." for i in range(12)]
+        chunks = TextChunker(chunk_size=20, chunk_overlap=0).split_text(
+            " ".join(sentences)
+        )
+        for chunk in chunks:
+            assert chunk.endswith(".")
+            assert chunk.startswith("Sentence")
+
+    def test_unicode_content_fully_covered(self) -> None:
+        text = ("日本語のテキスト。café naïve résumé 😀 " * 40).strip()
+        chunks = TextChunker(chunk_size=24, chunk_overlap=4).split_text(text)
+        assert all(_tokens(c) <= 24 for c in chunks)
+        assert "\ufffd" not in "".join(chunks)
+        covered = re.sub(r"\s+", "", "".join(chunks))
+        # Overlap only adds repeated text; every original char appears in order.
+        it = iter(covered)
+        assert all(ch in it for ch in re.sub(r"\s+", "", text))
+
+    def test_hard_split_without_overlap_reconstructs_text(self) -> None:
+        text = "é" * 300
+        chunks = TextChunker(chunk_size=20, chunk_overlap=0).split_text(text)
+        assert "".join(chunks) == text
+        assert all(_tokens(c) <= 20 for c in chunks)
+
+    def test_special_token_text_does_not_raise(self) -> None:
+        chunks = TextChunker(chunk_size=8, chunk_overlap=0).split_text(
+            "a <|endoftext|> b"
+        )
+        assert chunks
+
+    def test_deterministic(self) -> None:
+        chunker = TextChunker(chunk_size=32, chunk_overlap=5)
+        assert chunker.split_text(self.LONG) == chunker.split_text(self.LONG)
+
+    def test_text_within_limit_is_single_chunk(self) -> None:
+        assert TextChunker(chunk_size=50, chunk_overlap=5).split_text(
+            "  Hello world.  "
+        ) == ["Hello world."]

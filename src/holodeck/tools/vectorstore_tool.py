@@ -176,7 +176,11 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         # Initialize components (lazy initialization for some)
         chunk_size = config.chunk_size or TextChunker.DEFAULT_CHUNK_SIZE
-        chunk_overlap = config.chunk_overlap or TextChunker.DEFAULT_CHUNK_OVERLAP
+        if config.chunk_overlap is None:
+            # Unset overlap: the default, capped so it stays below small sizes.
+            chunk_overlap = min(TextChunker.DEFAULT_CHUNK_OVERLAP, chunk_size // 4)
+        else:
+            chunk_overlap = config.chunk_overlap
         self._text_chunker = TextChunker(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
