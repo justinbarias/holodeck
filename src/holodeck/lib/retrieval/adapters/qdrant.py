@@ -538,6 +538,27 @@ class QdrantAdapter(BaseVectorStoreAdapter):
 
     # -- IDs, payloads and filters -------------------------------------------
 
+    async def replace_source(
+        self, record_filter: RecordFilter, records: Sequence[Record]
+    ) -> None:
+        """Replace the records that match the filter with ``records``.
+
+        Stale records are found by point ID, not by HoloDeck ID: two
+        spellings of one UUID are the same point, and deleting the old
+        spelling would delete the replacement.
+        """
+        self.capabilities.require(Operation.FIND, Operation.DELETE, Operation.UPSERT)
+        self._validate(records)
+        existing = await self.find(record_filter)
+        keep = {self.store_id(record.id) for record in records}
+        stale = [
+            record.id for record in existing if self.store_id(record.id) not in keep
+        ]
+        if stale:
+            await self.delete(stale)
+        if records:
+            await self.upsert(records)
+
     def store_id(self, record_id: str) -> str:
         """Return the Qdrant point ID for a HoloDeck record ID."""
         try:

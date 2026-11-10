@@ -430,3 +430,21 @@ async def snapshot_after_writes(adapter: VectorStoreAdapter) -> dict[str, Any]:
         "vector": [(h.record.id, round(h.score, 6)) for h in hits],
         "hybrid": [(h.record.id, round(h.score, 6)) for h in hybrid],
     }
+
+
+async def test_replace_source_keeps_a_record_whose_uuid_spelling_changed(
+    names: list[str],
+) -> None:
+    schema = make_schema(unique(names))
+    adapter = native(schema)
+    upper = "8F14E45F-CEEA-467F-A0E6-0C0B6C0B6C0B"
+    try:
+        await adapter.ensure_collection()
+        first = rec(upper, [1.0, 0.0, 0.0, 0.0], "u.md", 0, "uuid spelling")
+        await adapter.upsert([first])
+        source = RecordFilter.where(source_path=str(first.fields["source_path"]))
+        replacement = Record(id=upper.lower(), fields=first.fields, vector=first.vector)
+        await adapter.replace_source(source, [replacement])
+        assert await adapter.count() == 1
+    finally:
+        await _close(adapter)
