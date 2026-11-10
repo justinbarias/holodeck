@@ -28,7 +28,15 @@ dependencies = [
     # Imported directly by the FEEL module (parse-tree node names) — declared
     # rather than inherited transitively via bkflow-feel.
     "lark>=1.1.0,<2.0.0",
-    "markitdown[all]>=0.1.4,<0.2.0",
+    # Only the formats FileProcessor converts: PDF, DOCX, PPTX, XLSX. Not [all]
+    # (Azure, audio, YouTube, Outlook, legacy .xls are not used).
+    "markitdown[pdf,docx,pptx,xlsx]>=0.1.4,<0.2.0",
+    # Imported directly by lib/file_processor.py and lib/pdf_processor — declared
+    # rather than inherited transitively via markitdown extras.
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.3",
+    "pdfminer.six>=20260107",
+    "python-pptx>=1.0.2",
     "pypdf>=6.21.4",  # CVE-2026-59935..59938, PYSEC-2026-4153..4160, CVE-2026-1137xx/1155xx/1192xx fix
     "nltk>=3.10.4,<4.0.0",
     "rouge-score>=0.1.2,<0.2.0",
@@ -242,12 +250,6 @@ constraint-dependencies = [
     "multidict>=6.9.1",  # PYSEC-2026-4244 fix (transitive via aiohttp)
     "oauthlib>=4.0.1",  # PYSEC-2026-4114, CVE-2026-49272 fix (transitive)
     "opentelemetry-api>=1.45.1",  # CVE-2026-114603 fix (transitive)
-    # The only pre-release the lock needs outside all-beta packages (the
-    # OpenTelemetry 0.x instrumentation line, the Azure Monitor exporter):
-    # markitdown[all] requires azure-ai-contentunderstanding>=1.2.0b1, and the
-    # default pre-release mode honors a pre-release marker only in a
-    # first-party requirement. Without it markitdown backtracks to 0.1.5.
-    "azure-ai-contentunderstanding>=1.2.0b1",
 ]
 
 [tool.black]

@@ -34,7 +34,7 @@ def extract_pdf_pages(file_path: Path, pages: list[int]) -> Path:
     except ImportError as e:
         raise ImportError(
             "pypdf is required for PDF page extraction. "
-            "Install with: pip install 'markitdown[all]'"
+            "Install with: pip install 'markitdown[pdf,docx,pptx,xlsx]'"
         ) from e
 
     logger.debug(f"Extracting pages {pages} from PDF: {file_path}")

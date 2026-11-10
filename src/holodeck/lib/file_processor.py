@@ -113,7 +113,7 @@ class FileProcessor:
             logger.error("markitdown package not found", exc_info=True)
             raise ImportError(
                 "markitdown is required for file processing. "
-                "Install with: pip install 'markitdown[all]'"
+                "Install with: pip install 'markitdown[pdf,docx,pptx,xlsx]'"
             ) from e
 
     @classmethod
@@ -445,7 +445,7 @@ class FileProcessor:
         except ImportError as e:
             raise ImportError(
                 "openpyxl and pandas are required for Excel extraction. "
-                "Install with: pip install 'markitdown[all]' pandas"
+                "Install with: pip install 'markitdown[pdf,docx,pptx,xlsx]' pandas"
             ) from e
 
         logger.debug(
@@ -528,7 +528,7 @@ class FileProcessor:
         except ImportError as e:
             raise ImportError(
                 "python-pptx is required for PowerPoint slide extraction. "
-                "Install with: pip install 'markitdown[all]'"
+                "Install with: pip install 'markitdown[pdf,docx,pptx,xlsx]'"
             ) from e
 
         logger.debug(f"Extracting slides {pages} from PowerPoint: {file_path}")
