@@ -51,6 +51,7 @@ The original CLI feature README is now `001-cli-core-engine/overview.md`.
 | [039](039-policy-generator/index.md) | Policy Generator | archived | no task list | Depended on 036, replaced by Temporal-first 040; its workflow-engine surfaces no longer exist |
 | [040](040-holodeck-temporal/index.md) | HoloDeck Agents on Temporal | shipped | 16/16 | Merged to main 2026-08-30 (stack #369: PRs #367, #368, #371, #372); AC-1..AC-6 demonstrated by named tests; T14 moved to 041; budget-retry follow-up in #373 |
 | [041](041-temporal-file-inputs/index.md) | File and Bytestream Inputs for Temporal Agents | draft | 0/0 | Depends on 040; parse_document activity + pass-through attachments + gate-schema codegen (moved from 040 T14); decisions settled 2026-08-30 |
+| [042](042-dependency-stack-revamp/index.md) | Dependency Stack Revamp (Semantic Kernel removal) | draft | 0/25 | Spec revised 2026-11-10 to native retrieval adapters; [execution plan](../exec-plans/active/042-dependency-stack-revamp/index.md) proposed, awaiting approval; closes H-008 |
 | [—](graph-rag-integration/index.md) | GraphRAG Integration Plan (legacy) | archived | no task list | Early unnumbered feature directory; superseded by 016 |
 
 Numbers 002 and 003 have no spec directory (stale branches only).
