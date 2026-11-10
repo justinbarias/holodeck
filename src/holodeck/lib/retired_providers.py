@@ -6,7 +6,7 @@ share one list without an import cycle or heavy imports at model load.
 
 from __future__ import annotations
 
-REMOVED_IN_VERSION = "0.8.0"
+from holodeck.lib.removed_in import REMOVED_IN_VERSION
 
 RETIRED_PROVIDERS: dict[str, str] = {
     "faiss": (

@@ -7,7 +7,7 @@ models used in agent.yaml configuration for specifying evaluation criteria.
 import importlib
 import logging
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 
 from pydantic import (
     BaseModel,
@@ -15,12 +15,14 @@ from pydantic import (
     Field,
     PrivateAttr,
     ValidationInfo,
+    WithJsonSchema,
     field_validator,
     model_validator,
 )
 
 from holodeck.config.context import is_stored_snapshot
 from holodeck.lib.errors import ConfigError
+from holodeck.lib.removed_in import REMOVED_IN_VERSION
 from holodeck.models.llm import LLMProvider
 from holodeck.optimizer.config import OptimizerConfig
 
@@ -29,19 +31,65 @@ _logger = logging.getLogger(__name__)
 # Literal set of built-in metric names accepted on ``EvaluationMetric.metric``.
 # Narrowed from ``str`` in US4 to give config authors early, precise feedback
 # when they typo a metric name (see data-model.md §5 and tasks-us4.md T015).
-# ``equality`` and ``numeric`` are new in US4; the rest preserve pre-existing
-# behaviour so existing fixtures / user YAMLs keep parsing.
 BuiltInMetricName = Literal[
-    "groundedness",
-    "relevance",
-    "coherence",
-    "fluency",
     "bleu",
     "rouge",
     "meteor",
     "equality",
     "numeric",
 ]
+
+# Metric names that only the removed Azure AI evaluation stack implemented
+# (042 FR-031). New configuration that uses one fails with a migration error;
+# a stored snapshot (an old EvalRun) still loads so its results stay readable.
+RetiredMetricName = Literal[
+    "groundedness",
+    "relevance",
+    "coherence",
+    "fluency",
+    "similarity",
+    "safety",
+]
+
+# Release that removed the Azure AI metrics; named in the migration error.
+RETIRED_METRICS_REMOVED_IN = REMOVED_IN_VERSION
+
+# Retired metric name -> the DeepEval replacement as it is written in YAML.
+# Scores are not equivalent: the judge, prompt and inputs differ.
+RETIRED_METRIC_REPLACEMENTS: dict[str, str] = {
+    "groundedness": "'type: rag' with 'metric_type: faithfulness' (DeepEval)",
+    "relevance": "'type: rag' with 'metric_type: answer_relevancy' (DeepEval)",
+    "coherence": (
+        "'type: geval' (DeepEval) with criteria such as 'Is the response "
+        "logically organised and consistent?'"
+    ),
+    "fluency": (
+        "'type: geval' (DeepEval) with criteria such as 'Is the response "
+        "grammatical and easy to read?'"
+    ),
+    "similarity": (
+        "'type: geval' (DeepEval) with evaluation_params [actual_output, "
+        "expected_output] and criteria such as 'Does the response mean the "
+        "same as the expected output?'"
+    ),
+    "safety": (
+        "'type: geval' (DeepEval) with criteria that describe the content "
+        "the response must not contain"
+    ),
+}
+
+_BUILT_IN_METRIC_NAMES: list[str] = list(get_args(BuiltInMetricName))
+
+
+def retired_metric_message(metric: str) -> str:
+    """Return the migration message for a retired metric name."""
+    return (
+        f"Metric '{metric}' was removed in HoloDeck {RETIRED_METRICS_REMOVED_IN} "
+        f"with the Azure AI evaluation stack. Use "
+        f"{RETIRED_METRIC_REPLACEMENTS[metric]} instead. Scores are not "
+        f"equivalent; review the threshold."
+    )
+
 
 # Valid evaluation parameter names for GEval metrics
 VALID_EVALUATION_PARAMS = frozenset(
@@ -76,11 +124,26 @@ class EvaluationMetric(BaseModel):
         default="standard",
         description="Discriminator field - 'standard' for built-in metrics",
     )
-    metric: BuiltInMetricName = Field(
+    # Retired names are accepted by the type only so a stored snapshot still
+    # loads; ``_reject_retired_metric`` rejects them in new configuration and
+    # the published schema lists only the supported names.
+    metric: Annotated[
+        BuiltInMetricName | RetiredMetricName,
+        WithJsonSchema(
+            {
+                "type": "string",
+                "enum": _BUILT_IN_METRIC_NAMES,
+                "title": "Metric",
+                "description": (
+                    "Built-in metric name. One of: bleu, rouge, meteor, "
+                    "equality, numeric."
+                ),
+            }
+        ),
+    ] = Field(
         ...,
         description=(
-            "Built-in metric name. One of: groundedness, relevance, coherence, "
-            "fluency, bleu, rouge, meteor, equality, numeric."
+            "Built-in metric name. One of: bleu, rouge, meteor, equality, numeric."
         ),
     )
     threshold: float | None = Field(None, description="Minimum passing score")
@@ -148,6 +211,27 @@ class EvaluationMetric(BaseModel):
             "bracketed indices — 'answer', 'result.value', 'items[0].score'."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_retired_metric(cls, data: Any, info: ValidationInfo) -> Any:
+        """Reject a retired Azure AI metric name with a migration error.
+
+        Runs before field validation, so the error names the replacement
+        instead of listing the allowed literals. Skipped for a stored
+        snapshot (see ``is_stored_snapshot``) so old runs stay readable.
+
+        Raises:
+            ConfigError: if ``metric`` is a retired name in new configuration.
+        """
+        if not isinstance(data, dict) or is_stored_snapshot(info):
+            return data
+        metric = data.get("metric")
+        if isinstance(metric, str) and metric in RETIRED_METRIC_REPLACEMENTS:
+            raise ConfigError(
+                f"evaluations.metrics[{metric}]", retired_metric_message(metric)
+            )
+        return data
 
     @field_validator("response_path")
     @classmethod

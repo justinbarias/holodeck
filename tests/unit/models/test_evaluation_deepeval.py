@@ -192,7 +192,7 @@ class TestEvaluationMetricTypeDiscriminator:
 
     def test_evaluation_metric_default_type(self):
         """EvaluationMetric has type='standard' by default."""
-        metric = EvaluationMetric(metric="groundedness", threshold=0.7)
+        metric = EvaluationMetric(metric="bleu", threshold=0.7)
         assert metric.type == "standard"
 
     def test_evaluation_metric_accepts_various_names(self):
@@ -200,10 +200,6 @@ class TestEvaluationMetricTypeDiscriminator:
         # After US4, `metric` is a Literal of the known built-ins — free-form
         # strings (e.g. "custom_metric") no longer parse. See tasks-us4.md T015.
         for metric_name in [
-            "groundedness",
-            "relevance",
-            "coherence",
-            "fluency",
             "bleu",
             "rouge",
             "meteor",
@@ -222,14 +218,14 @@ class TestDiscriminatedUnionBehavior:
         """EvaluationConfig correctly parses standard EvaluationMetric."""
         config = EvaluationConfig(
             metrics=[
-                {"type": "standard", "metric": "groundedness", "threshold": 0.7},
+                {"type": "standard", "metric": "bleu", "threshold": 0.7},
                 {"type": "standard", "metric": "bleu", "threshold": 0.6},
             ]
         )
 
         assert len(config.metrics) == 2
         assert all(isinstance(m, EvaluationMetric) for m in config.metrics)
-        assert config.metrics[0].metric == "groundedness"
+        assert config.metrics[0].metric == "bleu"
         assert config.metrics[1].metric == "bleu"
 
     def test_config_with_standard_metric_requires_type(self):

@@ -13,10 +13,11 @@ from pathlib import Path
 import pytest
 
 from holodeck.dashboard.data_loader import load_all
+from holodeck.dashboard.explorer_data import build_case_detail
 from holodeck.dashboard.seed_data import build_seed_runs
 from holodeck.lib.errors import ConfigError
 from holodeck.models.eval_run import EvalRun
-from holodeck.models.evaluation import CodeMetric
+from holodeck.models.evaluation import CodeMetric, EvaluationMetric
 from holodeck.models.tool import SkillTool
 
 MISSING_GRADER = "grader_module_that_is_not_installed:check"
@@ -83,3 +84,50 @@ def test_load_all_keeps_runs_whose_skill_dir_is_missing(tmp_path: Path) -> None:
 def test_agent_config_still_rejects_a_missing_skill_dir() -> None:
     with pytest.raises(ValueError, match="skill path"):
         EvalRun.model_validate(_run_with_missing_skill_dir())
+
+
+def _run_with_retired_metric() -> dict[str, object]:
+    """A run written before the Azure AI metrics were retired (042 T18)."""
+    run = build_seed_runs()[0].model_dump(mode="json")
+    run["metadata"]["agent_config"]["evaluations"] = {
+        "metrics": [{"type": "standard", "metric": "groundedness", "threshold": 0.8}]
+    }
+    run["report"]["results"][0]["metric_results"].append(
+        {
+            "metric_name": "groundedness",
+            "kind": "standard",
+            "score": 0.8,
+            "threshold": 0.8,
+            "passed": True,
+        }
+    )
+    return run
+
+
+@pytest.mark.unit
+def test_load_all_keeps_runs_that_used_a_retired_metric(tmp_path: Path) -> None:
+    (tmp_path / "run.json").write_text(json.dumps(_run_with_retired_metric()))
+
+    runs = load_all(tmp_path)
+
+    assert len(runs) == 1
+    evaluations = runs[0].metadata.agent_config.evaluations
+    assert evaluations is not None
+    metric = evaluations.metrics[0]
+    assert isinstance(metric, EvaluationMetric)
+    assert metric.metric == "groundedness"
+
+    # The Explorer detail panel shows the stored name and score.
+    case = runs[0].report.results[0]
+    detail = build_case_detail(runs[0], case.test_name or "", {})
+    assert detail is not None
+    rows = [(r.name, r.score) for r in detail.evaluations["standard"]]
+    assert ("groundedness", 0.8) in rows
+    raw_metrics = detail.agent_snapshot.raw_config["evaluations"]["metrics"]
+    assert raw_metrics[0]["metric"] == "groundedness"
+
+
+@pytest.mark.unit
+def test_agent_config_rejects_a_retired_metric_outside_a_snapshot() -> None:
+    with pytest.raises(ConfigError, match="Metric 'groundedness' was removed"):
+        EvalRun.model_validate(_run_with_retired_metric())

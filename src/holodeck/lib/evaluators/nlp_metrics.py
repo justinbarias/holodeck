@@ -1,9 +1,14 @@
-"""NLP metrics evaluators using Hugging Face evaluate library and SacreBLEU.
+"""NLP metrics evaluators using SacreBLEU, rouge_score and NLTK.
 
 This module implements traditional NLP metrics (BLEU, ROUGE, METEOR) for
-evaluating agent responses against ground truth text. BLEU uses SacreBLEU
-directly for better smoothing support, while other metrics use the Hugging
-Face evaluate library.
+evaluating agent responses against ground truth text. All three call their
+libraries directly (SacreBLEU, ``rouge_score``, ``nltk.translate``); nothing is
+fetched from a model or metric hub, and no network call is made at import or
+metric-load time.
+
+METEOR needs NLTK data (wordnet, punkt_tab, omw-1.4). HoloDeck never downloads
+it: when a resource is missing, METEOR raises ``NLPMetricsError`` naming it and
+the command ``python -m nltk.downloader wordnet punkt_tab omw-1.4``.
 
 Supported Metrics:
 - BLEU (SacreBLEU): Machine translation quality (precision-focused)
@@ -14,7 +19,8 @@ Supported Metrics:
 References:
 - Research: docs/design-docs/006-agent-test-execution/research/
   test-execution-integration-research.md (Section 4: NLP Metrics Libraries)
-- Hugging Face evaluate: https://huggingface.co/docs/evaluate/
+- rouge_score: https://github.com/google-research/google-research/tree/master/rouge
+- NLTK METEOR: https://www.nltk.org/api/nltk.translate.meteor_score.html
 - SacreBLEU: https://github.com/mjpost/sacrebleu
 """
 
@@ -27,27 +33,48 @@ from holodeck.lib.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Lazy imports to avoid loading libraries if not needed
-_evaluate = None
 _sacrebleu = None
 
+# NLTK data METEOR needs, as (nltk.data.find path, resource name).
+_NLTK_RESOURCES: tuple[tuple[str, str], ...] = (
+    ("corpora/wordnet", "wordnet"),
+    ("tokenizers/punkt_tab", "punkt_tab"),
+    ("corpora/omw-1.4", "omw-1.4"),
+)
+_NLTK_DOWNLOAD_COMMAND = "python -m nltk.downloader wordnet punkt_tab omw-1.4"
 
-def _get_evaluate() -> Any:
-    """Lazy load evaluate library."""
-    global _evaluate
-    if _evaluate is None:
-        try:
-            logger.debug("Loading evaluate library")
-            import evaluate as ev
+# METEOR parameters (the NLTK defaults).
+_METEOR_ALPHA = 0.9
+_METEOR_BETA = 3
+_METEOR_GAMMA = 0.5
 
-            _evaluate = ev
-            logger.debug("evaluate library loaded successfully")
-        except ImportError as e:
-            logger.error("Failed to import evaluate library", exc_info=True)
-            raise NLPMetricsError(
-                "evaluate library is not installed. "
-                "Install with: pip install evaluate"
-            ) from e
-    return _evaluate
+
+def missing_nltk_resource() -> str | None:
+    """Return the name of the first NLTK resource METEOR needs that is absent."""
+    import nltk
+
+    for path, name in _NLTK_RESOURCES:
+        # The downloader may leave a corpus unpacked or as a .zip.
+        candidates = (path, f"{path}.zip/{path.rsplit('/', 1)[-1]}/")
+        for candidate in candidates:
+            try:
+                nltk.data.find(candidate)
+                break
+            except LookupError:
+                continue
+        else:
+            return name
+    return None
+
+
+def _ensure_nltk_data() -> None:
+    """Raise NLPMetricsError naming the first NLTK resource that is missing."""
+    name = missing_nltk_resource()
+    if name is not None:
+        raise NLPMetricsError(
+            f"NLTK resource '{name}' is not installed (required for METEOR). "
+            f"Install with: {_NLTK_DOWNLOAD_COMMAND}"
+        )
 
 
 def _get_sacrebleu() -> Any:
@@ -249,13 +276,16 @@ class ROUGEEvaluator(BaseEvaluator):
         if variant not in valid_variants:
             raise ValueError(f"variant must be one of {valid_variants}, got: {variant}")
         self.variant = variant
-        self._metric = None  # Lazy loaded
+        self._metric: Any = None  # Lazy loaded
 
     def _get_metric(self) -> Any:
-        """Lazy load ROUGE metric."""
+        """Lazy load the rouge_score scorer (rouge1, rouge2, rougeL; no stemmer)."""
         if self._metric is None:
-            evaluate = _get_evaluate()
-            self._metric = evaluate.load("rouge")
+            from rouge_score import rouge_scorer
+
+            self._metric = rouge_scorer.RougeScorer(
+                ["rouge1", "rouge2", "rougeL"], use_stemmer=False
+            )
         return self._metric
 
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
@@ -292,9 +322,10 @@ class ROUGEEvaluator(BaseEvaluator):
             response = str(response) if response else ""
             ground_truth = str(ground_truth) if ground_truth else ""
 
-            # ROUGE expects predictions as list of strings
-            # and references as list of strings
-            result = metric.compute(predictions=[response], references=[ground_truth])
+            # rouge_score takes (target, prediction); a single pair's F-measure
+            # equals the bootstrap-aggregated mid value Hugging Face reported.
+            scores = metric.score(ground_truth, response)
+            result = {name: score.fmeasure for name, score in scores.items()}
 
             rouge1 = result["rouge1"]
             rouge2 = result["rouge2"]
@@ -364,13 +395,40 @@ class METEOREvaluator(BaseEvaluator):
         """
         super().__init__(timeout=timeout, **kwargs)
         self.threshold = threshold
-        self._metric = None  # Lazy loaded
+        self._metric: Any = None  # Lazy loaded
 
     def _get_metric(self) -> Any:
-        """Lazy load METEOR metric."""
+        """Lazy load METEOR: verify NLTK data and return a scoring callable.
+
+        The callable takes ``(reference, prediction)`` strings and returns the
+        METEOR score using word_tokenize and the NLTK default parameters.
+        """
         if self._metric is None:
-            evaluate = _get_evaluate()
-            self._metric = evaluate.load("meteor")
+            _ensure_nltk_data()
+            from nltk import word_tokenize
+            from nltk.translate import meteor_score
+
+            def _score(reference: str, prediction: str) -> float:
+                try:
+                    return float(
+                        meteor_score.single_meteor_score(
+                            word_tokenize(reference),
+                            word_tokenize(prediction),
+                            alpha=_METEOR_ALPHA,
+                            beta=_METEOR_BETA,
+                            gamma=_METEOR_GAMMA,
+                        )
+                    )
+                except (LookupError, OSError) as error:
+                    # The data directories exist but a file inside is missing
+                    # or unreadable, so the up-front check passed.
+                    raise NLPMetricsError(
+                        "NLTK data for METEOR is incomplete or unreadable "
+                        f"({error.__class__.__name__}). "
+                        f"Install it again with: {_NLTK_DOWNLOAD_COMMAND}"
+                    ) from error
+
+            self._metric = _score
         return self._metric
 
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
@@ -405,11 +463,7 @@ class METEOREvaluator(BaseEvaluator):
             response = str(response) if response else ""
             ground_truth = str(ground_truth) if ground_truth else ""
 
-            # METEOR expects predictions as list of strings
-            # and references as list of strings
-            result = metric.compute(predictions=[response], references=[ground_truth])
-
-            score = result["meteor"]
+            score = metric(ground_truth, response)
 
             # Check threshold (convert to native bool to avoid np.True_)
             passed = (

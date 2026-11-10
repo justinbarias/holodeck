@@ -807,12 +807,8 @@
           "type": "string"
         },
         "metric": {
-          "description": "Built-in metric name. One of: groundedness, relevance, coherence, fluency, bleu, rouge, meteor, equality, numeric.",
+          "description": "Built-in metric name. One of: bleu, rouge, meteor, equality, numeric.",
           "enum": [
-            "groundedness",
-            "relevance",
-            "coherence",
-            "fluency",
             "bleu",
             "rouge",
             "meteor",

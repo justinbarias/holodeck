@@ -6,9 +6,8 @@ frozen at six decimals in ``tests/fixtures/golden/nlp_metrics/expected.json``
 and compared with ``pytest.approx(abs=1e-6)``. A threshold case freezes the
 ``passed`` flag for each metric and ROUGE variant.
 
-Network: the current ROUGE and METEOR evaluators call ``evaluate.load``, which
-fetches the metric script from the Hugging Face hub and METEOR downloads NLTK
-data on first use. When a metric cannot load (offline, no cache) its tests skip.
+Network: ROUGE (``rouge_score``) and METEOR (NLTK) run locally. METEOR needs
+NLTK data (wordnet, punkt_tab, omw-1.4); its tests skip when that data is absent.
 
 Regenerate with ``HOLODECK_UPDATE_GOLDEN=1`` (see ``_golden.py``).
 """
@@ -22,8 +21,8 @@ import pytest
 from holodeck.lib.evaluators.nlp_metrics import (
     BLEUEvaluator,
     METEOREvaluator,
-    NLPMetricsError,
     ROUGEEvaluator,
+    missing_nltk_resource,
 )
 
 from ._golden import GOLDEN_ROOT, assert_golden
@@ -74,14 +73,23 @@ async def _score(
     return {"meteor": _round(result["meteor"])}
 
 
-async def _scores_or_skip(evaluator_name: str) -> dict[str, dict[str, float]]:
-    scores: dict[str, dict[str, float]] = {}
-    try:
-        for pair_id, (response, reference) in PAIRS.items():
-            scores[pair_id] = await _score(evaluator_name, response, reference)
-    except NLPMetricsError as exc:
-        pytest.skip(f"{evaluator_name} cannot run offline: {exc}")
-    return scores
+def _skip_without_nltk_data() -> None:
+    """Skip up front when METEOR's NLTK data is absent (never on an exception)."""
+    missing = missing_nltk_resource()
+    if missing is not None:
+        pytest.skip(
+            f"NLTK resource '{missing}' is not installed; run "
+            "`python -m nltk.downloader wordnet punkt_tab omw-1.4`"
+        )
+
+
+async def _scores(evaluator_name: str) -> dict[str, dict[str, float]]:
+    if evaluator_name == "meteor":
+        _skip_without_nltk_data()
+    return {
+        pair_id: await _score(evaluator_name, response, reference)
+        for pair_id, (response, reference) in PAIRS.items()
+    }
 
 
 @pytest.mark.parametrize("evaluator_name", ["bleu", "rouge", "meteor"])
@@ -90,7 +98,7 @@ async def test_nlp_scores_golden(evaluator_name: str) -> None:
     actual = {
         "metric": evaluator_name,
         "pairs": {k: {"prediction": p, "reference": r} for k, (p, r) in PAIRS.items()},
-        "scores": await _scores_or_skip(evaluator_name),
+        "scores": await _scores(evaluator_name),
     }
     assert_golden(
         EXPECTED.with_name(f"{evaluator_name}.json"),
@@ -104,25 +112,23 @@ async def test_nlp_threshold_flags_golden() -> None:
     """The ``passed`` flag for threshold 0.5 matches the golden for each metric."""
     pair_id = "one_word_changed"
     response, reference = PAIRS[pair_id]
-    try:
-        flags: dict[str, Any] = {}
-        for variant in ("rouge1", "rouge2", "rougeL"):
-            result = await ROUGEEvaluator(threshold=0.5, variant=variant).evaluate(
-                response=response, ground_truth=reference
-            )
-            flags[variant] = result["passed"]
-        flags["bleu"] = (
-            await BLEUEvaluator(threshold=0.5).evaluate(
-                response=response, ground_truth=reference
-            )
-        )["passed"]
-        flags["meteor"] = (
-            await METEOREvaluator(threshold=0.5).evaluate(
-                response=response, ground_truth=reference
-            )
-        )["passed"]
-    except NLPMetricsError as exc:
-        pytest.skip(f"metrics cannot run offline: {exc}")
+    _skip_without_nltk_data()
+    flags: dict[str, Any] = {}
+    for variant in ("rouge1", "rouge2", "rougeL"):
+        result = await ROUGEEvaluator(threshold=0.5, variant=variant).evaluate(
+            response=response, ground_truth=reference
+        )
+        flags[variant] = result["passed"]
+    flags["bleu"] = (
+        await BLEUEvaluator(threshold=0.5).evaluate(
+            response=response, ground_truth=reference
+        )
+    )["passed"]
+    flags["meteor"] = (
+        await METEOREvaluator(threshold=0.5).evaluate(
+            response=response, ground_truth=reference
+        )
+    )["passed"]
     assert_golden(
         EXPECTED.with_name("threshold_flags.json"),
         {"pair": pair_id, "threshold": 0.5, "passed": flags},

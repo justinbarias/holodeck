@@ -11,7 +11,7 @@ HoloDeck is an open-source experimentation platform for building, testing, and d
 The platform is designed around three core engines:
 
 1. **Agent Engine**: Manages LLM interactions, tool execution, memory, and vector stores
-2. **Evaluation Framework**: Runs AI-powered metrics (groundedness, relevance) and NLP metrics (F1, BLEU, ROUGE)
+2. **Evaluation Framework**: Runs DeepEval LLM-as-a-judge metrics (G-Eval, faithfulness, answer relevancy) and NLP metrics (F1, BLEU, ROUGE)
 3. **Deployment Engine**: Converts agents to production FastAPI endpoints with Docker/cloud deployment
 
 ### Tool & Plugin System
@@ -34,7 +34,7 @@ Evaluations can specify models at three levels:
 - Per-evaluation-run model configuration
 - Per-metric model override (e.g., GPT-4o for critical metrics, GPT-4o-mini for others)
 
-AI-powered metrics follow Azure AI Evaluation patterns. NLP metrics don't require LLM calls.
+AI-powered metrics use DeepEval. NLP metrics don't require LLM calls.
 
 ### Test Cases with Multimodal Support
 
@@ -195,7 +195,6 @@ Core dependencies (see `pyproject.toml`):
 
 - Semantic Kernel: Agent framework and vector store abstractions
 - FastAPI: API deployment
-- Azure AI Evaluation: Evaluation metrics
 - Pydantic: Configuration validation
 - OpenTelemetry: Observability instrumentation
 

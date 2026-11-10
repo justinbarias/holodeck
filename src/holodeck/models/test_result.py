@@ -36,8 +36,8 @@ class ProcessedFileInput(BaseModel):
 class MetricResult(BaseModel):
     """Result of evaluating a single metric.
 
-    Represents the outcome of running an evaluation metric (e.g., groundedness,
-    relevance) on a test case response.
+    Represents the outcome of running an evaluation metric (e.g., faithfulness,
+    bleu) on a test case response.
     """
 
     model_config = ConfigDict(extra="forbid")

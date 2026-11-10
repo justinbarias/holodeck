@@ -14,6 +14,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from holodeck.config.context import STORED_SNAPSHOT
 from holodeck.models.eval_run import EvalRun
 from holodeck.models.test_result import (
     MetricResult,
@@ -48,7 +49,9 @@ def _fixture_path() -> Path:
 def build_seed_runs() -> list[EvalRun]:
     """Return the 24-run seed dataset as validated EvalRun instances."""
     raw = json.loads(_fixture_path().read_text(encoding="utf-8"))
-    return [EvalRun.model_validate(item) for item in raw]
+    return [
+        EvalRun.model_validate(item, context={STORED_SNAPSHOT: True}) for item in raw
+    ]
 
 
 def _legacy_single_turn_case() -> TestResult:

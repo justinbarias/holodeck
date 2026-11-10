@@ -13,9 +13,9 @@ class TestEvaluationMetric:
     def test_evaluation_metric_valid_creation(self) -> None:
         """Test creating a valid EvaluationMetric."""
         metric = EvaluationMetric(
-            metric="groundedness",
+            metric="bleu",
         )
-        assert metric.metric == "groundedness"
+        assert metric.metric == "bleu"
         assert metric.enabled is True
         assert metric.threshold is None
 
@@ -28,7 +28,7 @@ class TestEvaluationMetric:
     def test_evaluation_metric_with_threshold(self) -> None:
         """Test EvaluationMetric with threshold."""
         metric = EvaluationMetric(
-            metric="groundedness",
+            metric="bleu",
             threshold=4.0,
         )
         assert metric.threshold == 4.0
@@ -66,7 +66,7 @@ class TestEvaluationMetric:
         self, field: str, value, expected
     ) -> None:
         """Test optional fields can be set with valid values."""
-        kwargs = {"metric": "groundedness", field: value}
+        kwargs = {"metric": "bleu", field: value}
         metric = EvaluationMetric(**kwargs)
         assert getattr(metric, field) == expected
 
@@ -95,7 +95,7 @@ class TestEvaluationMetric:
     )
     def test_evaluation_metric_field_defaults(self, field: str, default) -> None:
         """Test that optional fields have correct defaults."""
-        metric = EvaluationMetric(metric="groundedness")
+        metric = EvaluationMetric(metric="bleu")
         assert getattr(metric, field) == default
 
     def test_evaluation_metric_with_model_override(self) -> None:
@@ -105,7 +105,7 @@ class TestEvaluationMetric:
             name="gpt-4o",
         )
         metric = EvaluationMetric(
-            metric="groundedness",
+            metric="bleu",
             model=model,
         )
         assert metric.model is not None
@@ -115,7 +115,7 @@ class TestEvaluationMetric:
         """Test that timeout_ms must be positive."""
         with pytest.raises(ValidationError):
             EvaluationMetric(
-                metric="groundedness",
+                metric="bleu",
                 timeout_ms=0,
             )
 
@@ -126,7 +126,7 @@ class TestEvaluationMetric:
             name="gpt-4o",
         )
         metric = EvaluationMetric(
-            metric="groundedness",
+            metric="bleu",
             threshold=4.0,
             enabled=True,
             scale=5,
@@ -136,7 +136,7 @@ class TestEvaluationMetric:
             timeout_ms=5000,
             custom_prompt="Custom evaluation prompt",
         )
-        assert metric.metric == "groundedness"
+        assert metric.metric == "bleu"
         assert metric.threshold == 4.0
         assert metric.enabled is True
         assert metric.scale == 5
@@ -150,13 +150,10 @@ class TestEvaluationMetric:
         """Test EvaluationMetric accepts each built-in metric name (US4).
 
         ``safety`` / ``f1_score`` are no longer accepted after US4 narrowed
-        ``metric`` to a Literal (see ``tasks-us4.md`` T015).
+        ``metric`` to a Literal (see ``tasks-us4.md`` T015). The Azure AI
+        names were retired in 042 T18 (tests/unit/models/test_retired_metrics.py).
         """
         for metric_name in [
-            "groundedness",
-            "relevance",
-            "coherence",
-            "fluency",
             "bleu",
             "rouge",
             "meteor",

@@ -73,14 +73,14 @@ weights; loss = `1 − weighted_mean`) and the axes to tune:
 ```yaml
 evaluations:
   metrics:
-    - type: standard
-      metric: groundedness
+    - type: rag
+      metric_type: faithfulness
     - type: geval
       name: Conciseness
       criteria: "The response is concise and avoids redundancy."
   optimizer:
     loss:                       # metric weights; loss = 1 - weighted_mean
-      groundedness: 2.0
+      faithfulness: 2.0
       Conciseness: 1.0
     axes:
       numeric:                  # query-time hyperparameters (Optuna TPE)

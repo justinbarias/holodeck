@@ -20,10 +20,10 @@ instructions:
 evaluations:
   metrics:
     - type: standard
-      metric: groundedness
+      metric: bleu
   optimizer:
     loss:
-      groundedness: 1.0
+      bleu: 1.0
     axes:
       numeric:
         - path: model.temperature
@@ -67,8 +67,8 @@ def _report() -> TestReport:
             failed=0,
             pass_rate=100.0,
             total_duration_ms=1,
-            metrics_evaluated={"groundedness": 1},
-            average_scores={"groundedness": 0.5},
+            metrics_evaluated={"bleu": 1},
+            average_scores={"bleu": 0.5},
         ),
         timestamp="2026-05-31T00:00:00Z",
         holodeck_version="test",
