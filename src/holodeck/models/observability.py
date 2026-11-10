@@ -106,8 +106,7 @@ class TracingConfig(BaseModel):
 class MetricsConfig(BaseModel):
     """Metrics-specific configuration.
 
-    Controls metrics collection settings including export interval
-    and Semantic Kernel metrics inclusion.
+    Controls metrics collection settings including the export interval.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -139,7 +138,7 @@ class LogsConfig(BaseModel):
         description="Include trace/span IDs in log records",
     )
     filter_namespaces: list[str] = Field(
-        default_factory=lambda: ["semantic_kernel"],
+        default_factory=list,
         description="Logger namespaces to include",
     )
 

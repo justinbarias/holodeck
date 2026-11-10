@@ -20,75 +20,23 @@ Test IDs:
 - T028: VectorStoreTool initialization full flow
 - T029: VectorStoreTool search success path
 - T030: VectorStoreTool search documents
-
-Note: This test module requires mocking semantic_kernel modules because the full
-semantic_kernel library is not available in the test environment.
 """
 
-import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
-# Mock semantic_kernel modules BEFORE importing holodeck modules
-# This prevents import errors from semantic_kernel dependencies
-# Track which modules we actually mock to avoid polluting real modules
-_mocked_modules: set[str] = set()
-for module_name in [
-    "semantic_kernel",
-    "semantic_kernel.connectors",
-    "semantic_kernel.connectors.memory",
-    "semantic_kernel.connectors.ai",
-    "semantic_kernel.contents",
-    "semantic_kernel.data",
-    "semantic_kernel.data.vector",
-    "semantic_kernel.text",
-]:
-    if module_name not in sys.modules:
-        sys.modules[module_name] = MagicMock()
-        _mocked_modules.add(module_name)
+import pytest
 
-# Only set up mock attributes if we created the mocks
-# This prevents polluting real modules that may already be imported
-if "semantic_kernel.connectors.memory" in _mocked_modules:
-    mock_memory = sys.modules["semantic_kernel.connectors.memory"]
-    mock_memory.AzureAISearchCollection = MagicMock()
-    mock_memory.ChromaCollection = MagicMock()
-    mock_memory.CosmosMongoCollection = MagicMock()
-    mock_memory.CosmosNoSqlCollection = MagicMock()
-    mock_memory.FaissCollection = MagicMock()
-    mock_memory.InMemoryCollection = MagicMock()
-    mock_memory.PineconeCollection = MagicMock()
-    mock_memory.PostgresCollection = MagicMock()
-    mock_memory.QdrantCollection = MagicMock()
-    mock_memory.SqlServerCollection = MagicMock()
-    mock_memory.WeaviateCollection = MagicMock()
-
-if "semantic_kernel.data.vector" in _mocked_modules:
-    mock_vector = sys.modules["semantic_kernel.data.vector"]
-    mock_vector.VectorStoreField = MagicMock()
-    mock_vector.vectorstoremodel = lambda **kwargs: lambda cls: cls
-
-if "semantic_kernel.text" in _mocked_modules:
-    mock_text = sys.modules["semantic_kernel.text"]
-    mock_text.split_plaintext_paragraph = MagicMock(
-        side_effect=lambda lines, max_tokens: (
-            lines if isinstance(lines, list) else [lines]
-        )
-    )
-
-from types import SimpleNamespace  # noqa: E402
-from typing import Any  # noqa: E402
-
-import pytest  # noqa: E402
-
-from holodeck.lib.retrieval import (  # noqa: E402
+from holodeck.lib.retrieval import (
     Record,
     ScoredRecord,
     VectorQuery,
 )
-from holodeck.lib.retrieval.schemas import document_schema  # noqa: E402
-from holodeck.models.tool import VectorstoreTool  # noqa: E402
-from tests.unit.tools.fakes import FakeAdapter  # noqa: E402
+from holodeck.lib.retrieval.schemas import document_schema
+from holodeck.models.tool import VectorstoreTool
+from tests.unit.tools.fakes import FakeAdapter
 
 _DOC_FIELDS = (
     "source_path",
@@ -628,7 +576,7 @@ class TestVectorStoreToolSearchResultFormatting:
 
     def test_format_results_single_result(self) -> None:
         """Test formatting of a single search result."""
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         results = [
@@ -650,7 +598,7 @@ class TestVectorStoreToolSearchResultFormatting:
 
     def test_format_results_multiple_results(self) -> None:
         """Test formatting of multiple search results."""
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         results = [
@@ -698,7 +646,7 @@ class TestVectorStoreToolSearchResultFormatting:
 
     def test_format_results_score_formatting(self) -> None:
         """Test that scores are formatted with 2 decimal places."""
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         results = [
@@ -718,7 +666,7 @@ class TestVectorStoreToolSearchResultFormatting:
 
     def test_format_results_preserves_content(self) -> None:
         """Test that content is preserved without truncation."""
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         long_content = "A" * 500  # Long content
@@ -737,7 +685,7 @@ class TestVectorStoreToolSearchResultFormatting:
 
     def test_format_results_includes_source_path(self) -> None:
         """Test that source path is included in output."""
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         results = [
@@ -755,7 +703,7 @@ class TestVectorStoreToolSearchResultFormatting:
 
     def test_format_results_ordered_by_rank(self) -> None:
         """Test that results are numbered in order (1, 2, 3...)."""
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         results = [
@@ -925,16 +873,12 @@ class TestSetupCollection:
 
         tool = VectorStoreTool(config)
 
-        # The SK bridge builds its collection through get_collection_factory
-        mock_collection = MagicMock()
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-            tool._setup_collection("openai")
+        # The native adapter connects on first use, not here.
+        tool._setup_collection("openai")
 
         assert tool._provider == "chromadb"
         assert tool._adapter is not None
+        assert tool._adapter.provider == "chromadb"
 
     def test_setup_collection_with_connection_string(self, tmp_path: Path) -> None:
         """Test _setup_collection with connection string."""
@@ -957,16 +901,12 @@ class TestSetupCollection:
 
         tool = VectorStoreTool(config)
 
-        # The SK bridge builds its collection through get_collection_factory
-        mock_collection = MagicMock()
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-            tool._setup_collection("openai")
+        # The native adapter connects on first use, not here.
+        tool._setup_collection("openai")
 
         assert tool._provider == "chromadb"
         assert tool._adapter is not None
+        assert tool._adapter.provider == "chromadb"
 
 
 class TestGetFileProcessor:
@@ -1644,7 +1584,7 @@ class TestSearchSuccessPath:
             min_similarity_score=0.5,
         )
 
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         tool = VectorStoreTool(config)
@@ -1681,7 +1621,7 @@ class TestSearchSuccessPath:
             top_k=2,
         )
 
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         tool = VectorStoreTool(config)
@@ -1719,7 +1659,7 @@ class TestSearchSuccessPath:
             source=str(source_file),
         )
 
-        from holodeck.lib.vector_store import QueryResult
+        from holodeck.lib.retrieval import QueryResult
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         tool = VectorStoreTool(config)

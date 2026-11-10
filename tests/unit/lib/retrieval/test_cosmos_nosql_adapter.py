@@ -9,15 +9,9 @@ Cosmos DB service.
 from __future__ import annotations
 
 import ast
-import importlib
-import importlib.util
 import sys
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
-from types import ModuleType
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from azure.core.exceptions import AzureError
@@ -52,7 +46,6 @@ from holodeck.lib.retrieval.adapters.cosmos_nosql import (
     settings_from_connection,
     tokenize,
 )
-from holodeck.lib.retrieval.adapters.sk_bridge import build_definition
 from tests.contract.retrieval.conftest import CORPUS, make_record, make_schema
 from tests.contract.retrieval.cosmos_fake import (
     FakeAccount,
@@ -63,42 +56,6 @@ from tests.contract.retrieval.cosmos_fake import (
 KEY = "SECRET_account_key_0123456789=="
 URL = "https://holodeck.documents.azure.com:443/"
 HOSTILE = "x') OR 1=1 --; DROP c \"\\ '"
-
-
-@contextmanager
-def _semantic_kernel_cosmos() -> Iterator[ModuleType]:
-    """Import SK's Cosmos module, stubbing ``pymongo`` that it imports but we lack.
-
-    SK's ``azure_cosmos_db`` module imports both Cosmos APIs, so the SK path for
-    NoSQL could not load without ``pymongo`` either. Modules added during the
-    import are removed again so other tests see a clean ``sys.modules``.
-    """
-    before = set(sys.modules)
-    stubbed: list[str] = []
-    if importlib.util.find_spec("pymongo") is None:
-        for name in (
-            "pymongo",
-            "pymongo.asynchronous",
-            "pymongo.asynchronous.collection",
-            "pymongo.asynchronous.database",
-            "pymongo.errors",
-            "pymongo.operations",
-            "pymongo.driver_info",
-            "pymongo.results",
-            "pymongo.collection",
-            "pymongo.database",
-            "pymongo.mongo_client",
-        ):
-            sys.modules[name] = MagicMock()
-            stubbed.append(name)
-    try:
-        yield importlib.import_module("semantic_kernel.connectors.azure_cosmos_db")
-    finally:
-        for name in set(sys.modules) - before:
-            if name.startswith(("semantic_kernel.connectors.", "pymongo")):
-                del sys.modules[name]
-        for name in stubbed:
-            sys.modules.pop(name, None)
 
 
 def _schema(dimensions: int = 4) -> CollectionSchema:
@@ -305,7 +262,7 @@ def test_missing_client_library_names_the_extra(
     assert "holodeck-ai[azure-cosmos]" in str(raised.value)
 
 
-def test_adapter_has_no_semantic_kernel_or_untyped_escape_hatches() -> None:
+def test_adapter_has_no_untyped_escape_hatches() -> None:
     tree = ast.parse(Path(module.__file__).read_text())
     imported: list[str] = []
     for node in ast.walk(tree):
@@ -316,8 +273,6 @@ def test_adapter_has_no_semantic_kernel_or_untyped_escape_hatches() -> None:
             imported.extend(f"{node.module}.{alias.name}" for alias in node.names)
     names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
 
-    assert not [m for m in imported if m.split(".")[0] == "semantic_kernel"]
-    assert "holodeck.lib.vector_store" not in imported
     assert "Any" not in names
     assert "getattr" not in names
     assert "typing.Any" not in imported
@@ -518,28 +473,6 @@ class TestContainerDefinition:
             "fullTextPaths": [{"path": '/"content"', "language": "en-US"}],
         }
         assert adapter.indexing_policy()["fullTextIndexes"] == [{"path": '/"content"'}]
-
-    @pytest.mark.parametrize("dimensions", [4, 505])
-    def test_matches_the_policies_semantic_kernel_created(
-        self, dimensions: int
-    ) -> None:
-        # Temporary guard: it goes with Semantic Kernel (042 T16).
-        with _semantic_kernel_cosmos() as sk:
-            theirs_indexing = sk._create_default_indexing_policy_nosql
-            theirs_embedding = sk._create_default_vector_embedding_policy
-            schema = _schema(dimensions)
-            definition = build_definition(schema)
-            adapter = FakeCosmosAdapter(schema, _settings())
-
-            assert adapter.vector_embedding_policy() == theirs_embedding(definition)
-            ours = adapter.indexing_policy()
-            theirs = theirs_indexing(definition)
-        assert {item["path"] for item in ours["excludedPaths"]} == {  # type: ignore[attr-defined]
-            item["path"] for item in theirs["excludedPaths"]
-        }
-        assert ours["vectorIndexes"] == theirs["vectorIndexes"]
-        assert ours["includedPaths"] == theirs["includedPaths"]
-        assert ours["automatic"] == theirs["automatic"]
 
     @pytest.mark.parametrize(
         ("dimensions", "requested", "expected"),

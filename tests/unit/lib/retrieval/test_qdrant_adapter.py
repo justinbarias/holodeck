@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import traceback
 import uuid
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -224,13 +223,6 @@ def test_missing_qdrant_client_names_the_extra() -> None:
     assert "pip install 'holodeck-ai[qdrant]'" in str(raised.value)
 
 
-def test_adapter_module_does_not_import_semantic_kernel_or_vector_store() -> None:
-    assert qdrant.__file__ is not None
-    text = Path(qdrant.__file__).read_text()
-    assert "semantic_kernel" not in text
-    assert "holodeck.lib.vector_store" not in text
-
-
 # -- IDs -------------------------------------------------------------------------
 
 
@@ -246,15 +238,6 @@ def test_ids_keep_uuids_and_hash_everything_else() -> None:
     assert _memory(_schema("other")).store_id("a_chunk_0") != adapter.store_id(
         "a_chunk_0"
     )
-
-
-def test_ids_match_the_bridge() -> None:
-    from holodeck.lib.retrieval.adapters.sk_bridge import SKQdrantAdapter
-
-    bridge = SKQdrantAdapter.create(_schema(), {"location": ":memory:"})
-    adapter = _memory()
-    for record_id in ["a_chunk_0", "42", 'it\'s "q"', str(uuid.uuid4()).upper()]:
-        assert adapter.store_id(record_id) == bridge._store_id(record_id)
 
 
 def test_holodeck_id_is_a_reserved_field() -> None:

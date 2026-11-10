@@ -21,11 +21,6 @@ from holodeck.lib.retrieval.adapters.cosmos_nosql import CosmosNoSqlAdapter
 from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
 from holodeck.lib.retrieval.adapters.postgres import PostgresAdapter
 from holodeck.lib.retrieval.adapters.qdrant import QdrantAdapter
-from holodeck.lib.retrieval.adapters.sk_bridge import (
-    SKChromaAdapter,
-    SKInMemoryAdapter,
-    SKQdrantAdapter,
-)
 from holodeck.lib.retrieval.adapters.weaviate import WeaviateAdapter
 from tests.contract.retrieval import cosmos_emulator, cosmos_fake, pinecone_local
 from tests.contract.retrieval.azure_search_fake import FakeSearchService
@@ -106,24 +101,6 @@ TARGETS: list[ContractTarget] = [
         available=port_open("127.0.0.1", 8765),
     ),
     ContractTarget(name="chromadb-embedded", build=_embedded_chroma),
-    ContractTarget(
-        name="sk-bridge:in-memory",
-        build=lambda schema: SKInMemoryAdapter.create(schema, {}),
-    ),
-    ContractTarget(
-        name="sk-bridge:qdrant",
-        build=lambda schema: SKQdrantAdapter.create(
-            schema, {"connection_string": QDRANT_URL}
-        ),
-        available=port_open("127.0.0.1", 6333),
-    ),
-    ContractTarget(
-        name="sk-bridge:chromadb",
-        build=lambda schema: SKChromaAdapter.create(
-            schema, {"connection_string": CHROMA_URL}
-        ),
-        available=port_open("127.0.0.1", 8765),
-    ),
     ContractTarget(
         name="postgres",
         build=lambda schema: PostgresAdapter.create(

@@ -8,7 +8,7 @@ Public API:
     shutdown_observability: Gracefully shutdown providers
     get_tracer: Get a tracer for creating spans
     get_meter: Get a meter for creating metrics
-    enable_semantic_kernel_telemetry: Enable SK's native GenAI instrumentation
+    enable_litellm_telemetry: Enable LiteLLM's GenAI instrumentation
     ObservabilityContext: Container for initialized providers
 
 Errors:
@@ -35,10 +35,7 @@ from holodeck.lib.observability.errors import (
     ObservabilityConfigError,
     ObservabilityError,
 )
-from holodeck.lib.observability.instrumentation import (
-    enable_litellm_telemetry,
-    enable_semantic_kernel_telemetry,
-)
+from holodeck.lib.observability.instrumentation import enable_litellm_telemetry
 from holodeck.lib.observability.providers import (
     ObservabilityContext,
     get_meter,
@@ -56,7 +53,6 @@ __all__ = [
     "get_meter",
     "get_observability_context",
     # Instrumentation
-    "enable_semantic_kernel_telemetry",
     "enable_litellm_telemetry",
     # Context
     "ObservabilityContext",

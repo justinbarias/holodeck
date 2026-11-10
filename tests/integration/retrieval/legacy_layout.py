@@ -1,8 +1,9 @@
 """Frozen store layouts written by the Semantic Kernel path (042 T16).
 
 Before T16 removed Semantic Kernel, ``scripts/freeze_legacy_layouts.py``
-created collections through the SK bridge on Qdrant, Chroma and Postgres and
-saved the raw store state under ``tests/fixtures/legacy_layout/<store>/``.
+(removed with SK; see the fixtures README) created collections through the
+SK bridge on Qdrant, Chroma and Postgres and saved the raw store state under
+``tests/fixtures/legacy_layout/<store>/``.
 This module reads those files, rebuilds a legacy collection from them with
 only the store's own client, and dumps a live collection in the same form, so
 the compatibility tests compare the native adapters against what SK stored.

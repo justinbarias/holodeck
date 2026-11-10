@@ -12,8 +12,9 @@ read the tools make. They replace the SK bridge in the compatibility tests
   `uv run python -m scripts.freeze_legacy_layouts` on base commit
   `62a2af5f9a5347fb677da9c689af8ba836422ed8`, Semantic Kernel 1.47.0, through
   the SK bridge (`holodeck.lib.retrieval.adapters.sk_bridge`). The generator
-  needed SK, so T16 removed it with SK; the commit that added these files
-  still has it.
+  needed SK, so T16 removed it with SK. Commit `5da0f55`
+  (`test(retrieval): freeze legacy store layouts as fixtures`) still has the
+  generator and the bridge; check it out to read or rerun them.
 - Stores: Qdrant 1.17.1 (qdrant-client), Chroma 1.0.0 over HTTP (chromadb),
   PostgreSQL 17.11 with pgvector 0.8.7 (psycopg 3). Each file's `meta` key
   records the exact versions.

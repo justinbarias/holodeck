@@ -24,7 +24,6 @@ from holodeck.lib.retrieval import (
     VectorStoreAdapter,
 )
 from tests.contract.retrieval.conftest import CORPUS, DIMENSIONS, make_record
-from tests.contract.retrieval.targets import ContractTarget
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -150,14 +149,10 @@ async def test_find_matches_exact_field_values(loaded: VectorStoreAdapter) -> No
 
 
 async def test_find_matches_a_number_by_the_type_of_the_field(
-    loaded: VectorStoreAdapter, target: ContractTarget
+    loaded: VectorStoreAdapter,
 ) -> None:
     """``where(mtime=2)`` finds ``2.0``, and ``where(chunk_index=1.0)`` finds ``1``."""
     needs(loaded, Operation.FIND)
-    if target.name.startswith("sk-bridge:qdrant"):
-        # The bridge builds the filter from the Python type of the value. It
-        # is deleted in T16, so it is not fixed.
-        pytest.skip("the Semantic Kernel bridge is deleted in T16")
     await loaded.upsert(
         [make_record("d_chunk_0", [1.0, 1.0, 0.0, 0.0], source="d.md", mtime=2.0)]
     )
@@ -187,12 +182,10 @@ async def test_find_matches_a_number_by_the_type_of_the_field(
     ],
 )
 async def test_find_rejects_a_filter_value_that_cannot_equal_a_stored_value(
-    loaded: VectorStoreAdapter, target: ContractTarget, bad_filter: RecordFilter
+    loaded: VectorStoreAdapter, bad_filter: RecordFilter
 ) -> None:
     """``where(chunk_index=1.5)`` must raise, never match ``chunk_index == 1``."""
     needs(loaded, Operation.FIND)
-    if target.name.startswith("sk-bridge:"):
-        pytest.skip("the Semantic Kernel bridge is deleted in T16")
     with pytest.raises(SchemaError):
         await loaded.find(bad_filter)
 

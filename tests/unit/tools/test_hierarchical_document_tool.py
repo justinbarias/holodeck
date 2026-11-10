@@ -10,112 +10,18 @@ Test IDs:
 - T38: Chunk embedding generation
 - T39: Chunk storage with HierarchicalDocumentRecord
 - T40: Semantic-only search implementation
-
-Note: This test module requires mocking semantic_kernel modules because the full
-semantic_kernel library is not available in the test environment.
 """
 
 import logging
-import sys
-from collections.abc import Iterator
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Save original modules before mocking (these will be restored after import)
-_saved_modules: dict[str, object] = {}
-_mocked_modules: set[str] = set()
+import pytest
 
-# Mock semantic_kernel modules BEFORE importing holodeck modules
-# This prevents import errors from semantic_kernel dependencies
-_all_sk_modules = [
-    "semantic_kernel",
-    "semantic_kernel.connectors",
-    "semantic_kernel.connectors.memory",
-    "semantic_kernel.connectors.ai",
-    "semantic_kernel.connectors.ai.embedding_generator_base",
-    "semantic_kernel.connectors.ai.function_choice_behavior",
-    "semantic_kernel.connectors.ai.prompt_execution_settings",
-    "semantic_kernel.connectors.ai.chat_completion_client_base",
-    "semantic_kernel.connectors.ai.open_ai",
-    "semantic_kernel.connectors.ai.anthropic",
-    "semantic_kernel.connectors.ai.ollama",
-    "semantic_kernel.connectors.in_memory",
-    "semantic_kernel.connectors.postgres",
-    "semantic_kernel.connectors.qdrant",
-    "semantic_kernel.connectors.chroma",
-    "semantic_kernel.connectors.pinecone",
-    "semantic_kernel.connectors.azure_ai_search",
-    "semantic_kernel.connectors.faiss",
-    "semantic_kernel.connectors.azure_cosmos_db",
-    "semantic_kernel.connectors.sql_server",
-    "semantic_kernel.connectors.weaviate",
-    "semantic_kernel.contents",
-    "semantic_kernel.data",
-    "semantic_kernel.data.vector",
-    "semantic_kernel.text",
-    "semantic_kernel.functions",
-    "semantic_kernel.functions.kernel_function",
-    "semantic_kernel.functions.kernel_parameter_metadata",
-    "semantic_kernel.functions.kernel_plugin",
-]
-for module_name in _all_sk_modules:
-    if module_name in sys.modules:
-        _saved_modules[module_name] = sys.modules[module_name]
-    else:
-        sys.modules[module_name] = MagicMock()
-        _mocked_modules.add(module_name)
-
-# Set up mock attributes for vector store
-if "semantic_kernel.data.vector" in _mocked_modules:
-    mock_vector = sys.modules["semantic_kernel.data.vector"]
-    mock_vector.VectorStoreField = MagicMock()
-    mock_vector.DistanceFunction = MagicMock()
-    mock_vector.DistanceFunction.COSINE_SIMILARITY = "cosine"
-    mock_vector.vectorstoremodel = lambda **kwargs: lambda cls: cls
-    mock_vector.VectorStoreCollectionDefinition = MagicMock()
-
-if "semantic_kernel.connectors.memory" in _mocked_modules:
-    mock_memory = sys.modules["semantic_kernel.connectors.memory"]
-    mock_memory.InMemoryCollection = MagicMock()
-
-if "semantic_kernel.connectors.ai.embedding_generator_base" in _mocked_modules:
-    mock_embed_base = sys.modules[
-        "semantic_kernel.connectors.ai.embedding_generator_base"
-    ]
-    mock_embed_base.EmbeddingGeneratorBase = MagicMock()
-
-if "semantic_kernel.connectors.in_memory" in _mocked_modules:
-    mock_inmem = sys.modules["semantic_kernel.connectors.in_memory"]
-    mock_inmem.InMemoryCollection = MagicMock()
-
-if "semantic_kernel" in _mocked_modules:
-    mock_sk = sys.modules["semantic_kernel"]
-    mock_sk.Kernel = MagicMock()
-
-if "semantic_kernel.functions.kernel_function" in _mocked_modules:
-    mock_kf = sys.modules["semantic_kernel.functions.kernel_function"]
-    mock_kf.KernelFunction = MagicMock()
-
-if "semantic_kernel.functions.kernel_parameter_metadata" in _mocked_modules:
-    mock_kpm = sys.modules["semantic_kernel.functions.kernel_parameter_metadata"]
-    mock_kpm.KernelParameterMetadata = MagicMock()
-
-if "semantic_kernel.functions.kernel_plugin" in _mocked_modules:
-    mock_kp = sys.modules["semantic_kernel.functions.kernel_plugin"]
-    mock_kp.KernelPlugin = MagicMock()
-
-if "semantic_kernel.connectors.ai.function_choice_behavior" in _mocked_modules:
-    mock_fcb = sys.modules["semantic_kernel.connectors.ai.function_choice_behavior"]
-    mock_fcb.FunctionChoiceBehavior = MagicMock()
-
-from collections.abc import Sequence  # noqa: E402
-from types import SimpleNamespace  # noqa: E402
-from typing import Any  # noqa: E402
-
-import pytest  # noqa: E402
-
-from holodeck.lib.retrieval import (  # noqa: E402
+from holodeck.lib.retrieval import (
     BaseVectorStoreAdapter,
     Capabilities,
     Operation,
@@ -124,52 +30,12 @@ from holodeck.lib.retrieval import (  # noqa: E402
     ScoredRecord,
     VectorQuery,
 )
-from holodeck.lib.retrieval.schemas import hierarchical_schema  # noqa: E402
-from holodeck.models.tool import HierarchicalDocumentToolConfig  # noqa: E402
-from holodeck.tools.hierarchical_document_tool import (  # noqa: E402
+from holodeck.lib.retrieval.schemas import hierarchical_schema
+from holodeck.models.tool import HierarchicalDocumentToolConfig
+from holodeck.tools.hierarchical_document_tool import (
     HierarchicalDocumentTool,
 )
-from tests.unit.tools.fakes import ALL_OPERATIONS, FakeAdapter  # noqa: E402
-
-# Capture the configured mock modules so the autouse fixture below can
-# re-establish them for each test, then restore sys.modules to its pre-import
-# state. This is critical for parallel execution (pytest-xdist): leaving the
-# injected MagicMocks in sys.modules makes later modules' patch() targets (e.g.
-# ``semantic_kernel.connectors.ai.open_ai.*`` in test_tool_initializer) resolve
-# against a cached mock whose parent package never got the attribute set,
-# raising ``AttributeError: module ... has no attribute 'open_ai'``.
-_sk_mock_modules: dict[str, object] = {
-    name: sys.modules[name] for name in _mocked_modules
-}
-for module_name in _all_sk_modules:
-    if module_name in _saved_modules:
-        sys.modules[module_name] = _saved_modules[module_name]
-    else:
-        sys.modules.pop(module_name, None)
-
-
-@pytest.fixture(autouse=True)
-def _sk_module_mocks() -> Iterator[None]:
-    """Re-establish the semantic_kernel sys.modules mocks for the test's duration.
-
-    ``hierarchical_document_tool`` imports semantic_kernel lazily at runtime, so
-    the import-time mocks must be present while a test runs. They are removed
-    again afterwards so they never pollute other test modules during parallel
-    (pytest-xdist) execution.
-    """
-    previous: dict[str, object] = {}
-    for name, mock in _sk_mock_modules.items():
-        if name in sys.modules:
-            previous[name] = sys.modules[name]
-        sys.modules[name] = mock
-    try:
-        yield
-    finally:
-        for name in _sk_mock_modules:
-            if name in previous:
-                sys.modules[name] = previous[name]
-            else:
-                sys.modules.pop(name, None)
+from tests.unit.tools.fakes import ALL_OPERATIONS, FakeAdapter
 
 
 def create_config(

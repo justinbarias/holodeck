@@ -191,9 +191,7 @@ def set_up_tracing(
         Configured TracerProvider instance
 
     Note:
-        This must be called before any code that creates spans. The
-        SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS env var
-        should be set in main.py before any SK imports.
+        This must be called before any code that creates spans.
     """
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
@@ -341,15 +339,9 @@ def initialize_observability(
         resource=resource,
     )
 
-    # 8. Enable Semantic Kernel telemetry (GenAI semantic conventions)
-    from holodeck.lib.observability.instrumentation import (
-        enable_litellm_telemetry,
-        enable_semantic_kernel_telemetry,
-    )
+    # 8. Enable LiteLLM telemetry (RAG embeddings + contextual retrieval).
+    from holodeck.lib.observability.instrumentation import enable_litellm_telemetry
 
-    enable_semantic_kernel_telemetry(config)
-
-    # 9. Enable LiteLLM telemetry (RAG embeddings + contextual retrieval).
     # Must run after set_up_tracing so the callback reuses the global
     # tracer provider (and its RedactingSpanProcessor).
     enable_litellm_telemetry(config)

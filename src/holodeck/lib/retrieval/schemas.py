@@ -7,11 +7,11 @@ Three record families exist, one per tool mode:
 * hierarchical: ``HierarchicalDocumentTool`` chunks.
 
 Each schema has exactly the fields, types and index flags of the Semantic
-Kernel record factory it replaces (``create_document_record_class``,
-``create_structured_record_class`` and
-``create_hierarchical_document_record_class`` in ``holodeck.lib.vector_store``),
-and the same collection name, so collections written before the move stay
-readable. ``tests/unit/lib/retrieval/test_schemas.py`` checks the equivalence.
+Kernel record class it replaced (removed in 042 T16), and the same collection
+name, so collections written before the move stay readable.
+``tests/unit/lib/retrieval/test_schemas.py`` pins the fields and
+``tests/integration/retrieval/test_*_compat.py`` check them against the
+frozen SK layouts.
 
 Collection names
 ----------------

@@ -90,6 +90,10 @@ WEAVIATE = Service(
         ("AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED", "true"),
         ("PERSISTENCE_DATA_PATH", "/var/lib/weaviate"),
         ("DEFAULT_VECTORIZER_MODULE", "none"),
+        # Weaviate turns read-only at 90% disk use by default. A developer
+        # machine's Docker disk is often fuller than that.
+        ("DISK_USE_WARNING_PERCENTAGE", "95"),
+        ("DISK_USE_READONLY_PERCENTAGE", "98"),
     ),
     ready_url="http://127.0.0.1:8089/v1/.well-known/ready",
     tcp_ports=(50059,),

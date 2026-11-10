@@ -20,6 +20,7 @@ from holodeck.lib.retrieval.errors import (
     UnsupportedOperationError,
 )
 from holodeck.lib.retrieval.registry import create_adapter, supported_providers
+from holodeck.lib.retrieval.results import QueryResult, StructuredQueryResult
 from holodeck.lib.retrieval.types import (
     Capabilities,
     CollectionSchema,
@@ -57,6 +58,7 @@ __all__ = [
     "MissingClientError",
     "Operation",
     "Page",
+    "QueryResult",
     "Record",
     "RecordFilter",
     "RetiredProviderError",
@@ -65,6 +67,7 @@ __all__ = [
     "ScoreKind",
     "ScoredRecord",
     "StoreConnectionError",
+    "StructuredQueryResult",
     "UnknownProviderError",
     "UnsupportedOperationError",
     "VectorQuery",

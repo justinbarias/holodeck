@@ -715,7 +715,6 @@ Built with:
 - [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/claude-code-sdk-docs) - Native Anthropic agent framework
 - [OpenAI Agents SDK](https://github.com/openai/openai-agents-python) - Native OpenAI / Azure OpenAI agent framework
 - [litellm](https://github.com/BerriAI/litellm) - Unified embeddings + completion gateway
-- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Vector store connector layer
 - [DeepEval](https://github.com/confident-ai/deepeval) - LLM evaluation framework
 - [markitdown](https://github.com/microsoft/markitdown) - Document cracking into markdown for LLMs
 - [FastAPI](https://fastapi.tiangolo.com/) - API deployment (planned)

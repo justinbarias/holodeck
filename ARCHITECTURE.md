@@ -29,8 +29,9 @@ agent configuration -> deploy/ -> Docker image -> Azure Container Apps
 ```
 
 The diagram shows execution flow, not an enforced global import hierarchy.
-Semantic Kernel remains in retrieval and supporting integrations. It is no longer
-the runtime backend selected for OpenAI, Azure OpenAI, or Ollama.
+Vector storage runs on native adapters behind `holodeck.lib.retrieval`, and
+embeddings and contextual-retrieval chat run on LiteLLM. Semantic Kernel is no
+longer a dependency.
 
 ## Code map
 

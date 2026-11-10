@@ -19,7 +19,7 @@ from click.testing import CliRunner
 from holodeck.cli.lazy_group import LazyGroup
 from holodeck.cli.main import main
 
-HEAVY = ("pandas", "deepeval", "semantic_kernel", "claude_agent_sdk", "agents")
+HEAVY = ("pandas", "deepeval", "claude_agent_sdk", "agents")
 COMMANDS = [
     "chat",
     "config",

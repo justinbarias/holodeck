@@ -28,7 +28,6 @@ dependencies = [
     # Imported directly by the FEEL module (parse-tree node names) — declared
     # rather than inherited transitively via bkflow-feel.
     "lark>=1.1.0,<2.0.0",
-    "semantic-kernel>=1.39.4,<2.0.0",
     "markitdown[all]>=0.1.4,<0.2.0",
     "pypdf>=6.21.4",  # CVE-2026-59935..59938, PYSEC-2026-4153..4160, CVE-2026-1137xx/1155xx/1192xx fix
     "azure-ai-evaluation>=1.13.0,<2.0.0",
@@ -108,9 +107,8 @@ dev = [
 pinecone = [
     "pinecone>=10,<11",
 ]
-# <12.1: the lock allows pre-releases (see [tool.uv]) and 12.1 is beta only.
 azure-ai-search = [
-    "azure-search-documents>=12.0.0,<12.1",
+    "azure-search-documents>=12.0.0,<13",
     "azure-identity>=1.15.0",
 ]
 postgres = [
@@ -133,7 +131,7 @@ azure-cosmos = [
 # Convenience group for all vector stores
 vectorstores = [
     "pinecone>=10,<11",
-    "azure-search-documents>=12.0.0,<12.1",
+    "azure-search-documents>=12.0.0,<13",
     "azure-identity>=1.15.0",
     "psycopg[binary,pool]>=3.3,<4.0",
     "pgvector>=0.5,<1.0",
@@ -217,7 +215,6 @@ raw-options = { local_scheme = "no-local-version" }
 packages = ["src/holodeck"]
 
 [tool.uv]
-prerelease = "allow"  # Allow pre-releases (required for azure-ai-agents via semantic-kernel)
 override-dependencies = [
     # bkflow-feel pins pytz<2024, which would downgrade pytz (and drag optuna
     # 4.9->4.8). The pin is overly conservative — pytz's API is stable and the
@@ -228,7 +225,6 @@ constraint-dependencies = [
     "filelock>=4.2.1",  # CVE-2025-68146, CVE-2026-112909/112910 fix
     "jaraco-context>=6.1.0",  # CVE-2026-23949 fix
     "nltk>=3.10.4",  # CVE-2025-14009, PYSEC-2026-3740 fix
-    "pyopenssl>=26.0.0",  # CVE-2026-27448, CVE-2026-27459 fix
     "pillow>=13.0.0",  # PYSEC-2026-2253..2257, 3451..3454, 3493..3496, 4326..4343 + 2026-11 batch fix
     "protobuf>=5.29.6",  # CVE-2026-0994 fix
     "python-multipart>=0.0.31",  # CVE-2026-53538/53539/53540 fix (transitive via starlette)
@@ -246,7 +242,6 @@ constraint-dependencies = [
     "pymdown-extensions>=11.0.0",  # CVE-2026-61632 fix (transitive via mkdocs-material)
     "anyio>=4.14.2",  # PYSEC-2026-4024/4025 fix (transitive)
     "certifi>=2026.10.18",  # PYSEC-2026-4320 fix (transitive)
-    "dnspython>=2.9.0",  # CVE-2026-114605 fix (transitive)
     "fsspec>=2026.6.0",  # PYSEC-2026-4217 fix (transitive via datasets)
     "multidict>=6.9.1",  # PYSEC-2026-4244 fix (transitive via aiohttp)
     "oauthlib>=4.0.1",  # PYSEC-2026-4114, CVE-2026-49272 fix (transitive)
@@ -254,6 +249,12 @@ constraint-dependencies = [
     # Floor, not a CVE fix: an unconstrained relock backtracks datasets to
     # 2.14.4 (PYSEC-2026-3716) to satisfy the fsspec floor above.
     "datasets>=5.0.1",
+    # The only pre-release the lock needs outside all-beta packages (the
+    # OpenTelemetry 0.x instrumentation line, the Azure Monitor exporter):
+    # markitdown[all] requires azure-ai-contentunderstanding>=1.2.0b1, and the
+    # default pre-release mode honors a pre-release marker only in a
+    # first-party requirement. Without it markitdown backtracks to 0.1.5.
+    "azure-ai-contentunderstanding>=1.2.0b1",
 ]
 
 [tool.black]

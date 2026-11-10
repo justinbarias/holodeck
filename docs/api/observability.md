@@ -17,7 +17,7 @@ logs through a unified initialization lifecycle and supports multiple exporters
         - get_tracer
         - get_meter
         - get_observability_context
-        - enable_semantic_kernel_telemetry
+        - enable_litellm_telemetry
         - ObservabilityContext
         - ObservabilityError
         - ObservabilityConfigError
@@ -107,22 +107,11 @@ provider setup functions.
 
 ## Instrumentation (`instrumentation`)
 
-Wires up the internal instrumentation layer so it emits GenAI
-semantic-convention spans. Sets the environment variables that the underlying
-connector library reads at startup to turn on diagnostic and
-sensitive-content tracing.
+Registers LiteLLM's OpenTelemetry callback, so the embedding and
+contextual-retrieval calls of the RAG layer emit GenAI semantic-convention
+spans through HoloDeck's tracer provider and redaction.
 
-::: holodeck.lib.observability.instrumentation.enable_semantic_kernel_telemetry
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.observability.instrumentation.SK_OTEL_DIAGNOSTICS_ENV
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.observability.instrumentation.SK_OTEL_SENSITIVE_ENV
+::: holodeck.lib.observability.instrumentation.enable_litellm_telemetry
     options:
       docstring_style: google
       show_source: true

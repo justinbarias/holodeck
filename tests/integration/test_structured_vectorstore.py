@@ -69,21 +69,23 @@ skip_if_no_ollama = pytest.mark.skipif(
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "structured"
 
 
-def _create_ollama_embedding_service() -> object | None:
-    """Create an Ollama embedding service if available.
+def _create_ollama_embedding_service() -> object:
+    """Create the LiteLLM embedding service HoloDeck uses, pointed at Ollama."""
+    from holodeck.lib.litellm_support import (
+        LiteLLMEmbeddingService,
+        resolve_litellm_model,
+    )
+    from holodeck.models.llm import LLMProvider, ProviderEnum
 
-    Returns:
-        OllamaTextEmbedding instance or None if not available.
-    """
-    try:
-        from semantic_kernel.connectors.ai.ollama import OllamaTextEmbedding
-
-        return OllamaTextEmbedding(
-            ai_model_id=OLLAMA_EMBEDDING_MODEL,
-            host=OLLAMA_ENDPOINT,
-        )
-    except ImportError:
-        return None
+    spec = resolve_litellm_model(
+        LLMProvider(
+            provider=ProviderEnum.OLLAMA,
+            name=OLLAMA_EMBEDDING_MODEL,
+            endpoint=OLLAMA_ENDPOINT,
+        ),
+        kind="embedding",
+    )
+    return LiteLLMEmbeddingService(spec)
 
 
 @pytest.mark.integration

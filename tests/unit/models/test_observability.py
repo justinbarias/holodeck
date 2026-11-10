@@ -230,7 +230,7 @@ class TestLogsConfig:
         assert config.enabled is True
         assert config.level == LogLevel.INFO
         assert config.include_trace_context is True
-        assert config.filter_namespaces == ["semantic_kernel"]
+        assert config.filter_namespaces == []
 
     def test_level_enum_validation(self) -> None:
         """Test level must be valid LogLevel enum."""

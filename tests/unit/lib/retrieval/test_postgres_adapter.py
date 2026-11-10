@@ -92,9 +92,7 @@ def test_capabilities() -> None:
     assert not capabilities.supports(Operation.HYBRID_SEARCH)
 
 
-def test_the_adapter_imports_no_semantic_kernel_sqlalchemy_or_old_vector_store() -> (
-    None
-):
+def test_the_adapter_imports_no_sqlalchemy() -> None:
     path = Path(postgres.__file__)
     imported: set[str] = set()
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
@@ -102,12 +100,7 @@ def test_the_adapter_imports_no_semantic_kernel_sqlalchemy_or_old_vector_store()
             imported.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module)
-    assert not {
-        name
-        for name in imported
-        if name.split(".")[0] in {"semantic_kernel", "sqlalchemy"}
-        or name == "holodeck.lib.vector_store"
-    }
+    assert not {name for name in imported if name.split(".")[0] == "sqlalchemy"}
 
 
 # -- connection settings -----------------------------------

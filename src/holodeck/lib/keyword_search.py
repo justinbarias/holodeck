@@ -8,8 +8,8 @@ The module supports both dense (semantic) and sparse (keyword) search,
 combined via Reciprocal Rank Fusion (RRF) for optimal retrieval.
 
 Key Features:
-- Tiered keyword search strategy (native hybrid vs keyword fallback)
-- Provider capability detection
+- Tiered keyword search strategy (native hybrid vs keyword fallback),
+  chosen from the adapter's declared capabilities
 - KeywordSearchProvider protocol for pluggable backends
 - InMemoryBM25KeywordProvider: rank_bm25 in-process (dev/local)
 - OpenSearchKeywordProvider: external OpenSearch cluster (production)
@@ -19,15 +19,8 @@ Key Features:
 - Graceful degradation when keyword index build fails
 
 Usage:
-    from holodeck.lib.keyword_search import (
-        HybridSearchExecutor,
-        get_keyword_search_strategy,
-    )
+    from holodeck.lib.keyword_search import HybridSearchExecutor
 
-    # Determine strategy based on provider
-    strategy = get_keyword_search_strategy("azure-ai-search")
-
-    # Create executor and search
     executor = HybridSearchExecutor(adapter)
     results = await executor.search(query, query_embedding, top_k=10)
 
@@ -72,55 +65,11 @@ class KeywordSearchStrategy(str, Enum):
     - NATIVE_HYBRID: Provider supports hybrid_search() API directly
     - FALLBACK_BM25: Use rank_bm25 + app-level RRF fusion
 
-    The strategy is automatically selected based on the vector store provider.
+    The executor selects the strategy from ``adapter.capabilities``.
     """
 
     NATIVE_HYBRID = "native_hybrid"
     FALLBACK_BM25 = "fallback_bm25"
-
-
-# Reference sets of provider names. The executor decides by
-# ``adapter.capabilities`` (``Operation.HYBRID_SEARCH``); these sets document
-# the same split and serve ``get_keyword_search_strategy`` callers.
-
-NATIVE_HYBRID_PROVIDERS: set[str] = {
-    "azure-ai-search",
-    "weaviate",
-    "qdrant",
-    "mongodb",  # MongoDB Atlas via MongoDBAtlasStore
-    "azure-cosmos-nosql",
-}
-"""Providers that support native hybrid search via ``adapter.hybrid_search``."""
-
-FALLBACK_BM25_PROVIDERS: set[str] = {
-    "postgres",
-    "pinecone",
-    "chromadb",
-    "in-memory",
-}
-"""Providers that require BM25 fallback + app-level RRF.
-
-"""
-
-
-def get_keyword_search_strategy(provider: str) -> KeywordSearchStrategy:
-    """Determine keyword search strategy based on provider capabilities.
-
-    Args:
-        provider: Vector store provider name (e.g., "azure-ai-search", "postgres")
-
-    Returns:
-        KeywordSearchStrategy indicating native hybrid or BM25 fallback
-
-    Example:
-        >>> get_keyword_search_strategy("weaviate")
-        KeywordSearchStrategy.NATIVE_HYBRID
-        >>> get_keyword_search_strategy("postgres")
-        KeywordSearchStrategy.FALLBACK_BM25
-    """
-    if provider in NATIVE_HYBRID_PROVIDERS:
-        return KeywordSearchStrategy.NATIVE_HYBRID
-    return KeywordSearchStrategy.FALLBACK_BM25
 
 
 def _tokenize(text: str) -> list[str]:
