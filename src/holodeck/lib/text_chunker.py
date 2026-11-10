@@ -33,6 +33,14 @@ _BOUNDARIES: tuple[re.Pattern[str], ...] = (
 
 _DEFAULT_SEPARATORS = ["\n\n", "\n", " ", ""]
 
+SPLITTER_POLICY = "plain-tiktoken-cl100k/1"
+"""Pipeline policy ID of this splitter. Bump it when chunk boundaries change."""
+
+LEGACY_SPLITTER_POLICY = "plain-sk-char4/0"
+"""Policy of the Semantic Kernel splitter used before 042: tokens counted as
+characters divided by four, overlap ignored. Collections it wrote have no
+pipeline fingerprint; see ``holodeck.lib.retrieval.guard``."""
+
 
 @lru_cache(maxsize=1)
 def _encoding() -> tiktoken.Encoding:

@@ -98,6 +98,15 @@ def resolve_embedding_model(agent: Agent) -> str:
     return "text-embedding-3-small"
 
 
+def embedding_identity(agent: Agent) -> tuple[str, str]:
+    """Return ``(provider, model)`` of the agent's embeddings.
+
+    Both are inputs of the retrieval pipeline fingerprint (spec 042, FR-023).
+    Reads configuration only; no model is called.
+    """
+    return _resolve_embedding_provider(agent).value, resolve_embedding_model(agent)
+
+
 def create_embedding_service(
     agent: Agent, *, dimensions: int | None = None
 ) -> LiteLLMEmbeddingService:
@@ -390,6 +399,7 @@ async def _initialize_vectorstore_tools(
                 tool.set_embedding_service(
                     _embedding_service_for_tool(agent, tool_config, embedding_service)
                 )
+                tool.set_embedding_identity(*embedding_identity(agent))
                 await tool.initialize(
                     force_ingest=force_ingest, provider_type=provider_type
                 )
@@ -584,6 +594,7 @@ async def initialize_hierarchical_doc_tools(
                         is_remote=True,
                     )
                 tool.set_embedding_service(embedding_service)
+                tool.set_embedding_identity(*embedding_identity(agent))
 
                 # Resolve context generator via 4-tier priority chain
                 resolved_generator = _resolve_context_generator(
@@ -693,6 +704,7 @@ async def initialize_single_tool(
         vs_tool.set_embedding_service(
             _embedding_service_for_tool(agent, vs_config, embedding_service)
         )
+        vs_tool.set_embedding_identity(*embedding_identity(agent))
         try:
             await vs_tool.initialize(
                 force_ingest=force_ingest,
@@ -710,6 +722,12 @@ async def initialize_single_tool(
         if is_remote and source_override is not None:
             hd_tool.set_source_context(source_root=source_override, is_remote=True)
         hd_tool.set_embedding_service(embedding_service)
+        hd_tool.set_embedding_identity(*embedding_identity(agent))
+        # Same generator as a full start, so both write the same contextual
+        # text and share one pipeline fingerprint.
+        resolved_generator = _resolve_context_generator(agent, tool_config)
+        if resolved_generator is not None:
+            hd_tool.set_context_generator(resolved_generator)
         try:
             await hd_tool.initialize(
                 force_ingest=force_ingest,

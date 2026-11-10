@@ -37,6 +37,13 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 
+PARSER_POLICY = "markitdown/1"
+"""Pipeline policy ID of the file-to-markdown conversion used for ingestion.
+
+Bump it when the converted text of a file changes, so collections built from
+the old text are detected as incompatible (spec 042, FR-023).
+"""
+
 
 @dataclass
 class SourceFile:
