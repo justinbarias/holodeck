@@ -1,0 +1,356 @@
+{
+  "txt": {
+    "input_sha256": "260169568f81009ad28ab340d3e8dea9a7fc9b258bc734b9bb0a01fb1cc7b2e4",
+    "file_type": "text",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "text"
+    },
+    "markdown": {
+      "length": 138,
+      "sha256": "260169568f81009ad28ab340d3e8dea9a7fc9b258bc734b9bb0a01fb1cc7b2e4",
+      "text": "Plain text sample for the golden parser tests.\nIt has two lines in the first paragraph.\n\nSecond paragraph with unicode: café, naïve, 日本語.\n"
+    }
+  },
+  "md": {
+    "input_sha256": "436c57d253082393e842f2172cadef7fb7dbe7515ad49fb03f3bde031ab62852",
+    "file_type": "text",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "text"
+    },
+    "markdown": {
+      "length": 208,
+      "sha256": "436c57d253082393e842f2172cadef7fb7dbe7515ad49fb03f3bde031ab62852",
+      "text": "# Operations Handbook\n\nIntro paragraph with **bold** and `code`.\n\n## Checklist\n\n- Open the vault\n- Calibrate the rig\n- Log the readings\n\n### Table\n\n| Item | Qty |\n|------|-----|\n| Rings | 12 |\n| Scopes | 2 |\n"
+    }
+  },
+  "json": {
+    "input_sha256": "c4298e681b847773d7c430a7036668a0f7736d5a71f18b4391ff6646c00c18fc",
+    "file_type": "text",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "text"
+    },
+    "markdown": {
+      "length": 142,
+      "sha256": "c4298e681b847773d7c430a7036668a0f7736d5a71f18b4391ff6646c00c18fc",
+      "text": "{\n  \"name\": \"golden\",\n  \"items\": [\n    {\"id\": 1, \"tags\": [\"a\", \"b\"]},\n    {\"id\": 2, \"tags\": []}\n  ],\n  \"nested\": {\"ok\": true, \"ratio\": 0.5}\n}\n"
+    }
+  },
+  "html": {
+    "input_sha256": "c241397ef010e760059935e489658ab8a89b528c21d644893929a6628fd04ebe",
+    "file_type": "text",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "text"
+    },
+    "markdown": {
+      "length": 143,
+      "sha256": "51af72a5b3ad6460f648c0021ba9933f2b611eb810dd8590c3d36c985fd361f1",
+      "text": "# Heading One\n\nParagraph with [a link](https://example.com/page) and *emphasis*.\n\n* First\n* Second\n\n| Key | Value |\n| --- | --- |\n| alpha | 1 |"
+    }
+  },
+  "csv": {
+    "input_sha256": "653afc0daeabca65945160fb83e849c9839f28081e11e340ac1ef4e3636d1b71",
+    "file_type": "csv",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "csv"
+    },
+    "markdown": {
+      "length": 190,
+      "sha256": "645e17b703e2434863ac432a776247b5c80f4f016711a70030868117c62dcca3",
+      "text": "| id | name | notes | price |\n| --- | --- | --- | --- |\n| 1 | Widget | Small, blue | 9.99 |\n| 2 | Gadget | Quoted \"name\" | 19.5 |\n| 3 | Café Crème | Unicode row | 4.25 |\n| 4 | Empty |  | 0 |"
+    }
+  },
+  "docx": {
+    "input_sha256": "a419dd29f740ea15cc65f02351b53073985349754fd28940771273f17ac123b6",
+    "file_type": "word",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "word"
+    },
+    "markdown": {
+      "length": 214,
+      "sha256": "5ea42e05b67735d8f94495d7dc391520b6c654cc905b6929cc9213b0feb86ae7",
+      "text": "# Golden Word Document\n\nOpening paragraph with ordinary text.\n\n## Details\n\n**Bold text here**\n\n*Italic text here*\n\n|  |  |\n| --- | --- |\n| Item | Qty |\n| Rings | 12 |\n| Scopes | 2 |\n\nClosing paragraph: café, naïve."
+    }
+  },
+  "pdf_all_pages": {
+    "input_sha256": "5f63df034f872192f44461d045cb7460a2a5abd1dd4dddd85cbe7f3f62c1dbab",
+    "file_type": "pdf",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "pdf",
+      "pdf_heading_detection": true
+    },
+    "markdown": {
+      "length": 300,
+      "sha256": "7ab3a4ad68fb3407e9c85f02e07681a4c1a498d739a7ad69a35cc1d07b782ebc",
+      "text": "# Quarterly Operations Report\nThis report summarises field operations for the quarter.\nAll figures are provisional.\n# Findings\nNest counts rose along the northern shingle.\n## Detail\nDensity peaked near the old lighthouse.\n## Appendix\nBoat transfers ran twice daily.\nEquipment: scope, rings, calipers."
+    }
+  },
+  "pdf_pages_1": {
+    "input_sha256": "5f63df034f872192f44461d045cb7460a2a5abd1dd4dddd85cbe7f3f62c1dbab",
+    "file_type": "pdf",
+    "options": {
+      "pages": [
+        1
+      ]
+    },
+    "error": null,
+    "metadata": {
+      "type": "pdf",
+      "preprocessed": true,
+      "pages_extracted": [
+        1
+      ],
+      "pdf_heading_detection": true
+    },
+    "markdown": {
+      "length": 105,
+      "sha256": "f2e6fa31d99797fd248dae33d3f10c3dbd4da9126cdfd2cfb26ee310668b0906",
+      "text": "# Findings\nNest counts rose along the northern shingle.\n## Detail\nDensity peaked near the old lighthouse."
+    }
+  },
+  "pdf_pages_1_2": {
+    "input_sha256": "5f63df034f872192f44461d045cb7460a2a5abd1dd4dddd85cbe7f3f62c1dbab",
+    "file_type": "pdf",
+    "options": {
+      "pages": [
+        1,
+        2
+      ]
+    },
+    "error": null,
+    "metadata": {
+      "type": "pdf",
+      "preprocessed": true,
+      "pages_extracted": [
+        1,
+        2
+      ],
+      "pdf_heading_detection": true
+    },
+    "markdown": {
+      "length": 184,
+      "sha256": "2f73de75f3e127fe543a4d3aca3d057d737128dea80ac467881b2f052a85050b",
+      "text": "# Findings\nNest counts rose along the northern shingle.\n## Detail\nDensity peaked near the old lighthouse.\n## Appendix\nBoat transfers ran twice daily.\nEquipment: scope, rings, calipers."
+    }
+  },
+  "pdf_page_out_of_range": {
+    "input_sha256": "5f63df034f872192f44461d045cb7460a2a5abd1dd4dddd85cbe7f3f62c1dbab",
+    "file_type": "pdf",
+    "options": {
+      "pages": [
+        9
+      ]
+    },
+    "error": "ValueError: Page 9 out of range (PDF has 3 pages) (while processing: <parsers>/sample.pdf)",
+    "metadata": {},
+    "markdown": {
+      "length": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    }
+  },
+  "pdf_large_all_pages": {
+    "input_sha256": "160944edc0c54d46962407c379adbef39d79a88b74ef84611a204799de8a06f6",
+    "file_type": "pdf",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "pdf",
+      "pdf_heading_detection": true
+    },
+    "markdown": {
+      "length": 167498,
+      "sha256": "566319f6692472eecbdac648cc14e04dd818335635647e481163a6394f2a3c24",
+      "head": "## 118th CONGRESS\n## 2nd Session\n# H.R. 8847\n# COMPREHENSIVE NATIONAL INFRASTRUCTURE\n# MODERNIZATION, DIGITAL TRANSFORMATION,\n# ARTIFICIAL INTELLIGENCE GOVERNANCE,\n# CYBERSECURITY ENHANCEMENT,\n# AND SUSTAINABLE TECHNOLOGY DEVELOPMENT ACT\n# OF 2024\n## [The CNIMDT-AIGCE-STD Act]\nIN THE HOUSE OF REPRESENTATIVES\nMarch 15, 2024\nMr.  RICHARDSON  of  California  (for  himself,  Ms.  CHEN  of  New  York,  Mr.  BLACKWOOD  of  Texas,  Mrs.\nOKONKWO  of  Illinois,  Mr.  PETERSEN  of  Florida,  Ms.  YAMAMOTO  of  Washington,  Mr.  KOWALSKI  of\nMichigan, Mrs. JEFFERSON of Georgia, Mr. SINGH of New Jersey, a",
+      "tail": "____\nSignature: _________________________________ Date: ________________\nPassed the House of Representatives [DATE]\n_________________________________\nClerk of the House of Representatives\nPassed the Senate [DATE]\n_________________________________\nSecretary of the Senate\n# * * * END OF DOCUMENT * * *"
+    }
+  },
+  "pdf_large_pages_1_2": {
+    "input_sha256": "160944edc0c54d46962407c379adbef39d79a88b74ef84611a204799de8a06f6",
+    "file_type": "pdf",
+    "options": {
+      "pages": [
+        1,
+        2
+      ]
+    },
+    "error": null,
+    "metadata": {
+      "type": "pdf",
+      "preprocessed": true,
+      "pages_extracted": [
+        1,
+        2
+      ],
+      "pdf_heading_detection": true
+    },
+    "markdown": {
+      "length": 1392,
+      "sha256": "d3be114fa5ada0118e98c10312459f8f5a90d693fab21d77c9dcb910ebcba11b",
+      "text": "Be  it  enacted  by  the  Senate  and  House  of  Representatives  of  the  United  States  of  America  in\nCongress assembled,\n# TABLE OF CONTENTS\nTITLE I - GENERAL PROVISIONS AND DEFINITIONS\nChapter 1 - Short Title and Findings\nChapter 2 - Definitions\nChapter 3 - Scope and Application\nTITLE II - INFRASTRUCTURE MODERNIZATION\nChapter 1 - Critical Infrastructure Assessment\nChapter 2 - Broadband and Telecommunications\nChapter 3 - Transportation Infrastructure\nChapter 4 - Energy Infrastructure\nChapter 5 - Water Infrastructure\nTITLE III - ARTIFICIAL INTELLIGENCE GOVERNANCE\nChapter 1 - AI Risk Classification Framework\nChapter 2 - High-Risk AI Systems\nChapter 3 - AI Transparency and Accountability\nChapter 4 - Algorithmic Impact Assessments\nChapter 5 - AI Safety Standards\nTITLE IV - CYBERSECURITY ENHANCEMENT\nChapter 1 - National Cybersecurity Strategy\nChapter 2 - Critical Infrastructure Protection\nChapter 3 - Incident Response and Reporting\nChapter 4 - Cybersecurity Workforce Development\nTITLE V - DIGITAL RIGHTS AND PRIVACY\nChapter 1 - Consumer Data Protection\nChapter 2 - Digital Identity Management\nChapter 3 - Algorithmic Rights\nChapter 4 - Children's Online Safety\nTITLE VI - SUSTAINABLE TECHNOLOGY DEVELOPMENT\nChapter 1 - Green Technology Research\nChapter 2 - Technology Environmental Standards\nChapter 3 - Circular Economy Initiatives\nTITLE VII - INNOVATION AND COMPETITIVENESS"
+    }
+  },
+  "pptx_all_slides": {
+    "input_sha256": "504307d00df0c76786fa20f21f6ff2ecee78e4ff8b62647de27a1682ecbc7ebd",
+    "file_type": "powerpoint",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "powerpoint"
+    },
+    "markdown": {
+      "length": 276,
+      "sha256": "7cd38f67430c65e55db5e13a7a500c05be831dc239d8d7c8a453d059f3ddfad9",
+      "text": "<!-- Slide number: 1 -->\n# Golden Deck\nSubtitle line\n\n<!-- Slide number: 2 -->\n# Agenda\nCalibrate the rig\nLog readings\nFile the report\n\n### Notes:\nSpeaker note for the agenda slide.\n\n<!-- Slide number: 3 -->\n# Numbers\n| Item | Qty |\n| --- | --- |\n| Rings | 12 |\n| Scopes | 2 |"
+    }
+  },
+  "pptx_slides_1_2": {
+    "input_sha256": "504307d00df0c76786fa20f21f6ff2ecee78e4ff8b62647de27a1682ecbc7ebd",
+    "file_type": "powerpoint",
+    "options": {
+      "pages": [
+        1,
+        2
+      ]
+    },
+    "error": null,
+    "metadata": {
+      "type": "powerpoint",
+      "preprocessed": true,
+      "pages_extracted": [
+        1,
+        2
+      ]
+    },
+    "markdown": {
+      "length": 172,
+      "sha256": "47cf4a95435f0d75a3f21e55b615ac796341e7663cf80b76c9f51e0698f2e866",
+      "text": "<!-- Slide number: 1 -->\nAgenda\n\nCalibrate the rig\nLog readings\nFile the report\n\n<!-- Slide number: 2 -->\n| Item | Qty |\n| --- | --- |\n| Rings | 12 |\n| Scopes | 2 |\nNumbers"
+    }
+  },
+  "pptx_slide_out_of_range": {
+    "input_sha256": "504307d00df0c76786fa20f21f6ff2ecee78e4ff8b62647de27a1682ecbc7ebd",
+    "file_type": "powerpoint",
+    "options": {
+      "pages": [
+        3
+      ]
+    },
+    "error": "ValueError: Slide 3 out of range (presentation has 3 slides) (while processing: <parsers>/sample.pptx)",
+    "metadata": {},
+    "markdown": {
+      "length": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    }
+  },
+  "xlsx_all_sheets": {
+    "input_sha256": "7e1219c25e73c58d883cc653289085efa2e0e894c5e9ac90789470079ee031bb",
+    "file_type": "excel",
+    "options": {},
+    "error": null,
+    "metadata": {
+      "type": "excel"
+    },
+    "markdown": {
+      "length": 429,
+      "sha256": "4aa130265abaef45e2a5b24ba2021827e1a01b7e7dcc86215c08b5a2225b04e2",
+      "text": "## Inventory\n| SKU | Item | Qty | Price | Received |\n| --- | --- | --- | --- | --- |\n| A-100 | Rings | 12 | 1.50 | 2026-03-01 |\n| A-200 | Scopes | 2 | 249.99 | 2026-03-02 |\n| B-300 | Batteries | 40 | 0.75 | 2026-03-03 |\n| B-400 | Notebooks | 7 | 3.20 | 2026-03-04 |\n| C-500 | Café kit | 1 | 59.00 | 2026-03-05 |\n\n## Notes\n| Topic | Note |\n| --- | --- |\n| Rings | Size C only |\n| Scopes | Check lens caps |\n| Café | Unicode cell |"
+    }
+  },
+  "xlsx_sheet_notes": {
+    "input_sha256": "7e1219c25e73c58d883cc653289085efa2e0e894c5e9ac90789470079ee031bb",
+    "file_type": "excel",
+    "options": {
+      "sheet": "Notes"
+    },
+    "error": null,
+    "metadata": {
+      "type": "excel",
+      "preprocessed": true,
+      "sheet_extracted": "Notes"
+    },
+    "markdown": {
+      "length": 107,
+      "sha256": "67d43849c1ccdcfd295b45f9415e79190a5ad74cd0af8125e6bf154734031553",
+      "text": "| Topic | Note |\n| --- | --- |\n| Rings | Size C only |\n| Scopes | Check lens caps |\n| Café | Unicode cell |"
+    }
+  },
+  "xlsx_default_sheet_range": {
+    "input_sha256": "7e1219c25e73c58d883cc653289085efa2e0e894c5e9ac90789470079ee031bb",
+    "file_type": "excel",
+    "options": {
+      "range": "A1:C3"
+    },
+    "error": null,
+    "metadata": {
+      "type": "excel",
+      "preprocessed": true,
+      "range_extracted": "A1:C3"
+    },
+    "markdown": {
+      "length": 86,
+      "sha256": "7da6e8616a17d3ab09d5ac46a7d82c673f90e65aa057efb0397a1f6fa4edd12d",
+      "text": "| SKU | Item | Qty |\n| --- | --- | --- |\n| A-100 | Rings | 12 |\n| A-200 | Scopes | 2 |"
+    }
+  },
+  "xlsx_sheet_and_range": {
+    "input_sha256": "7e1219c25e73c58d883cc653289085efa2e0e894c5e9ac90789470079ee031bb",
+    "file_type": "excel",
+    "options": {
+      "sheet": "Inventory",
+      "range": "B2:D4"
+    },
+    "error": null,
+    "metadata": {
+      "type": "excel",
+      "preprocessed": true,
+      "sheet_extracted": "Inventory",
+      "range_extracted": "B2:D4"
+    },
+    "markdown": {
+      "length": 90,
+      "sha256": "01881fcc33a42f1f97c6e0d5cc0d3154b25de4aa3a327bc9beea75a2202488cc",
+      "text": "| Rings | 12 | 1.5 |\n| --- | --- | --- |\n| Scopes | 2 | 249.99 |\n| Batteries | 40 | 0.75 |"
+    }
+  },
+  "xlsx_unknown_sheet": {
+    "input_sha256": "7e1219c25e73c58d883cc653289085efa2e0e894c5e9ac90789470079ee031bb",
+    "file_type": "excel",
+    "options": {
+      "sheet": "Missing"
+    },
+    "error": "ValueError: Sheet 'Missing' not found. Available sheets: Inventory, Notes (while processing: <parsers>/sample.xlsx)",
+    "metadata": {},
+    "markdown": {
+      "length": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    }
+  },
+  "missing_file": {
+    "input_sha256": null,
+    "file_type": "text",
+    "options": {},
+    "error": "FileNotFoundError: File not found: <parsers>/does_not_exist.txt (while processing: <parsers>/does_not_exist.txt)",
+    "metadata": {},
+    "markdown": {
+      "length": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    }
+  }
+}

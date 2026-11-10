@@ -1,0 +1,70 @@
+{
+  "metric": "rouge",
+  "pairs": {
+    "identical": {
+      "prediction": "The cat sat on the mat.",
+      "reference": "The cat sat on the mat."
+    },
+    "one_word_changed": {
+      "prediction": "The cat sat on the mat",
+      "reference": "The cat is on the mat"
+    },
+    "synonym": {
+      "prediction": "The automobile is red",
+      "reference": "The car is red"
+    },
+    "disjoint": {
+      "prediction": "Completely different words here",
+      "reference": "Nothing overlaps with that text"
+    },
+    "summary": {
+      "prediction": "The survey counted 412 tern nests near the lighthouse. A kestrel took two chicks from the eastern colony.",
+      "reference": "Rangers counted 412 arctic tern nests along the northern shingle, densest near the old lighthouse. A kestrel hunting over the dunes took two chicks before wardens scared it off."
+    },
+    "unicode_punctuation": {
+      "prediction": "Café déjà vu: naïve, résumé!",
+      "reference": "Cafe deja vu naive resume"
+    },
+    "empty_prediction": {
+      "prediction": "",
+      "reference": "A reference with some words"
+    }
+  },
+  "scores": {
+    "identical": {
+      "rouge1": 1.0,
+      "rouge2": 1.0,
+      "rougeL": 1.0
+    },
+    "one_word_changed": {
+      "rouge1": 0.833333,
+      "rouge2": 0.6,
+      "rougeL": 0.833333
+    },
+    "synonym": {
+      "rouge1": 0.75,
+      "rouge2": 0.333333,
+      "rougeL": 0.75
+    },
+    "disjoint": {
+      "rouge1": 0.0,
+      "rouge2": 0.0,
+      "rougeL": 0.0
+    },
+    "summary": {
+      "rouge1": 0.595745,
+      "rouge2": 0.311111,
+      "rougeL": 0.510638
+    },
+    "unicode_punctuation": {
+      "rouge1": 0.153846,
+      "rouge2": 0.0,
+      "rougeL": 0.153846
+    },
+    "empty_prediction": {
+      "rouge1": 0.0,
+      "rouge2": 0.0,
+      "rougeL": 0.0
+    }
+  }
+}

@@ -5,7 +5,6 @@ description = "HoloDeck - Experimentation-driven agent experimentation and deplo
 authors = [{name = "Justin Barias", email = "justinbarias@live.com"}]
 requires-python = ">=3.11"
 dependencies = [
-    "requests>=2.32.5,<3.0.0",
     # >=2.11: GateRef relies on serialize_by_alias, which older pydantic
     # silently ignores — a bare model_dump() would emit schema_path: instead
     # of schema: and corrupt emitted artifacts.
@@ -14,7 +13,6 @@ dependencies = [
     "click>=8.3.3,<9.0.0",  # PYSEC-2026-2132 fix
     "jinja2>=3.0.0,<4.0.0",
     "python-dotenv>=1.0.0",
-    "python-dateutil>=2.8.0",
     "urllib3>=2.8.0,<3.0.0",  # PYSEC-2026-4175/4176/4177 fix
     "cryptography>=50.0.0,<51.0.0",  # PYSEC-2026-3552/3553/3554 fix (50.0.0)
     "mkdocs-material>=9.7.7,<10.0.0",  # CVE-2026-73295 fix
@@ -35,18 +33,17 @@ dependencies = [
     "pypdf>=6.21.4",  # CVE-2026-59935..59938, PYSEC-2026-4153..4160, CVE-2026-1137xx/1155xx/1192xx fix
     "azure-ai-evaluation>=1.13.0,<2.0.0",
     "evaluate>=0.4.6,<0.5.0",
-    "aiofiles>=25.1.0,<26.0.0",
     "rouge-score>=0.1.2,<0.2.0",
-    "absl-py>=2.3.1,<3.0.0",
     "sacrebleu>=2.5.1,<3.0.0",
-    "anthropic>=0.72.0,<2.7.0",
-    "ollama>=0.4,<1.0",
     # deepeval 4 needs posthog 7, which chromadb 1.0.x rejects: keep the
     # chromadb extra at >=1.5 compatible ranges. Click must stay >=8.3.3
     # (PYSEC-2026-2132).
     "deepeval>=4.3.3,<5",
+    # DeepEval's AnthropicModel/OllamaModel (built in lib/evaluators/deepeval/config.py)
+    # import these lazily and fail without them; nothing else installs them.
+    "anthropic>=0.72.0,<2.7.0",
+    "ollama>=0.4,<1.0",
     "python-ulid>=3.1.0,<5.0.0",
-    "ml-dtypes>=0.4.0,<0.7.0",
     # Cap below 2.0: claude-agent-sdk 0.2.x still uses the MCP 1.x low-level
     # Server API (@server.list_tools()), which the 2.0 line removed. Without the
     # cap, a prerelease-enabled install resolves mcp 2.0.0a1 and the Claude
@@ -211,7 +208,6 @@ override-dependencies = [
     "pytz>=2024",
 ]
 constraint-dependencies = [
-    "sentry-sdk>=2.0.0,<3.0.0",  # Pin to stable; deepeval pulls alpha 3.0 which is deprecated
     "filelock>=4.2.1",  # CVE-2025-68146, CVE-2026-112909/112910 fix
     "jaraco-context>=6.1.0",  # CVE-2026-23949 fix
     "nltk>=3.10.4",  # CVE-2025-14009, PYSEC-2026-3740 fix

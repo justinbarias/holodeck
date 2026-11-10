@@ -1,6 +1,6 @@
 # Remove Semantic Kernel and revamp the dependency stack (feature 042)
 
-**Status:** Proposed 2026-11-10 at `00d1ed4`. No task has started. Awaiting maintainer approval of this plan.
+**Status:** In progress since 2026-11-10. The maintainer approved the plan and delegated the ask-first decisions; each is recorded under "Progress and decisions".
 **Product contract:** [Spec 042](../../../product-specs/042-dependency-stack-revamp/spec.md).
 **Evidence:** [dependency inventory](../../../product-specs/042-dependency-stack-revamp/dependency-inventory.md), [selection evidence](../../../design-docs/042-dependency-stack-revamp/selection-evidence.md).
 **Debt closed by this plan:** [H-008](../../tech-debt-tracker.md#h-008).
@@ -73,18 +73,18 @@ Sizes: S is 1 to 2 files, M is 3 to 5, L is 5 to 8. Every task also runs focused
 
 Record current behavior before any replacement, so later tasks have a fixed target.
 
-- [ ] Retrieval fixtures (tracked under `tests/fixtures/`): expected IDs and order for definitions, headings, section IDs, contextual text, no-result and punctuation queries, on in-memory, Qdrant and Chroma.
-- [ ] Plain-chunk, parser (page, sheet, range, headings) and ROUGE/METEOR/BLEU score fixtures.
-- [ ] Baseline table in this plan: package count, installed bytes, `holodeck --help` and `holodeck test` import time, for base and all-extras installs.
+- [x] Retrieval fixtures (tracked under `tests/fixtures/`): expected IDs and order for definitions, headings, section IDs, contextual text, no-result and punctuation queries, on in-memory, Qdrant and Chroma.
+- [x] Plain-chunk, parser (page, sheet, range, headings) and ROUGE/METEOR/BLEU score fixtures.
+- [x] Baseline table ([baseline measurements](baseline-measurements.md)): package count, installed bytes, `holodeck --help` and `holodeck test` import time, for base and all-extras installs.
 
 **Verify:** new fixture tests pass on unchanged `main`; `make verify-live` passes.
 **Depends on:** none. **Size:** M. **Model:** Opus `medium`. **Spec:** FR-008, AC-05, AC-07, AC-09.
 
 #### T1. Remove unused declarations and the second HTTP client
 
-- [ ] Remove direct declarations of `aiofiles`, `python-dateutil`, `anthropic`, `ollama`, `absl-py`, `ml-dtypes`, and the stale `sentry-sdk` constraint. Keep any that a clean-install test shows is needed.
-- [ ] Move `lib/file_processor.py` and `services/mcp_registry.py` from Requests to HTTPX with `follow_redirects=True`; drop the direct `requests` declaration.
-- [ ] `make verify` passes; Claude, Ollama-routed and DeepEval-on-Anthropic checks pass without the removed packages.
+- [x] Remove direct declarations of `aiofiles`, `python-dateutil`, `anthropic`, `ollama`, `absl-py`, `ml-dtypes`, and the stale `sentry-sdk` constraint. Keep any that a clean-install test shows is needed.
+- [x] Move `lib/file_processor.py` and `services/mcp_registry.py` from Requests to HTTPX with `follow_redirects=True`; drop the direct `requests` declaration.
+- [x] `make verify` passes; Claude, Ollama-routed and DeepEval-on-Anthropic checks pass without the removed packages.
 
 **Verify:** `uv lock --check`, `make verify`, `make verify-live LIVE_ARGS="--backend claude"`.
 **Depends on:** none. Independent PR. **Size:** M. **Model:** Sonnet `medium`. **Spec:** FR-001, FR-007.
@@ -386,8 +386,11 @@ T0 ──┬─ T1 (independent PR)
 
 ## Progress and decisions
 
+- 2026-11-10: The maintainer delegated the open questions. Decisions: (1) `faiss`, `sql-server` and `azure-cosmos-mongo` are retired with a config-time migration error (T9); (2) Pinecone and Azure AI Search use local or mocked evidence and their live items stay open; (3) the fingerprint is stored per collection (T15); (4) extra names are fixed in T21. Each phase is one PR on a single `gh stack`, with one Codex review round per phase.
+- 2026-11-10: T0 done. Goldens under `tests/fixtures/golden/`, tests under `tests/integration/golden/` (14 pass on in-memory, Qdrant and Chroma). The goldens freeze six existing defects, listed in each expected file under `known_behavior`: Chroma semantic ranking is inverted (SK returns distance), Qdrant keyword mode returns nothing, Qdrant hybrid scores are raw RRF values, Qdrant hybrid order is not reproducible for multi-match queries, PDF and PowerPoint page selection is zero-based under a positive-only validator, and the plain splitter ignores overlap. A task that fixes one updates its golden on purpose.
+- 2026-11-10: T1 done. Removed `aiofiles`, `python-dateutil`, `absl-py`, `ml-dtypes`, `requests` and the `sentry-sdk` constraint. `anthropic` and `ollama` stay: DeepEval's `AnthropicModel` and `OllamaModel` need them.
 - 2026-11-10: Plan created after the second inventory and market scan. The retrieval direction changed from LlamaIndex to native adapters the same day; see the selection evidence. No implementation task has started.
 
 ## Validation results and remaining blockers
 
-None yet. The plan needs maintainer approval before T0 starts.
+None yet.

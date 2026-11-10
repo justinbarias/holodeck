@@ -1,0 +1,11 @@
+{
+  "pair": "one_word_changed",
+  "threshold": 0.5,
+  "passed": {
+    "rouge1": true,
+    "rouge2": true,
+    "rougeL": true,
+    "bleu": false,
+    "meteor": true
+  }
+}

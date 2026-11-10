@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Fewer direct dependencies.** `aiofiles`, `python-dateutil`, `absl-py`, `ml-dtypes`, `requests` and the stale `sentry-sdk` constraint are no longer declared; nothing in `src/` imports them. `aiofiles` and `ml-dtypes` leave the lockfile (376 to 374 packages). The remote file download and the MCP registry client now use `httpx` instead of `requests` (redirects are followed; timeouts are unchanged). `anthropic` and `ollama` stay declared because DeepEval's Anthropic and Ollama judge models need them.
+
 - **Remaining major upgrades.** `temporalio` 1.32 → 1.35 (exact pin), `opensearch-py` 2.8 → 3.2, `dash` 3.4 → 4.5, `twine` 6.2 → 7.0 and `ml-dtypes` 0.4 → 0.6. `twine` 6.2 could not read wheels with metadata 2.5, so the release `twine check` was failing. `pinecone` stays on `~=7.0`: Semantic Kernel's connector fails to import with 8+, and 7.1+ requires `packaging<25`, below the `virtualenv` security floor.
 
 - **Faster CLI start.** Commands now load only their own modules. Every command used to import the evaluation stack (pandas, DeepEval), Semantic Kernel and the agent SDKs at startup: a first `holodeck init` in a fresh environment drops from about 25 s to 1 s. `holodeck test` still loads what it needs. This also fixes subprocess tests that timed out on busy CI runners.

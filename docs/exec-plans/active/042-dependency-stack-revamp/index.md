@@ -7,3 +7,4 @@ Feature: `042-dependency-stack-revamp`. Product contract: [spec 042](../../../pr
 ## Documents
 
 - [2026-11-10-remove-semantic-kernel.md](2026-11-10-remove-semantic-kernel.md) — active execution checklist: 25 tasks (T0 to T24), three checkpoints, acceptance table
+- [baseline-measurements.md](baseline-measurements.md) — T0 install size, package count and startup time for base and all-extras installs, before any 042 change

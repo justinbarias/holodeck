@@ -1,0 +1,1 @@
+HoloDeck defines agents in YAML. A short note fits in one chunk.
