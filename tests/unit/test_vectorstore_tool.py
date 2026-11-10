@@ -1415,8 +1415,9 @@ class TestStoreChunks:
 
         assert count == 2
 
-        # Verify records were created correctly
-        call_args = _stored(adapter)
+        # Verify records were created correctly. Chunk 0 is written last, so
+        # order by chunk index rather than by insertion.
+        call_args = sorted(_stored(adapter), key=lambda record: record.chunk_index)
         assert len(call_args) == 2
         assert call_args[0].content == "chunk1"
         assert call_args[1].content == "chunk2"

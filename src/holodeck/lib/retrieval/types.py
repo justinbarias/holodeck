@@ -246,6 +246,36 @@ def clamp_similarity(raw: float) -> float:
     return max(0.0, min(1.0, float(raw)))
 
 
+def normalize_filter_value(spec: FieldSpec, value: FieldValue) -> FieldValue:
+    """Return ``value`` in the form that matches stored values of ``spec``'s type.
+
+    The filter form follows the field's type, not the Python type of the
+    argument: an ``int`` on a ``FLOAT`` field becomes a float (``mtime=2``
+    finds ``2.0``) and an integral ``float`` on an ``INTEGER`` field becomes an
+    int. Other values pass through unchanged.
+
+    Raises:
+        SchemaError: A ``bool`` is given for a numeric field. ``True`` is not
+            the number 1 here.
+    """
+    if value is None:
+        return None
+    if spec.type in (FieldType.INTEGER, FieldType.FLOAT) and isinstance(value, bool):
+        raise SchemaError(
+            f"Filter value {value!r} does not fit {spec.type.value} field "
+            f"'{spec.name}': a boolean is not a number."
+        )
+    if spec.type is FieldType.FLOAT and isinstance(value, int):
+        return float(value)
+    if (
+        spec.type is FieldType.INTEGER
+        and isinstance(value, float)
+        and value.is_integer()
+    ):
+        return int(value)
+    return value
+
+
 def validate_record(schema: CollectionSchema, record: Record) -> None:
     """Raise ``SchemaError`` when ``record`` cannot be written to ``schema``."""
     if not record.id:

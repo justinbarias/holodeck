@@ -583,7 +583,15 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Stale chunks go first. If a delete fails, chunk 0 still carries the
         # old mtime and hash, so the next start ingests the file again.
         stale = await self._delete_stale_chunks(adapter, source_key, records)
-        await adapter.upsert(records)
+        # ``_needs_reingest`` reads only chunk 0, so chunk 0 is the completion
+        # marker: it is written last, in its own call. A store may split a
+        # large upsert into several requests; if one fails after earlier ones
+        # were applied, chunk 0 keeps the old mtime and hash (or is absent)
+        # and the next start ingests the file again instead of skipping an
+        # incomplete one.
+        if records[1:]:
+            await adapter.upsert(records[1:])
+        await adapter.upsert(records[:1])
         if stale:
             logger.debug(f"Deleted {stale} stale chunks of {source_file.path}")
 

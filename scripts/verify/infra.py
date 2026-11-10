@@ -1,4 +1,4 @@
-"""Docker infrastructure for the live verify tier: Qdrant and the Aspire dashboard.
+"""Docker infrastructure for the live verify tier: vector stores and Aspire.
 
 Each service runs in a container with a fixed name. ``ensure`` reuses a
 running container, restarts a stopped one, or starts a new one, then waits
@@ -35,7 +35,7 @@ class Service:
     image: str
     ports: tuple[tuple[int, int], ...]  # (host port, container port)
     env: tuple[tuple[str, str], ...]
-    ready_url: str
+    ready_url: str | None  # None: only ``tcp_ports`` decide (no HTTP endpoint)
     ready_text: str | None = None
     tcp_ports: tuple[int, ...] = ()  # host ports that must accept connections
 
@@ -61,6 +61,19 @@ CHROMA = Service(
     env=(),
     ready_url="http://127.0.0.1:8765/api/v2/heartbeat",
     ready_text="nanosecond heartbeat",
+)
+
+# pgvector on PostgreSQL 17. Host 54329 avoids the commonly used 5432. The
+# credentials are throwaway values for this loopback-only container. The native
+# adapter creates the ``vector`` extension itself on first use.
+POSTGRES = Service(
+    label="postgres",
+    container="holodeck-verify-postgres",
+    image="pgvector/pgvector:pg17",
+    ports=((54329, 5432),),
+    env=(("POSTGRES_PASSWORD", "holodeck"), ("POSTGRES_DB", "holodeck")),
+    ready_url=None,
+    tcp_ports=(54329,),
 )
 
 # Image env (docker inspect): UI on 18888, OTLP/gRPC on 18889, OTLP/HTTP on
@@ -141,14 +154,15 @@ def run_args(service: Service) -> list[str]:
 
 def probe(service: Service) -> str | None:
     """Return why *service* is not ready right now, or ``None`` when it is."""
-    try:
-        response = httpx.get(service.ready_url, timeout=2.0, follow_redirects=True)
-    except httpx.HTTPError as exc:
-        return f"{service.ready_url}: {type(exc).__name__}"
-    if response.status_code != 200:
-        return f"{service.ready_url}: HTTP {response.status_code}"
-    if service.ready_text is not None and service.ready_text not in response.text:
-        return f"{service.ready_url}: missing {service.ready_text!r}"
+    if service.ready_url is not None:
+        try:
+            response = httpx.get(service.ready_url, timeout=2.0, follow_redirects=True)
+        except httpx.HTTPError as exc:
+            return f"{service.ready_url}: {type(exc).__name__}"
+        if response.status_code != 200:
+            return f"{service.ready_url}: HTTP {response.status_code}"
+        if service.ready_text is not None and service.ready_text not in response.text:
+            return f"{service.ready_url}: missing {service.ready_text!r}"
     closed = [port for port in service.tcp_ports if not port_open(port)]
     if closed:
         return f"port(s) {closed} not accepting connections"

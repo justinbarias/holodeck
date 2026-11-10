@@ -24,6 +24,7 @@ from holodeck.lib.retrieval import (
     VectorStoreAdapter,
 )
 from tests.contract.retrieval.conftest import CORPUS, DIMENSIONS, make_record
+from tests.contract.retrieval.targets import ContractTarget
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -146,6 +147,26 @@ async def test_find_matches_exact_field_values(loaded: VectorStoreAdapter) -> No
 
     assert await loaded.find(RecordFilter.where(source_path="b")) == []
     assert len(await loaded.find(RecordFilter.where(source_path="b.md"), limit=1)) == 1
+
+
+async def test_find_matches_a_number_by_the_type_of_the_field(
+    loaded: VectorStoreAdapter, target: ContractTarget
+) -> None:
+    """``where(mtime=2)`` finds ``2.0``, and ``where(chunk_index=1.0)`` finds ``1``."""
+    needs(loaded, Operation.FIND)
+    if target.name.startswith("sk-bridge:qdrant"):
+        # The bridge builds the filter from the Python type of the value. It
+        # is deleted in T16, so it is not fixed.
+        pytest.skip("the Semantic Kernel bridge is deleted in T16")
+    await loaded.upsert(
+        [make_record("d_chunk_0", [1.0, 1.0, 0.0, 0.0], source="d.md", mtime=2.0)]
+    )
+
+    by_float = await loaded.find(RecordFilter.where(mtime=2))
+    assert [record.id for record in by_float] == ["d_chunk_0"]
+
+    by_integer = await loaded.find(RecordFilter.where(chunk_index=1.0))
+    assert sorted(record.id for record in by_integer) == ["a_chunk_1", "b_chunk_1"]
 
 
 async def test_list_page_returns_every_record_once(

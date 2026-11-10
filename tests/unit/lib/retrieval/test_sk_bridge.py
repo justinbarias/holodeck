@@ -50,18 +50,18 @@ _FIELD_TYPES = {
     "bool": FieldType.BOOLEAN,
 }
 
+# Providers the registry still routes to the bridge. chromadb has a native
+# adapter (042 T6); SKChromaAdapter stays for compatibility tests until T16.
 BRIDGED = [
-    "postgres",
     "azure-ai-search",
     "qdrant",
     "weaviate",
-    "chromadb",
     "faiss",
     "azure-cosmos-mongo",
     "azure-cosmos-nosql",
     "sql-server",
-    "pinecone",
 ]
+# "pinecone" left the bridge in 042 T8: the registry points at the native adapter.
 
 
 def _schema_from(definition: VectorStoreCollectionDefinition) -> CollectionSchema:
@@ -139,9 +139,20 @@ def test_definition_has_one_key_and_one_cosine_vector_field() -> None:
     assert vector.distance_function.value == "cosine_similarity"
 
 
+# Providers that moved to a native adapter; their bridge class stays until T16.
+NATIVE = {"qdrant": "QdrantAdapter"}
+BRIDGE_CLASSES: dict[str, type[SKBridgeAdapter]] = {
+    "qdrant": SKQdrantAdapter,
+}
+
+
 def test_registry_maps_every_bridged_provider() -> None:
     assert PROVIDERS["in-memory"].class_name == "InMemoryAdapter"
-    for provider in BRIDGED:
+    assert PROVIDERS["postgres"].class_name == "PostgresAdapter"
+    for provider, class_name in NATIVE.items():
+        assert PROVIDERS[provider].class_name == class_name
+        assert PROVIDERS[provider].module.endswith(f".adapters.{provider}")
+    for provider in (p for p in BRIDGED if p not in NATIVE):
         entry = PROVIDERS[provider]
         assert entry.module == "holodeck.lib.retrieval.adapters.sk_bridge"
         adapter_class = getattr(importlib.import_module(entry.module), entry.class_name)
@@ -164,20 +175,6 @@ def _schema() -> CollectionSchema:
     return CollectionSchema("docs", 4, (FieldSpec("content", full_text=True),))
 
 
-def test_missing_client_with_an_extra_names_the_extra() -> None:
-    with (
-        patch(
-            "holodeck.lib.vector_store.get_collection_class",
-            side_effect=ImportError("no qdrant"),
-        ),
-        pytest.raises(MissingClientError) as raised,
-    ):
-        create_adapter("qdrant", _schema(), {})
-
-    assert raised.value.extra == "qdrant"
-    assert "pip install 'holodeck-ai[qdrant]'" in str(raised.value)
-
-
 def test_missing_client_without_an_extra_keeps_the_package_hint() -> None:
     with (
         patch(
@@ -197,23 +194,20 @@ _FILTERS = {Operation.FIND, Operation.LIST, Operation.DELETE_WHERE, Operation.CO
 _BASE = {Operation.UPSERT, Operation.GET, Operation.DELETE, Operation.VECTOR_SEARCH}
 _HYBRID = {Operation.HYBRID_SEARCH}
 EXPECTED: dict[str, set[Operation]] = {
-    "postgres": _BASE | _FILTERS,
     "azure-ai-search": _BASE | _HYBRID,
     "qdrant": _BASE | _FILTERS | _HYBRID,
     "weaviate": _BASE | _FILTERS | _HYBRID,
-    "chromadb": _BASE | _FILTERS,
     "faiss": _BASE,
     "azure-cosmos-mongo": _BASE,
     "azure-cosmos-nosql": _BASE | _HYBRID,
     "sql-server": _BASE,
-    "pinecone": _BASE,
 }
 
 
 @pytest.mark.parametrize("provider", BRIDGED)
 def test_capabilities_match_what_works_today(provider: str) -> None:
     entry = PROVIDERS[provider]
-    adapter_class: type[SKBridgeAdapter] = getattr(
+    adapter_class: type[SKBridgeAdapter] = BRIDGE_CLASSES.get(provider) or getattr(
         importlib.import_module(entry.module), entry.class_name
     )
 

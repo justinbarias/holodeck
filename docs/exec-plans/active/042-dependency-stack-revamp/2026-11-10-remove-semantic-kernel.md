@@ -135,34 +135,34 @@ T5 to T8 each replace the bridge for one provider. After T4 they touch disjoint 
 
 Consolidate the existing native Qdrant code into the adapter. This is the highest-risk adapter, so it goes first.
 
-- [ ] UUIDv5 IDs, the `embedding` vector name, payload layout, payload and full-text indexes, and async-client ownership are unchanged.
-- [ ] Dense plus full-text RRF matches T0 fixtures, including the punctuation-only fallback and candidate pool `max(4 * top_k, 20)`.
-- [ ] A collection created on `main` and a newly created collection both pass.
+- [x] UUIDv5 IDs, the `embedding` vector name, payload layout, payload and full-text indexes, and async-client ownership are unchanged.
+- [x] Dense plus full-text RRF matches T0 fixtures, including the punctuation-only fallback and candidate pool `max(4 * top_k, 20)`.
+- [x] A collection created on `main` and a newly created collection both pass.
 
 **Verify:** contract suite, T0 Qdrant fixtures, `make verify-live` (Qdrant in Docker).
 **Depends on:** T4. **Size:** M. **Model:** Opus `medium`. **Spec:** FR-017, FR-018, AC-05.
 
 #### T6. Chroma adapter
 
-- [ ] Contract suite passes for HTTP and embedded modes; embedded calls run off the event loop.
-- [ ] A collection created on `main` reads correctly.
+- [x] Contract suite passes for HTTP and embedded modes; embedded calls run off the event loop.
+- [x] A collection created on `main` reads correctly.
 
 **Verify:** contract suite, T0 Chroma fixtures, `make verify-live` (Chroma in Docker).
 **Depends on:** T4. **Size:** M. **Model:** Opus `medium`. **Spec:** FR-020, AC-04.
 
 #### T7. Postgres adapter
 
-- [ ] psycopg 3 async with `pgvector`; existing SK table layout is read and written unchanged.
-- [ ] A pgvector container joins `make verify-live`.
+- [x] psycopg 3 async with `pgvector`; existing SK table layout is read and written unchanged.
+- [x] A pgvector container joins `make verify-live`.
 
 **Verify:** contract suite against the container; a table created by the SK connector reads correctly.
 **Depends on:** T4. **Size:** M. **Model:** Opus `medium`. **Spec:** FR-015, AC-04.
 
 #### T8. Pinecone adapter on client 10
 
-- [ ] Adapter uses `pinecone` 10 async; the `pinecone` extra moves to `>=10,<11`.
-- [ ] The Dependabot ignore for Pinecone majors is removed.
-- [ ] Enumeration strategy for source replacement is documented; if the service cannot support it, the capability error applies.
+- [x] Adapter uses `pinecone` 10 async; the `pinecone` extra moves to `>=10,<11`.
+- [x] The Dependabot ignore for Pinecone majors is removed.
+- [x] Enumeration strategy for source replacement is documented; if the service cannot support it, the capability error applies.
 
 **Verify:** contract suite against Pinecone Local in Docker; a live-index run if the maintainer supplies credentials, otherwise recorded as open.
 **Depends on:** T4. **Size:** M. **Model:** Opus `medium`. **Spec:** FR-014, AC-04.
@@ -387,6 +387,11 @@ T0 ──┬─ T1 (independent PR)
 ## Progress and decisions
 
 - 2026-11-10: The maintainer delegated the open questions. Decisions: (1) `faiss`, `sql-server` and `azure-cosmos-mongo` are retired with a config-time migration error (T9); (2) Pinecone and Azure AI Search use local or mocked evidence and their live items stay open; (3) the fingerprint is stored per collection (T15); (4) extra names are fixed in T21. Each phase is one PR on a single `gh stack`, with one Codex review round per phase.
+- 2026-11-10: T5 to T8 done. Native adapters for Qdrant, Chroma, Postgres and Pinecone replace the bridge for those providers.
+  - Qdrant: layout, point IDs, payload indexes and hybrid ranking proven equal to the SK path in both directions (`tests/integration/retrieval/test_qdrant_compat.py`); goldens unchanged.
+  - Chroma: writes are delete-then-add. Chroma 1.5.9 `upsert` and `update` drop a row from the vector index in about 5% of 36-chunk ingests (reproduced; `add` never did in 220 runs). A unit test forbids `upsert` and `update`. The sync client is used for HTTP too, off the event loop, because the async client has no public close.
+  - Postgres: psycopg 3 and `pgvector`; DDL equal to SK's. The SK path was broken live in two ways (it ignored a non-default port and returned distance as the score), so Postgres scores and ports are fixed, not preserved. A pgvector container and a `postgres vectorstore tool` case join `make verify-live`.
+  - Pinecone: client 10.3. Pinecone Local reached end of life on 2026-10-07 and cannot run the v10 control plane, so the contract suite runs the data plane on Local and the control plane on a fake client. Default collection names had underscores, which Pinecone rejects, so the SK path could never create an index; the adapter normalizes names. **Live Pinecone evidence stays open.**
 - 2026-11-10: T2 to T4 done. The contract is `src/holodeck/lib/retrieval/` (types, errors, `VectorStoreAdapter`, registry) with the contract suite in `tests/contract/retrieval/`. Tools hold an adapter; `lib/collection_filter.py` is deleted. Two behavior changes: Chroma results now rank by similarity (SK returned distance), and `HierarchicalDocumentTool` raises a capability error before ingestion on providers with no exact-filter read (pinecone, azure-ai-search, azure-cosmos-nosql and the three retired names). Before, those providers re-ingested on every start and never deleted stale chunks. Native adapters in Phases 2 and 3 restore them.
 - 2026-11-10: T0 done. Goldens under `tests/fixtures/golden/`, tests under `tests/integration/golden/` (14 pass on in-memory, Qdrant and Chroma). The goldens freeze six existing defects, listed in each expected file under `known_behavior`: Chroma semantic ranking is inverted (SK returns distance), Qdrant keyword mode returns nothing, Qdrant hybrid scores are raw RRF values, Qdrant hybrid order is not reproducible for multi-match queries, PDF and PowerPoint page selection is zero-based under a positive-only validator, and the plain splitter ignores overlap. A task that fixes one updates its golden on purpose.
 - 2026-11-10: T1 done. Removed `aiofiles`, `python-dateutil`, `absl-py`, `ml-dtypes`, `requests` and the `sentry-sdk` constraint. `anthropic` and `ollama` stay: DeepEval's `AnthropicModel` and `OllamaModel` need them.

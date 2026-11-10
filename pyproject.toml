@@ -106,10 +106,11 @@ dev = [
 
 # Vector store providers (install only what you need)
 pinecone = [
-    "pinecone[asyncio,grpc]~=7.0",
+    "pinecone>=10,<11",
 ]
 postgres = [
-    "psycopg[binary,pool]~=3.2",
+    "psycopg[binary,pool]>=3.3,<4.0",
+    "pgvector>=0.5,<1.0",
 ]
 qdrant = [
     "qdrant-client>=1.18,<2.0",
@@ -120,8 +121,9 @@ chromadb = [
 
 # Convenience group for all vector stores
 vectorstores = [
-    "pinecone[asyncio,grpc]~=7.0",
-    "psycopg[binary,pool]~=3.2",
+    "pinecone>=10,<11",
+    "psycopg[binary,pool]>=3.3,<4.0",
+    "pgvector>=0.5,<1.0",
     "qdrant-client>=1.18,<2.0",
     "chromadb>=0.5,<1.6",
 ]

@@ -148,6 +148,7 @@ def test_live_fixtures_without_rag_keep_non_rag_cases(fixture: str) -> None:
     assert dropped == [
         "vectorstore tool",
         "chromadb vectorstore tool",
+        "postgres vectorstore tool",
         "hierarchical document tool",
     ]
     kept = set(_names(data["tools"]))
@@ -273,6 +274,20 @@ def test_run_args_bind_loopback_and_pin_image() -> None:
     chroma = infra.run_args(infra.CHROMA)
     assert chroma[-1] == "chromadb/chroma:1.5.9"
     assert "127.0.0.1:8765:8000" in chroma
+    postgres = infra.run_args(infra.POSTGRES)
+    assert postgres[-1] == "pgvector/pgvector:pg17"
+    assert "127.0.0.1:54329:5432" in postgres
+    assert "POSTGRES_DB=holodeck" in postgres
+    assert infra.POSTGRES.container == "holodeck-verify-postgres"
+
+
+def test_a_service_without_an_http_endpoint_is_ready_when_its_port_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(infra, "port_open", lambda port, host="127.0.0.1": False)
+    assert infra.probe(infra.POSTGRES) == "port(s) [54329] not accepting connections"
+    monkeypatch.setattr(infra, "port_open", lambda port, host="127.0.0.1": True)
+    assert infra.probe(infra.POSTGRES) is None
 
 
 def test_ensure_without_docker_is_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:

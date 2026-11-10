@@ -45,18 +45,20 @@ _BRIDGE = f"{_ADAPTERS}.sk_bridge"
 
 PROVIDERS: dict[str, ProviderEntry] = {
     "in-memory": ProviderEntry(f"{_ADAPTERS}.in_memory", "InMemoryAdapter"),
+    "qdrant": ProviderEntry(f"{_ADAPTERS}.qdrant", "QdrantAdapter", extra="qdrant"),
+    "postgres": ProviderEntry(
+        f"{_ADAPTERS}.postgres", "PostgresAdapter", extra="postgres"
+    ),
+    "chromadb": ProviderEntry(f"{_ADAPTERS}.chroma", "ChromaAdapter", extra="chromadb"),
     # Temporary Semantic Kernel bridge; each entry moves to a native adapter
     # and the bridge is deleted in task T16 of the 042 exec plan.
-    "postgres": ProviderEntry(_BRIDGE, "SKPostgresAdapter", extra="postgres"),
     "azure-ai-search": ProviderEntry(_BRIDGE, "SKAzureAISearchAdapter"),
-    "qdrant": ProviderEntry(_BRIDGE, "SKQdrantAdapter", extra="qdrant"),
     "weaviate": ProviderEntry(_BRIDGE, "SKWeaviateAdapter"),
-    "chromadb": ProviderEntry(_BRIDGE, "SKChromaAdapter", extra="chromadb"),
     "faiss": ProviderEntry(_BRIDGE, "SKFaissAdapter"),
     "azure-cosmos-mongo": ProviderEntry(_BRIDGE, "SKCosmosMongoAdapter"),
     "azure-cosmos-nosql": ProviderEntry(_BRIDGE, "SKCosmosNoSqlAdapter"),
     "sql-server": ProviderEntry(_BRIDGE, "SKSqlServerAdapter"),
-    "pinecone": ProviderEntry(_BRIDGE, "SKPineconeAdapter", extra="pinecone"),
+    "pinecone": ProviderEntry(f"{_ADAPTERS}.pinecone", "PineconeAdapter", "pinecone"),
 }
 
 RETIRED_PROVIDERS: dict[str, str] = {}

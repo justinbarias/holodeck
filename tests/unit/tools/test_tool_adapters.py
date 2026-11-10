@@ -7,7 +7,7 @@ of a shrunken file are removed, and a tool releases its adapter on close.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +16,7 @@ import pytest
 from holodeck.lib.retrieval import (
     CollectionSchema,
     Operation,
+    Record,
     UnsupportedOperationError,
 )
 from holodeck.models.tool import HierarchicalDocumentToolConfig, SearchMode
@@ -233,6 +234,107 @@ async def test_hierarchical_tool_skips_an_unchanged_file(
 
     assert skipped == 1
     assert len(shared.adapter.stored()) == stored
+
+
+# -- completion marker ---------------------------------------------------------
+
+
+class BatchFailingAdapter(FakeAdapter):
+    """Fake adapter that writes in batches and fails on one chosen batch.
+
+    Models a store that splits a large upsert into several requests, one of
+    which fails after earlier ones were applied.
+    """
+
+    batch_size = 2
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self.fail_on_batch: int | None = None
+        self.batches = 0
+
+    async def upsert(self, records: Sequence[Record]) -> None:
+        for start in range(0, len(records), self.batch_size):
+            self.batches += 1
+            if self.fail_on_batch is not None and self.batches >= self.fail_on_batch:
+                raise RuntimeError("simulated failure of a write batch")
+            await super().upsert(records[start : start + self.batch_size])
+
+
+@pytest.mark.asyncio
+async def test_vectorstore_tool_publishes_chunk_zero_only_after_the_other_chunks(
+    tmp_path: Path,
+) -> None:
+    """A write that fails midway leaves the old chunk 0, so the next start retries."""
+    source = tmp_path / "doc.md"
+    source.write_text(_long_text(10))
+    holder: dict[str, BatchFailingAdapter] = {}
+
+    def create(
+        provider: str,
+        schema: CollectionSchema,
+        connection: Mapping[str, object] | None = None,
+    ) -> BatchFailingAdapter:
+        if "adapter" not in holder:
+            holder["adapter"] = BatchFailingAdapter(schema, provider=provider)
+        return holder["adapter"]
+
+    with patch("holodeck.lib.retrieval.create_adapter", side_effect=create):
+        await _vector_tool(source).initialize()
+        adapter = holder["adapter"]
+        chunk_zero = next(r for r in adapter.stored() if r.fields["chunk_index"] == 0)
+        old_mtime = chunk_zero.fields["mtime"]
+
+        source.write_text(_long_text(10) + "\n\nAn appended paragraph.")
+        _touch_later(source)
+        tool = _vector_tool(source)
+        adapter.fail_on_batch = adapter.batches + 2  # fails after one batch applied
+
+        with pytest.raises(RuntimeError, match="simulated"):
+            await tool.initialize(force_ingest=False)
+
+        stored_zero = next(r for r in adapter.stored() if r.fields["chunk_index"] == 0)
+        assert stored_zero.fields["mtime"] == old_mtime
+        assert await tool._needs_reingest(source) is True
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_tool_retries_a_source_whose_rewrite_stopped_midway(
+    tmp_path: Path,
+) -> None:
+    """One stored chunk with an old mtime is enough to ingest the source again."""
+    source = tmp_path / "doc.md"
+    source.write_text(_sections(6))
+    holder: dict[str, BatchFailingAdapter] = {}
+
+    def create(
+        provider: str,
+        schema: CollectionSchema,
+        connection: Mapping[str, object] | None = None,
+    ) -> BatchFailingAdapter:
+        if "adapter" not in holder:
+            holder["adapter"] = BatchFailingAdapter(schema, provider=provider)
+        return holder["adapter"]
+
+    with patch("holodeck.lib.retrieval.create_adapter", side_effect=create):
+        await _hierarchical_tool(source).initialize(force_ingest=False)
+        adapter = holder["adapter"]
+
+        source.write_text(_sections(6) + "\n\n## Appendix\n\nExtra closing words.")
+        _touch_later(source)
+        tool = _hierarchical_tool(source)
+        adapter.fail_on_batch = adapter.batches + 2  # fails after one batch applied
+
+        with pytest.raises(RuntimeError, match="simulated"):
+            await tool.initialize(force_ingest=False)
+
+        # Chunks of the first batch carry the new mtime, the rest the old one.
+        assert len({r.fields["mtime"] for r in adapter.stored()}) == 2
+        assert await tool._needs_reingest(source) is True
+
+        adapter.fail_on_batch = None
+        await _hierarchical_tool(source).initialize(force_ingest=False)
+        assert len({r.fields["mtime"] for r in adapter.stored()}) == 1
 
 
 # -- lifecycle -----------------------------------------------------------------
