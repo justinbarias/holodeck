@@ -15,8 +15,6 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "urllib3>=2.8.0,<3.0.0",  # PYSEC-2026-4175/4176/4177 fix
     "cryptography>=50.0.0,<51.0.0",  # PYSEC-2026-3552/3553/3554 fix (50.0.0)
-    "mkdocs-material>=9.7.7,<10.0.0",  # CVE-2026-73295 fix
-    "twine>=6.2.0,<8.0.0",
     # format-nongpl (not the bare "format" extra): "format" pulls in rfc3987,
     # which is GPL-licensed and would contaminate this MIT-licensed project.
     # >=4.18: the workflow edge gate imports jsonschema.validators.SPECIFICATIONS
@@ -106,6 +104,10 @@ dev = [
     "types-PyYAML>=6.0.12",
     "mkdocstrings[python]>=0.25.0",
     "mkdocs-llmstxt>=0.4",
+    # Docs site and release tooling: development only, never in the wheel's
+    # runtime requirements (042 T21).
+    "mkdocs-material>=9.7.7,<10.0.0",  # CVE-2026-73295 fix
+    "twine>=6.2.0,<8.0.0",
 ]
 
 # Vector store providers (install only what you need)
