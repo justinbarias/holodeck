@@ -412,6 +412,36 @@ class TestInitializeAllTools:
             assert "hd_tool" in result
 
     @pytest.mark.asyncio
+    async def test_failure_closes_tools_already_created(self) -> None:
+        """A later tool's failure releases the clients of earlier tools."""
+        vs_tool = _make_vectorstore_tool(name="vs_tool")
+        hd_tool = _make_hierarchical_doc_tool(name="hd_tool")
+        agent = _make_agent(tools=[vs_tool, hd_tool])
+
+        vs_instance = MagicMock(initialize=AsyncMock(), close=AsyncMock())
+        hd_instance = MagicMock(
+            initialize=AsyncMock(side_effect=RuntimeError("store down")),
+            close=AsyncMock(),
+        )
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                MagicMock(return_value=vs_instance),
+            ),
+            patch(
+                "holodeck.tools.hierarchical_document_tool.HierarchicalDocumentTool",
+                MagicMock(return_value=hd_instance),
+            ),
+            pytest.raises(ToolInitializerError, match="store down"),
+        ):
+            await initialize_tools(agent)
+
+        vs_instance.close.assert_awaited_once()
+        hd_instance.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_anthropic_agent_uses_embedding_provider_for_dimensions(self) -> None:
         """Anthropic + Ollama embedding_provider → uses 'ollama' for dimensions."""
         embedding_provider = LLMProvider(
@@ -908,6 +938,34 @@ class TestInitializeSingleTool:
             mock_hd_cls.assert_called_once_with(tool, execution_config=None)
             mock_hd_instance.set_embedding_service.assert_called_once()
             mock_hd_instance.initialize.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("fails", [False, True], ids=["success", "failure"])
+    async def test_closes_the_tool_after_ingestion(self, fails: bool) -> None:
+        """The tool exists only to ingest, so its vector store client is released."""
+        tool = _make_vectorstore_tool(name="vs_close")
+        agent = _make_agent(tools=[tool])
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.initialize = AsyncMock(
+            side_effect=RuntimeError("ingest failed") if fails else None
+        )
+        mock_vs_instance.close = AsyncMock()
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                MagicMock(return_value=mock_vs_instance),
+            ),
+        ):
+            if fails:
+                with pytest.raises(RuntimeError, match="ingest failed"):
+                    await initialize_single_tool(agent, "vs_close")
+            else:
+                await initialize_single_tool(agent, "vs_close")
+
+        mock_vs_instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_unknown_tool_name_raises(self) -> None:

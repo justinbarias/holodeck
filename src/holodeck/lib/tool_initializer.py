@@ -8,7 +8,7 @@ abstractions (connectors, record models) are unaffected.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -30,6 +30,8 @@ if TYPE_CHECKING:
     from holodeck.models.agent import Agent
     from holodeck.models.config import ExecutionConfig
     from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
+    from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+    from holodeck.tools.vectorstore_tool import VectorStoreTool
 
 logger = logging.getLogger(__name__)
 
@@ -228,32 +230,48 @@ async def initialize_tools(
 
         effective_base_dir = agent_base_dir.get()
 
-    # Initialize vectorstore tools
-    if has_vs:
-        vs_instances = await _initialize_vectorstore_tools(
-            agent=agent,
-            embedding_service=embedding_service,
-            force_ingest=force_ingest,
-            execution_config=execution_config,
-            provider_type=provider_type,
-            base_dir=effective_base_dir,
-        )
-        instances.update(vs_instances)
+    try:
+        # Initialize vectorstore tools
+        if has_vs:
+            vs_instances = await _initialize_vectorstore_tools(
+                agent=agent,
+                embedding_service=embedding_service,
+                force_ingest=force_ingest,
+                execution_config=execution_config,
+                provider_type=provider_type,
+                base_dir=effective_base_dir,
+            )
+            instances.update(vs_instances)
 
-    # Initialize hierarchical document tools
-    if has_hd:
-        hd_instances = await initialize_hierarchical_doc_tools(
-            agent=agent,
-            embedding_service=embedding_service,
-            force_ingest=force_ingest,
-            provider_type=provider_type,
-            base_dir=effective_base_dir,
-            context_generator=context_generator,
-            execution_config=execution_config,
-        )
-        instances.update(hd_instances)
+        # Initialize hierarchical document tools
+        if has_hd:
+            hd_instances = await initialize_hierarchical_doc_tools(
+                agent=agent,
+                embedding_service=embedding_service,
+                force_ingest=force_ingest,
+                provider_type=provider_type,
+                base_dir=effective_base_dir,
+                context_generator=context_generator,
+                execution_config=execution_config,
+            )
+            instances.update(hd_instances)
+    except BaseException:
+        # The caller never receives these instances, so release them here.
+        await close_tools(instances.values())
+        raise
 
     return instances
+
+
+async def close_tools(
+    tools: Iterable[VectorStoreTool | HierarchicalDocumentTool],
+) -> None:
+    """Close each tool's vector store client, logging (not raising) failures."""
+    for tool in tools:
+        try:
+            await tool.close()
+        except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+            logger.warning("Error closing tool %s: %s", tool.config.name, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +353,7 @@ async def _initialize_vectorstore_tools(
 
     instances: dict[str, Any] = {}
     cleanup_stack: list[Path] = []
+    created: list[VectorStoreTool | HierarchicalDocumentTool] = []
 
     try:
         for tool_config in agent.tools or []:
@@ -362,6 +381,7 @@ async def _initialize_vectorstore_tools(
                     base_dir=base_dir,
                     execution_config=execution_config,
                 )
+                created.append(tool)
                 if is_remote and resolved_local_path is not None:
                     tool.set_source_context(
                         source_root=resolved_local_path,
@@ -380,7 +400,9 @@ async def _initialize_vectorstore_tools(
                     f"Failed to initialize vectorstore tool "
                     f"'{tool_config.name}': {exc}"
                 ) from exc
-    except Exception:
+    except BaseException:
+        # BaseException: a cancelled start must still release open clients.
+        await close_tools(created)
         for temp_dir in cleanup_stack:
             await SourceResolver.cleanup(temp_dir)
         raise
@@ -527,6 +549,7 @@ async def initialize_hierarchical_doc_tools(
 
     instances: dict[str, Any] = {}
     cleanup_stack: list[Path] = []
+    created: list[VectorStoreTool | HierarchicalDocumentTool] = []
 
     try:
         for tool_config in agent.tools or []:
@@ -554,6 +577,7 @@ async def initialize_hierarchical_doc_tools(
                     base_dir=base_dir,
                     execution_config=execution_config,
                 )
+                created.append(tool)
                 if is_remote and resolved_local_path is not None:
                     tool.set_source_context(
                         source_root=resolved_local_path,
@@ -583,7 +607,9 @@ async def initialize_hierarchical_doc_tools(
                     f"Failed to initialize hierarchical document tool "
                     f"'{tool_config.name}': {exc}"
                 ) from exc
-    except Exception:
+    except BaseException:
+        # BaseException: a cancelled start must still release open clients.
+        await close_tools(created)
         for temp_dir in cleanup_stack:
             await SourceResolver.cleanup(temp_dir)
         raise
@@ -667,11 +693,15 @@ async def initialize_single_tool(
         vs_tool.set_embedding_service(
             _embedding_service_for_tool(agent, vs_config, embedding_service)
         )
-        await vs_tool.initialize(
-            force_ingest=force_ingest,
-            provider_type=provider_type,
-            progress_callback=progress_callback,
-        )
+        try:
+            await vs_tool.initialize(
+                force_ingest=force_ingest,
+                provider_type=provider_type,
+                progress_callback=progress_callback,
+            )
+        finally:
+            # The tool exists only to ingest; release its client.
+            await close_tools([vs_tool])
     else:
         hd_tool = HierarchicalDocumentTool(
             cast(HierarchicalDocumentToolConfig, tool_config),
@@ -680,10 +710,14 @@ async def initialize_single_tool(
         if is_remote and source_override is not None:
             hd_tool.set_source_context(source_root=source_override, is_remote=True)
         hd_tool.set_embedding_service(embedding_service)
-        await hd_tool.initialize(
-            force_ingest=force_ingest,
-            provider_type=provider_type,
-            progress_callback=progress_callback,
-        )
+        try:
+            await hd_tool.initialize(
+                force_ingest=force_ingest,
+                provider_type=provider_type,
+                progress_callback=progress_callback,
+            )
+        finally:
+            # The tool exists only to ingest; release its client.
+            await close_tools([hd_tool])
 
     logger.info("Initialized single tool: %s", tool_name)

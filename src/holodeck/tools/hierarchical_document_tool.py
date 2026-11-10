@@ -42,14 +42,28 @@ Classes:
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from holodeck.lib.collection_filter import find_all_records, find_records_by_field
 from holodeck.lib.keyword_search import HybridSearchExecutor
+from holodeck.lib.retrieval import (
+    Operation,
+    Record,
+    RecordFilter,
+    UnsupportedOperationError,
+    VectorQuery,
+    VectorStoreAdapter,
+    clamp_similarity,
+)
+from holodeck.lib.retrieval.schemas import (
+    chunk_from_record,
+    chunk_to_record,
+    float_field,
+    hierarchical_schema,
+    text_field,
+)
 
 if TYPE_CHECKING:
     from holodeck.lib.backends.base import ContextGenerator
@@ -79,6 +93,17 @@ from holodeck.tools.common import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Operations ingestion and search use. Incremental ingestion looks records up
+# and deletes them by source_path, so FIND is required: without it a changed
+# file would be re-ingested on every start and its stale chunks never removed.
+# Checked before ingestion starts (FR-014).
+_REQUIRED_OPERATIONS = (
+    Operation.UPSERT,
+    Operation.DELETE,
+    Operation.FIND,
+    Operation.VECTOR_SEARCH,
+)
 
 
 class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
@@ -141,10 +166,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         # Service injection attributes
         self._embedding_service: Any = None
-        self._collection: Any = None
+        self._adapter: VectorStoreAdapter | None = None
         self._provider: str = "in-memory"
         self._embedding_dimensions: int | None = None
-        self._qdrant_indexes_ensured: bool = False
 
         # Lazily constructed FileProcessor (see _get_file_processor)
         self._file_processor: FileProcessor | None = None
@@ -246,10 +270,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     def _build_searchable_text(chunk: DocumentChunk) -> str:
         """Build the concatenated text indexed for native hybrid keyword search.
 
-        SK's ``QdrantCollection.hybrid_search`` only consults one
-        ``additional_property_name``, so we fold every text-bearing field
-        into a single ``searchable_text`` string and let qdrant's Tantivy
-        payload index handle the lexical pass.
+        Native hybrid search consults one full-text field, so we fold every
+        text-bearing field into a single ``searchable_text`` string and let
+        the store's full-text index handle the lexical pass.
 
         The boost recipe mirrors :func:`_build_bm25_document` so the
         BM25-fallback path and the qdrant-native path index the same shape:
@@ -331,17 +354,20 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             chunk.id = chunk.id.replace(old_prefix, new_prefix, 1)
 
     def _setup_collection(self, provider_type: str = "openai") -> None:
-        """Set up the vector store collection for chunk storage.
+        """Set up the vector store adapter for chunk storage.
 
-        Uses DatabaseConfigMixin methods for config resolution and collection creation
-        with automatic fallback to in-memory storage.
+        Uses DatabaseConfigMixin methods for config resolution and adapter
+        creation with automatic fallback to in-memory storage, then checks
+        that the provider supports every operation ingestion needs.
 
         Args:
             provider_type: LLM provider type for dimension resolution
                 (e.g., "openai", "azure_openai", "ollama").
-        """
-        from holodeck.lib.vector_store import create_hierarchical_document_record_class
 
+        Raises:
+            UnsupportedOperationError: The provider lacks an operation that
+                ingestion or search needs. Raised before any ingestion.
+        """
         # Resolve embedding dimensions if not set
         if self._embedding_dimensions is None:
             from holodeck.config.defaults import get_embedding_dimensions
@@ -355,22 +381,33 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             self.config.database
         )
 
-        # Create record class with correct dimensions and tool name
-        record_class = create_hierarchical_document_record_class(
-            self._embedding_dimensions, self.config.name
+        schema = hierarchical_schema(
+            self._embedding_dimensions, self.config.name, connection_kwargs
         )
 
-        # Use mixin to create collection with fallback
-        self._collection = self._create_collection_with_fallback(
+        # Use mixin to create the adapter with fallback
+        self._adapter = self._create_adapter_with_fallback(
             provider=provider,
-            dimensions=self._embedding_dimensions,
+            schema=schema,
             connection_kwargs=connection_kwargs,
-            record_class=record_class,
         )
+        self._adapter.capabilities.require(*_REQUIRED_OPERATIONS)
 
         logger.debug(
             f"Collection setup: provider={self._provider}, "
             f"dimensions={self._embedding_dimensions}"
+        )
+
+    def _require_adapter(self) -> VectorStoreAdapter:
+        """Return the adapter or raise when the collection is not set up."""
+        if self._adapter is None:
+            raise RuntimeError("Collection not initialized")
+        return self._adapter
+
+    def _uses_native_hybrid(self) -> bool:
+        """Return True when the store runs the keyword leg itself."""
+        return self._adapter is not None and self._adapter.capabilities.supports(
+            Operation.HYBRID_SEARCH
         )
 
     def _resolve_source_path(self) -> Path:
@@ -406,39 +443,36 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             True if file needs re-ingestion (modified or not in store).
             False if file is up-to-date.
         """
-        if self._collection is None:
+        if self._adapter is None:
             return True  # No collection, must ingest
 
         source_key = self._compute_source_key(file_path)
 
-        async with self._collection as collection:
-            try:
-                # SK's keyless collection.get(filter=...) raises NotImplementedError
-                # on every backend we ship; collection_filter dispatches to each
-                # backend's native client. See holodeck.lib.collection_filter.
-                records = await find_records_by_field(
-                    self._provider, collection, "source_path", source_key
-                )
+        try:
+            records = await self._adapter.find(
+                RecordFilter.where(source_path=source_key), limit=1
+            )
 
-                if not records:
-                    return True  # Not in store, must ingest
+            if not records:
+                return True  # Not in store, must ingest
 
-                if self._is_remote:
-                    # For remote sources, compare content hash
-                    current_hash = self._compute_content_hash(file_path)
-                    stored_hash = records[0].get("content_hash") or ""
-                    if not stored_hash:
-                        return True  # No hash stored (old record)
-                    return current_hash != stored_hash
-                else:
-                    # For local sources, compare mtime (backward compat)
-                    current_mtime = file_path.stat().st_mtime
-                    stored_mtime = float(records[0]["mtime"])
-                    return current_mtime - stored_mtime > 0.001
+            if self._is_remote:
+                # For remote sources, compare content hash
+                current_hash = self._compute_content_hash(file_path)
+                stored_hash = text_field(records[0], "content_hash")
+                if not stored_hash:
+                    return True  # No hash stored (old record)
+                return current_hash != stored_hash
+            # For local sources, compare mtime (backward compat)
+            current_mtime = file_path.stat().st_mtime
+            stored_mtime = float_field(records[0], "mtime")
+            return current_mtime - stored_mtime > 0.001
 
-            except Exception as e:
-                logger.debug(f"Could not retrieve record for {file_path}: {e}")
-                return True  # Error = must ingest
+        except UnsupportedOperationError:
+            raise
+        except Exception as e:
+            logger.debug(f"Could not retrieve record for {file_path}: {e}")
+            return True  # Error = must ingest
 
     async def _delete_file_records(self, file_path: Path) -> int:
         """Delete all records for a source file from vector store.
@@ -449,26 +483,20 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Returns:
             Number of records deleted.
         """
-        if self._collection is None:
+        if self._adapter is None:
             return 0
 
         source_key = self._compute_source_key(file_path)
         deleted_count = 0
 
-        async with self._collection as collection:
-            try:
-                records = await find_records_by_field(
-                    self._provider, collection, "source_path", source_key
-                )
-
-                if records:
-                    # Delete all records by their IDs
-                    record_ids = [r["id"] for r in records]
-                    await collection.delete(record_ids)
-                    deleted_count = len(record_ids)
-
-            except Exception as e:
-                logger.debug(f"Error deleting records for {file_path}: {e}")
+        try:
+            deleted_count = await self._adapter.delete_where(
+                RecordFilter.where(source_path=source_key)
+            )
+        except UnsupportedOperationError:
+            raise
+        except Exception as e:
+            logger.debug(f"Error deleting records for {file_path}: {e}")
 
         if deleted_count > 0:
             logger.debug(f"Deleted {deleted_count} records for {file_path}")
@@ -476,50 +504,13 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         return deleted_count
 
     @staticmethod
-    def _chunk_from_record(record: dict[str, Any]) -> DocumentChunk:
-        """Reconstruct a DocumentChunk from a stored payload record.
+    def _chunk_from_record(record: Record) -> DocumentChunk:
+        """Reconstruct a DocumentChunk from a stored record.
 
-        Centralizes the JSON-field parsing + ChunkType coercion shared by
-        the full-corpus reload path and the per-id lazy-fetch path.
+        Shared by the full-corpus reload path and the native-hybrid search
+        path. See :func:`holodeck.lib.retrieval.schemas.chunk_from_record`.
         """
-        from holodeck.lib.structured_chunker import DocumentChunk
-
-        try:
-            parent_chain = json.loads(record.get("parent_chain") or "[]")
-        except (json.JSONDecodeError, TypeError):
-            parent_chain = []
-
-        try:
-            cross_references = json.loads(record.get("cross_references") or "[]")
-        except (json.JSONDecodeError, TypeError):
-            cross_references = []
-
-        try:
-            subsection_ids = json.loads(record.get("subsection_ids") or "[]")
-        except (json.JSONDecodeError, TypeError):
-            subsection_ids = []
-
-        try:
-            chunk_type = ChunkType(record.get("chunk_type"))
-        except (ValueError, KeyError):
-            chunk_type = ChunkType.CONTENT
-
-        return DocumentChunk(
-            id=record["id"],
-            source_path=record.get("source_path", ""),
-            chunk_index=record.get("chunk_index", 0),
-            content=record.get("content", ""),
-            parent_chain=parent_chain,
-            section_id=record.get("section_id", ""),
-            chunk_type=chunk_type,
-            cross_references=cross_references,
-            heading_level=0,
-            contextualized_content=record.get("contextualized_content") or "",
-            mtime=float(record.get("mtime") or 0.0),
-            defined_term=record.get("defined_term") or "",
-            defined_term_normalized=record.get("defined_term_normalized") or "",
-            subsection_ids=subsection_ids,
-        )
+        return chunk_from_record(record)
 
     async def _load_chunks_from_store(self) -> list[DocumentChunk]:
         """Load all document chunks from the vector store.
@@ -528,29 +519,30 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         BM25 index rebuild on startup when files are unchanged (skipped
         via mtime check). This is necessary because the BM25 index is
         in-memory only and does not survive restarts. Native-hybrid
-        providers (qdrant) skip this path entirely — see ``initialize``.
+        providers skip this path entirely — see ``initialize``.
 
         Returns:
             List of reconstructed DocumentChunk objects, or empty list
             if collection doesn't exist or an error occurs.
         """
-        if self._collection is None:
+        if self._adapter is None:
             return []
 
         try:
-            async with self._collection as collection:
-                if not await collection.collection_exists():
-                    return []
+            if not await self._adapter.collection_exists():
+                return []
 
-                records = await find_all_records(self._provider, collection)
+            records = await self._adapter.find(RecordFilter())
 
-                if not records:
-                    return []
+            if not records:
+                return []
 
-                chunks = [self._chunk_from_record(r) for r in records]
-                logger.info(f"Loaded {len(chunks)} chunks from vector store")
-                return chunks
+            chunks = [chunk_from_record(r) for r in records]
+            logger.info(f"Loaded {len(chunks)} chunks from vector store")
+            return chunks
 
+        except UnsupportedOperationError:
+            raise
         except Exception as e:
             logger.warning(f"Failed to load chunks from store: {e}")
             return []
@@ -711,6 +703,8 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             # Coerce human-readable chunk IDs to deterministic UUIDv5 so
             # re-ingestion stays idempotent and the chunk_map (built later
             # from these same chunks) matches what qdrant returns at search.
+            # Collections written before the adapter contract hold exactly
+            # these point IDs, so the mapping stays in the tool.
             if self._provider == "qdrant":
                 self._coerce_chunk_ids_to_uuid(chunks)
 
@@ -817,7 +811,8 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     ) -> int:
         """Store document chunks in the vector store.
 
-        Uses HierarchicalDocumentRecord for storage.
+        The chunks of each source file replace that file's stored chunks, so
+        chunks left over from a longer earlier version are removed.
 
         Args:
             chunks: List of DocumentChunks to store.
@@ -830,120 +825,26 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Raises:
             RuntimeError: If collection is not initialized.
         """
-        if self._collection is None:
-            raise RuntimeError("Collection not initialized")
+        adapter = self._require_adapter()
 
-        from holodeck.lib.vector_store import create_hierarchical_document_record_class
-
-        dims = self._embedding_dimensions or 1536
-        record_class = create_hierarchical_document_record_class(dims, self.config.name)
-
-        records = []
+        by_source: dict[str, list[Record]] = {}
         for chunk in chunks:
-            record = record_class(
-                id=chunk.id,
-                source_path=chunk.source_path,
-                chunk_index=chunk.chunk_index,
-                section_id=chunk.section_id,
-                content=chunk.content,
-                embedding=chunk.embedding,
-                parent_chain=json.dumps(chunk.parent_chain),
-                chunk_type=chunk.chunk_type.value,
-                cross_references=json.dumps(chunk.cross_references),
-                contextualized_content=chunk.contextualized_content or "",
-                mtime=chunk.mtime,
-                file_type="",
-                defined_term=chunk.defined_term or "",
-                defined_term_normalized=chunk.defined_term_normalized or "",
-                subsection_ids=json.dumps(chunk.subsection_ids),
-                content_hash=content_hash,
-                searchable_text=self._build_searchable_text(chunk),
-            )
-            records.append(record)
-
-        async with self._collection as collection:
-            if not await collection.collection_exists():
-                await collection.ensure_collection_exists()
-            await self._ensure_qdrant_payload_indexes(collection)
-            await collection.upsert(records)
-
-        logger.debug(f"Stored {len(records)} chunks")
-        return len(records)
-
-    async def _ensure_qdrant_payload_indexes(self, collection: Any) -> None:
-        """Create payload indexes on qdrant for filter-required fields.
-
-        Semantic Kernel's qdrant connector (`ensure_collection_exists`) only
-        configures vectors; it never translates ``is_indexed=True`` /
-        ``is_full_text_indexed=True`` field flags into qdrant payload-index
-        API calls. Qdrant <=1.17 silently fell back to a brute-force payload
-        scan for un-indexed fields; qdrant >=1.18 rejects such filters with
-        ``400 Index required but not found``.
-
-        This patches over the gap by explicitly creating the indexes
-        declared on ``HierarchicalDocumentRecord`` (see
-        ``holodeck/lib/vector_store.py``: ``section_id``, ``defined_term``,
-        ``defined_term_normalized`` as keyword; ``searchable_text`` as
-        full-text). ``create_payload_index`` is idempotent for matching
-        params, so a no-op on subsequent ingests.
-
-        Args:
-            collection: An SK ``QdrantCollection`` already entered as
-                an async context manager (so ``qdrant_client`` is live).
-        """
-        if self._provider != "qdrant" or self._qdrant_indexes_ensured:
-            return
-
-        from qdrant_client.http import models
-
-        client = collection.qdrant_client
-        coll_name = collection.collection_name
-
-        # source_path is filtered by _check_if_already_ingested and
-        # _delete_file_records; qdrant >=1.18 rejects un-indexed filter fields
-        # with a 400, causing those methods to silently fall through and
-        # re-ingest the corpus (+ orphan stale chunks) on every cold start.
-        keyword_fields = (
-            "section_id",
-            "defined_term",
-            "defined_term_normalized",
-            "source_path",
-        )
-        for field_name in keyword_fields:
-            try:
-                await client.create_payload_index(
-                    collection_name=coll_name,
-                    field_name=field_name,
-                    field_schema=models.KeywordIndexParams(
-                        type=models.KeywordIndexType.KEYWORD,
-                    ),
+            by_source.setdefault(chunk.source_path, []).append(
+                chunk_to_record(
+                    chunk,
+                    searchable_text=self._build_searchable_text(chunk),
+                    content_hash=content_hash,
                 )
-            except Exception as e:
-                logger.warning(
-                    f"Qdrant payload-index create failed for '{field_name}' "
-                    f"on '{coll_name}': {e}"
-                )
-
-        try:
-            await client.create_payload_index(
-                collection_name=coll_name,
-                field_name="searchable_text",
-                field_schema=models.TextIndexParams(
-                    type=models.TextIndexType.TEXT,
-                    tokenizer=models.TokenizerType.WORD,
-                    min_token_len=2,
-                    max_token_len=20,
-                    lowercase=True,
-                ),
-            )
-        except Exception as e:
-            logger.warning(
-                f"Qdrant full-text index create failed for 'searchable_text' "
-                f"on '{coll_name}': {e}"
             )
 
-        self._qdrant_indexes_ensured = True
-        logger.info(f"Ensured qdrant payload indexes on collection '{coll_name}'")
+        await adapter.ensure_collection()
+        for source_path, records in by_source.items():
+            await adapter.replace_source(
+                RecordFilter.where(source_path=source_path), records
+            )
+
+        logger.debug(f"Stored {len(chunks)} chunks")
+        return len(chunks)
 
     async def _embed_query(self, query: str) -> list[float]:
         """Generate embedding for a query string.
@@ -979,57 +880,29 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Returns:
             List of SearchResult objects sorted by score.
         """
+        adapter = self._require_adapter()
+        hits = await adapter.vector_search(
+            VectorQuery(vector=query_embedding, top_k=top_k)
+        )
+
         results: list[SearchResult] = []
-
-        async with self._collection as collection:
-            search_results = await collection.search(
-                vector=query_embedding,
-                top=top_k,
+        for hit in hits:
+            chunk = chunk_from_record(hit.record)
+            results.append(
+                SearchResult(
+                    chunk_id=chunk.id,
+                    content=chunk.content,
+                    fused_score=clamp_similarity(hit.score),
+                    source_path=chunk.source_path,
+                    parent_chain=chunk.parent_chain,
+                    section_id=chunk.section_id,
+                    subsection_ids=chunk.subsection_ids,
+                    semantic_score=hit.score,
+                    keyword_score=None,  # Semantic-only mode
+                    exact_match=False,
+                    definitions_context=[],
+                )
             )
-
-            async for result in search_results.results:
-                # Handle SK result format (may be object with attrs or tuple)
-                record = result.record if hasattr(result, "record") else result[0]
-                raw_score = result.score if hasattr(result, "score") else result[1]
-
-                # Parse parent_chain from JSON
-                parent_chain_str = (
-                    record.parent_chain if hasattr(record, "parent_chain") else "[]"
-                )
-                try:
-                    parent_chain = json.loads(parent_chain_str)
-                except (json.JSONDecodeError, TypeError):
-                    parent_chain = []
-
-                # Parse subsection_ids from JSON
-                subsection_ids_str = (
-                    record.subsection_ids if hasattr(record, "subsection_ids") else "[]"
-                )
-                try:
-                    subsection_ids = json.loads(subsection_ids_str)
-                except (json.JSONDecodeError, TypeError):
-                    subsection_ids = []
-
-                # Clamp score to [0.0, 1.0]
-                fused_score = max(0.0, min(1.0, float(raw_score)))
-
-                results.append(
-                    SearchResult(
-                        chunk_id=record.id,
-                        content=record.content,
-                        fused_score=fused_score,
-                        source_path=record.source_path,
-                        parent_chain=parent_chain,
-                        section_id=(
-                            record.section_id if hasattr(record, "section_id") else ""
-                        ),
-                        subsection_ids=subsection_ids,
-                        semantic_score=float(raw_score),
-                        keyword_score=None,  # Semantic-only mode
-                        exact_match=False,
-                        definitions_context=[],
-                    )
-                )
 
         # Sort by score descending
         results.sort(key=lambda r: r.fused_score, reverse=True)
@@ -1044,23 +917,19 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         index build. Safe to call multiple times — second call is a
         no-op.
         """
-        from holodeck.lib.keyword_search import HybridSearchExecutor
-
-        if self._hybrid_executor is not None:
+        if self._hybrid_executor is not None or self._adapter is None:
             return
 
         self._hybrid_executor = HybridSearchExecutor(
-            self._provider,
-            self._collection,
+            self._adapter,
             semantic_weight=self.config.semantic_weight,
             keyword_weight=self.config.keyword_weight,
             rrf_k=self.config.rrf_k,
             keyword_index_config=self.config.keyword_index,
-            # Native-hybrid providers pull payloads inline and need to
-            # reconstruct chunks from raw qdrant/SK payloads. Inject the
-            # decoder so the executor can populate _chunk_map as it
-            # ranks results — no separate retrieve call required.
-            chunk_decoder=self._chunk_from_record,
+            # Native-hybrid providers return records inline; the decoder
+            # lets the executor populate _chunk_map as it ranks results —
+            # no separate retrieve call required.
+            chunk_decoder=chunk_from_record,
         )
 
     async def _build_hybrid_indices(self) -> None:
@@ -1113,7 +982,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             return await self._semantic_search(query_embedding, top_k)
 
         # Get fused results from hybrid executor. Native-hybrid paths
-        # populate _chunk_map inline from the qdrant/SK payload, so the
+        # populate _chunk_map inline from the returned records, so the
         # lookup below is a pure dict hit — no follow-up retrieve needed.
         fused_results = await self._hybrid_executor.search(
             query, query_embedding, top_k
@@ -1253,9 +1122,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Python on every restart is pure waste. For in-memory providers,
         # the collection itself is reseeded by _ingest_documents (nothing
         # is "skipped"), so there's no reload to do.
-        from holodeck.lib.keyword_search import NATIVE_HYBRID_PROVIDERS
-
-        is_native_hybrid = self._provider in NATIVE_HYBRID_PROVIDERS
+        is_native_hybrid = self._uses_native_hybrid()
         needs_corpus_reload = (
             skipped_files > 0 and self._provider != "in-memory" and not is_native_hybrid
         )

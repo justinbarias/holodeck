@@ -1232,32 +1232,3 @@ def get_collection_factory(
         )
 
     return factory
-
-
-async def convert_document_to_query_result(
-    record: Any,
-    score: float,
-) -> QueryResult:
-    """Convert a DocumentRecord search result to QueryResult.
-
-    Args:
-        record: DocumentRecord from vector search (dynamically created)
-        score: Relevance/similarity score (0.0-1.0)
-
-    Returns:
-        QueryResult with metadata extracted from the record
-
-    Raises:
-        ValueError: If score is outside valid range
-    """
-    return QueryResult(
-        content=record.content,
-        score=score,
-        source_path=record.source_path,
-        chunk_index=record.chunk_index,
-        metadata={
-            "file_type": record.file_type,
-            "file_size_bytes": record.file_size_bytes,
-            "mtime": record.mtime,
-        },
-    )

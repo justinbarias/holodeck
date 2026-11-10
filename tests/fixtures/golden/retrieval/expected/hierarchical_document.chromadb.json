@@ -2,7 +2,7 @@
   "tool": "hierarchical_document",
   "provider": "chromadb",
   "known_behavior": [
-    "ChromaCollection returns cosine distance (1 - similarity) as the score, and HoloDeck sorts scores descending, so semantic results come back worst-first (the top-k set is right, its order and scores are inverted). min_score keeps results whose distance is at least the threshold."
+    "Chroma returns cosine distance. Until 042 T4 HoloDeck used that distance as the score and sorted it descending, so semantic results came back worst-first and min_score kept results whose distance was at least the threshold. The adapter now returns similarity (1 - distance), so the best match ranks first and min_score filters by similarity."
   ],
   "top_k": 5,
   "queries": {
@@ -25,67 +25,13 @@
         {
           "rank": 1,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_202_reporting_timelines",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "ccb46918dc61",
-          "score": 0.8671
-        },
-        {
-          "rank": 2,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.8581
-        },
-        {
-          "rank": 3,
-          "source": "field_notes.txt",
-          "section_id": "chunk_0",
-          "parent_chain": [],
-          "chunk_sha": "c335598f3730",
-          "score": 0.8407
-        },
-        {
-          "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article I - Definitions"
-          ],
-          "chunk_sha": "8d15fc1408a4",
-          "score": 0.7984
-        },
-        {
-          "rank": 5,
-          "source": "legislation.md",
           "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_303_inspections",
           "parent_chain": [
             "Sample Environmental Reporting Act",
             "Article III - Compliance"
           ],
           "chunk_sha": "20529c08fc14",
-          "score": 0.7871
-        }
-      ],
-      "heading": [
-        {
-          "rank": 1,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.8581
+          "score": 0.2129
         },
         {
           "rank": 2,
@@ -96,7 +42,7 @@
             "Article I - Definitions"
           ],
           "chunk_sha": "8d15fc1408a4",
-          "score": 0.8473
+          "score": 0.2016
         },
         {
           "rank": 3,
@@ -104,10 +50,21 @@
           "section_id": "chunk_0",
           "parent_chain": [],
           "chunk_sha": "c335598f3730",
-          "score": 0.8407
+          "score": 0.1593
         },
         {
           "rank": 4,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article II - Reporting Requirements"
+          ],
+          "chunk_sha": "27aa444c4351",
+          "score": 0.1419
+        },
+        {
+          "rank": 5,
           "source": "legislation.md",
           "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_202_reporting_timelines",
           "parent_chain": [
@@ -115,10 +72,12 @@
             "Article II - Reporting Requirements"
           ],
           "chunk_sha": "ccb46918dc61",
-          "score": 0.782
-        },
+          "score": 0.1329
+        }
+      ],
+      "heading": [
         {
-          "rank": 5,
+          "rank": 1,
           "source": "platform_guide.md",
           "section_id": "h3_cloudscale_platform_architecture_guide_troubleshooting_pod_startup_failures",
           "parent_chain": [
@@ -126,32 +85,71 @@
             "Troubleshooting"
           ],
           "chunk_sha": "d587559fec81",
-          "score": 0.7599
+          "score": 0.2401
+        },
+        {
+          "rank": 2,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_202_reporting_timelines",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article II - Reporting Requirements"
+          ],
+          "chunk_sha": "ccb46918dc61",
+          "score": 0.218
+        },
+        {
+          "rank": 3,
+          "source": "field_notes.txt",
+          "section_id": "chunk_0",
+          "parent_chain": [],
+          "chunk_sha": "c335598f3730",
+          "score": 0.1593
+        },
+        {
+          "rank": 4,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article I - Definitions"
+          ],
+          "chunk_sha": "8d15fc1408a4",
+          "score": 0.1527
+        },
+        {
+          "rank": 5,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article II - Reporting Requirements"
+          ],
+          "chunk_sha": "27aa444c4351",
+          "score": 0.1419
         }
       ],
       "section_id": [
         {
           "rank": 1,
           "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
+          "section_id": "h2_cloudscale_platform_architecture_guide_components",
           "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Overview"
+            "CloudScale Platform Architecture Guide"
           ],
-          "chunk_sha": "094db42710bf",
-          "score": 0.7493
+          "chunk_sha": "2180f728cb9b",
+          "score": 0.6145
         },
         {
           "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_backend_services_message_queue",
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_iv_enforcement_section_401_penalties",
           "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Backend Services"
+            "Sample Environmental Reporting Act",
+            "Article IV - Enforcement"
           ],
-          "chunk_sha": "05e76fd7280f",
-          "score": 0.7414
+          "chunk_sha": "376aea73f5da",
+          "score": 0.2707
         },
         {
           "rank": 3,
@@ -163,53 +161,54 @@
             "Frontend"
           ],
           "chunk_sha": "90525c8e4099",
-          "score": 0.7331
+          "score": 0.2669
         },
         {
           "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iv_enforcement_section_401_penalties",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article IV - Enforcement"
-          ],
-          "chunk_sha": "376aea73f5da",
-          "score": 0.7293
-        },
-        {
-          "rank": 5,
           "source": "platform_guide.md",
-          "section_id": "h2_cloudscale_platform_architecture_guide_components",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide"
-          ],
-          "chunk_sha": "2180f728cb9b",
-          "score": 0.3855
-        }
-      ],
-      "contextual_text": [
-        {
-          "rank": 1,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article I - Definitions"
-          ],
-          "chunk_sha": "8d15fc1408a4",
-          "score": 0.8497
-        },
-        {
-          "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_backend_services_api_gateway",
+          "section_id": "h4_cloudscale_platform_architecture_guide_components_backend_services_message_queue",
           "parent_chain": [
             "CloudScale Platform Architecture Guide",
             "Components",
             "Backend Services"
           ],
-          "chunk_sha": "271e4776e3d1",
-          "score": 0.8229
+          "chunk_sha": "05e76fd7280f",
+          "score": 0.2586
+        },
+        {
+          "rank": 5,
+          "source": "platform_guide.md",
+          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
+          "parent_chain": [
+            "CloudScale Platform Architecture Guide",
+            "Overview"
+          ],
+          "chunk_sha": "094db42710bf",
+          "score": 0.2507
+        }
+      ],
+      "contextual_text": [
+        {
+          "rank": 1,
+          "source": "platform_guide.md",
+          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
+          "parent_chain": [
+            "CloudScale Platform Architecture Guide",
+            "Overview"
+          ],
+          "chunk_sha": "094db42710bf",
+          "score": 0.2268
+        },
+        {
+          "rank": 2,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article II - Reporting Requirements"
+          ],
+          "chunk_sha": "27aa444c4351",
+          "score": 0.2239
         },
         {
           "rank": 3,
@@ -220,131 +219,19 @@
             "Article III - Compliance"
           ],
           "chunk_sha": "af36c33bbfc4",
-          "score": 0.7967
+          "score": 0.2033
         },
         {
           "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.7761
-        },
-        {
-          "rank": 5,
           "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Overview"
-          ],
-          "chunk_sha": "094db42710bf",
-          "score": 0.7732
-        }
-      ],
-      "plain_text": [
-        {
-          "rank": 1,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_infrastructure_services_service_mesh",
+          "section_id": "h4_cloudscale_platform_architecture_guide_components_backend_services_api_gateway",
           "parent_chain": [
             "CloudScale Platform Architecture Guide",
             "Components",
-            "Infrastructure Services"
+            "Backend Services"
           ],
-          "chunk_sha": "dbc56730501d",
-          "score": 0.8199
-        },
-        {
-          "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_deployment_configuration_options",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Deployment"
-          ],
-          "chunk_sha": "f0d38ee3b6e7",
-          "score": 0.7552
-        },
-        {
-          "rank": 3,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iv_enforcement_section_401_penalties",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article IV - Enforcement"
-          ],
-          "chunk_sha": "376aea73f5da",
-          "score": 0.7487
-        },
-        {
-          "rank": 4,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_overview_system_requirements",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Overview"
-          ],
-          "chunk_sha": "a748bfb11f83",
-          "score": 0.7242
-        },
-        {
-          "rank": 5,
-          "source": "field_notes.txt",
-          "section_id": "chunk_0",
-          "parent_chain": [],
-          "chunk_sha": "c335598f3730",
-          "score": 0.7144
-        }
-      ],
-      "definition_phrase": [
-        {
-          "rank": 1,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_web_application",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Frontend"
-          ],
-          "chunk_sha": "6c1aa99c8157",
-          "score": 0.8124
-        },
-        {
-          "rank": 2,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article III - Compliance"
-          ],
-          "chunk_sha": "44825ee03edf",
-          "score": 0.7713
-        },
-        {
-          "rank": 3,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_v_miscellaneous_provisions_section_501_confidentiality",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article V - Miscellaneous Provisions"
-          ],
-          "chunk_sha": "7f089de3c5b4",
-          "score": 0.7647
-        },
-        {
-          "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_v_miscellaneous_provisions_section_502_judicial_review",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article V - Miscellaneous Provisions"
-          ],
-          "chunk_sha": "681748357bbd",
-          "score": 0.76
+          "chunk_sha": "271e4776e3d1",
+          "score": 0.1771
         },
         {
           "rank": 5,
@@ -355,31 +242,143 @@
             "Article I - Definitions"
           ],
           "chunk_sha": "8d15fc1408a4",
-          "score": 0.437
+          "score": 0.1503
+        }
+      ],
+      "plain_text": [
+        {
+          "rank": 1,
+          "source": "field_notes.txt",
+          "section_id": "chunk_0",
+          "parent_chain": [],
+          "chunk_sha": "c335598f3730",
+          "score": 0.2856
+        },
+        {
+          "rank": 2,
+          "source": "platform_guide.md",
+          "section_id": "h3_cloudscale_platform_architecture_guide_overview_system_requirements",
+          "parent_chain": [
+            "CloudScale Platform Architecture Guide",
+            "Overview"
+          ],
+          "chunk_sha": "a748bfb11f83",
+          "score": 0.2758
+        },
+        {
+          "rank": 3,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_iv_enforcement_section_401_penalties",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article IV - Enforcement"
+          ],
+          "chunk_sha": "376aea73f5da",
+          "score": 0.2513
+        },
+        {
+          "rank": 4,
+          "source": "platform_guide.md",
+          "section_id": "h3_cloudscale_platform_architecture_guide_deployment_configuration_options",
+          "parent_chain": [
+            "CloudScale Platform Architecture Guide",
+            "Deployment"
+          ],
+          "chunk_sha": "f0d38ee3b6e7",
+          "score": 0.2448
+        },
+        {
+          "rank": 5,
+          "source": "platform_guide.md",
+          "section_id": "h4_cloudscale_platform_architecture_guide_components_infrastructure_services_service_mesh",
+          "parent_chain": [
+            "CloudScale Platform Architecture Guide",
+            "Components",
+            "Infrastructure Services"
+          ],
+          "chunk_sha": "dbc56730501d",
+          "score": 0.1801
+        }
+      ],
+      "definition_phrase": [
+        {
+          "rank": 1,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article I - Definitions"
+          ],
+          "chunk_sha": "8d15fc1408a4",
+          "score": 0.563
+        },
+        {
+          "rank": 2,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_v_miscellaneous_provisions_section_502_judicial_review",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article V - Miscellaneous Provisions"
+          ],
+          "chunk_sha": "681748357bbd",
+          "score": 0.24
+        },
+        {
+          "rank": 3,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_v_miscellaneous_provisions_section_501_confidentiality",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article V - Miscellaneous Provisions"
+          ],
+          "chunk_sha": "7f089de3c5b4",
+          "score": 0.2353
+        },
+        {
+          "rank": 4,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article III - Compliance"
+          ],
+          "chunk_sha": "44825ee03edf",
+          "score": 0.2287
+        },
+        {
+          "rank": 5,
+          "source": "platform_guide.md",
+          "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_web_application",
+          "parent_chain": [
+            "CloudScale Platform Architecture Guide",
+            "Components",
+            "Frontend"
+          ],
+          "chunk_sha": "6c1aa99c8157",
+          "score": 0.1876
         }
       ],
       "heading_phrase": [
         {
           "rank": 1,
           "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
+          "section_id": "h3_cloudscale_platform_architecture_guide_security_network_security",
           "parent_chain": [
             "CloudScale Platform Architecture Guide",
-            "Overview"
+            "Security"
           ],
-          "chunk_sha": "094db42710bf",
-          "score": 0.8168
+          "chunk_sha": "7588e1500df1",
+          "score": 0.5652
         },
         {
           "rank": 2,
           "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_troubleshooting_performance_issues",
+          "section_id": "h2_cloudscale_platform_architecture_guide_security",
           "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Troubleshooting"
+            "CloudScale Platform Architecture Guide"
           ],
-          "chunk_sha": "54c25950aeb3",
-          "score": 0.8096
+          "chunk_sha": "d32dd9c060ae",
+          "score": 0.5617
         },
         {
           "rank": 3,
@@ -392,52 +391,53 @@
             "Database Layer"
           ],
           "chunk_sha": "36cf59b54265",
-          "score": 0.5966
+          "score": 0.4034
         },
         {
           "rank": 4,
           "source": "platform_guide.md",
-          "section_id": "h2_cloudscale_platform_architecture_guide_security",
+          "section_id": "h3_cloudscale_platform_architecture_guide_troubleshooting_performance_issues",
           "parent_chain": [
-            "CloudScale Platform Architecture Guide"
+            "CloudScale Platform Architecture Guide",
+            "Troubleshooting"
           ],
-          "chunk_sha": "d32dd9c060ae",
-          "score": 0.4383
+          "chunk_sha": "54c25950aeb3",
+          "score": 0.1904
         },
         {
           "rank": 5,
           "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_security_network_security",
+          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
           "parent_chain": [
             "CloudScale Platform Architecture Guide",
-            "Security"
+            "Overview"
           ],
-          "chunk_sha": "7588e1500df1",
-          "score": 0.4348
+          "chunk_sha": "094db42710bf",
+          "score": 0.1832
         }
       ],
       "section_id_phrase": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "73deba5c44a3",
-          "score": 0.6862
-        },
-        {
-          "rank": 2,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
+          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_a_compliance_monitoring",
           "parent_chain": [
             "Sample Environmental Reporting Act",
             "Article III - Compliance"
           ],
-          "chunk_sha": "44825ee03edf",
-          "score": 0.6747
+          "chunk_sha": "871364f696df",
+          "score": 0.3647
+        },
+        {
+          "rank": 2,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_303_inspections",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article III - Compliance"
+          ],
+          "chunk_sha": "20529c08fc14",
+          "score": 0.3384
         },
         {
           "rank": 3,
@@ -448,53 +448,54 @@
             "Article II - Reporting Requirements"
           ],
           "chunk_sha": "27aa444c4351",
-          "score": 0.6733
+          "score": 0.3267
         },
         {
           "rank": 4,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_303_inspections",
+          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
           "parent_chain": [
             "Sample Environmental Reporting Act",
             "Article III - Compliance"
           ],
-          "chunk_sha": "20529c08fc14",
-          "score": 0.6616
+          "chunk_sha": "44825ee03edf",
+          "score": 0.3253
         },
         {
           "rank": 5,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_a_compliance_monitoring",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
           "parent_chain": [
             "Sample Environmental Reporting Act",
-            "Article III - Compliance"
+            "Article II - Reporting Requirements"
           ],
-          "chunk_sha": "871364f696df",
-          "score": 0.6353
+          "chunk_sha": "73deba5c44a3",
+          "score": 0.3138
         }
       ],
       "contextual_phrase": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_202_reporting_timelines",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
           "parent_chain": [
             "Sample Environmental Reporting Act",
             "Article II - Reporting Requirements"
           ],
-          "chunk_sha": "ccb46918dc61",
-          "score": 0.7493
+          "chunk_sha": "27aa444c4351",
+          "score": 0.5585
         },
         {
           "rank": 2,
           "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_security_data_protection",
+          "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_mobile_applications",
           "parent_chain": [
             "CloudScale Platform Architecture Guide",
-            "Security"
+            "Components",
+            "Frontend"
           ],
-          "chunk_sha": "15cac893e9ad",
-          "score": 0.7343
+          "chunk_sha": "90525c8e4099",
+          "score": 0.2871
         },
         {
           "rank": 3,
@@ -505,10 +506,45 @@
             "Article II - Reporting Requirements"
           ],
           "chunk_sha": "033e14143708",
-          "score": 0.7189
+          "score": 0.2811
         },
         {
           "rank": 4,
+          "source": "platform_guide.md",
+          "section_id": "h3_cloudscale_platform_architecture_guide_security_data_protection",
+          "parent_chain": [
+            "CloudScale Platform Architecture Guide",
+            "Security"
+          ],
+          "chunk_sha": "15cac893e9ad",
+          "score": 0.2657
+        },
+        {
+          "rank": 5,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_202_reporting_timelines",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article II - Reporting Requirements"
+          ],
+          "chunk_sha": "ccb46918dc61",
+          "score": 0.2507
+        }
+      ],
+      "none": [
+        {
+          "rank": 1,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
+          "parent_chain": [
+            "Sample Environmental Reporting Act",
+            "Article II - Reporting Requirements"
+          ],
+          "chunk_sha": "73deba5c44a3",
+          "score": 0.3848
+        },
+        {
+          "rank": 2,
           "source": "platform_guide.md",
           "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_mobile_applications",
           "parent_chain": [
@@ -517,39 +553,7 @@
             "Frontend"
           ],
           "chunk_sha": "90525c8e4099",
-          "score": 0.7129
-        },
-        {
-          "rank": 5,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.4415
-        }
-      ],
-      "none": [
-        {
-          "rank": 1,
-          "source": "field_notes.txt",
-          "section_id": "chunk_0",
-          "parent_chain": [],
-          "chunk_sha": "c335598f3730",
-          "score": 0.8104
-        },
-        {
-          "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_deployment_configuration_options",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Deployment"
-          ],
-          "chunk_sha": "f0d38ee3b6e7",
-          "score": 0.7972
+          "score": 0.2596
         },
         {
           "rank": 3,
@@ -560,54 +564,50 @@
             "Deployment"
           ],
           "chunk_sha": "33ac16fff2c3",
-          "score": 0.7463
+          "score": 0.2537
         },
         {
           "rank": 4,
           "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_mobile_applications",
+          "section_id": "h3_cloudscale_platform_architecture_guide_deployment_configuration_options",
           "parent_chain": [
             "CloudScale Platform Architecture Guide",
-            "Components",
-            "Frontend"
+            "Deployment"
           ],
-          "chunk_sha": "90525c8e4099",
-          "score": 0.7404
+          "chunk_sha": "f0d38ee3b6e7",
+          "score": 0.2028
         },
         {
           "rank": 5,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "73deba5c44a3",
-          "score": 0.6152
+          "source": "field_notes.txt",
+          "section_id": "chunk_0",
+          "parent_chain": [],
+          "chunk_sha": "c335598f3730",
+          "score": 0.1896
         }
       ],
       "punctuation_only": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
+          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
           "parent_chain": [
             "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
+            "Article I - Definitions"
           ],
-          "chunk_sha": "73deba5c44a3",
-          "score": 0.8077
+          "chunk_sha": "8d15fc1408a4",
+          "score": 0.2586
         },
         {
           "rank": 2,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
           "parent_chain": [
             "Sample Environmental Reporting Act",
-            "Article III - Compliance"
+            "Article II - Reporting Requirements"
           ],
-          "chunk_sha": "44825ee03edf",
-          "score": 0.8036
+          "chunk_sha": "27aa444c4351",
+          "score": 0.2309
         },
         {
           "rank": 3,
@@ -618,360 +618,52 @@
             "Deployment"
           ],
           "chunk_sha": "f0d38ee3b6e7",
-          "score": 0.7982
+          "score": 0.2018
         },
         {
           "rank": 4,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
+          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
           "parent_chain": [
             "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
+            "Article III - Compliance"
           ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.7691
+          "chunk_sha": "44825ee03edf",
+          "score": 0.1964
         },
         {
           "rank": 5,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
           "parent_chain": [
             "Sample Environmental Reporting Act",
-            "Article I - Definitions"
+            "Article II - Reporting Requirements"
           ],
-          "chunk_sha": "8d15fc1408a4",
-          "score": 0.7414
+          "chunk_sha": "73deba5c44a3",
+          "score": 0.1923
         }
       ]
     },
     "semantic_min_score_0.3": {
-      "definition": [
-        {
-          "rank": 1,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_202_reporting_timelines",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "ccb46918dc61",
-          "score": 0.8671
-        },
-        {
-          "rank": 2,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.8581
-        },
-        {
-          "rank": 3,
-          "source": "field_notes.txt",
-          "section_id": "chunk_0",
-          "parent_chain": [],
-          "chunk_sha": "c335598f3730",
-          "score": 0.8407
-        },
-        {
-          "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article I - Definitions"
-          ],
-          "chunk_sha": "8d15fc1408a4",
-          "score": 0.7984
-        },
-        {
-          "rank": 5,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_303_inspections",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article III - Compliance"
-          ],
-          "chunk_sha": "20529c08fc14",
-          "score": 0.7871
-        }
-      ],
-      "heading": [
-        {
-          "rank": 1,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.8581
-        },
-        {
-          "rank": 2,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article I - Definitions"
-          ],
-          "chunk_sha": "8d15fc1408a4",
-          "score": 0.8473
-        },
-        {
-          "rank": 3,
-          "source": "field_notes.txt",
-          "section_id": "chunk_0",
-          "parent_chain": [],
-          "chunk_sha": "c335598f3730",
-          "score": 0.8407
-        },
-        {
-          "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_202_reporting_timelines",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "ccb46918dc61",
-          "score": 0.782
-        },
-        {
-          "rank": 5,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_troubleshooting_pod_startup_failures",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Troubleshooting"
-          ],
-          "chunk_sha": "d587559fec81",
-          "score": 0.7599
-        }
-      ],
+      "definition": [],
+      "heading": [],
       "section_id": [
         {
           "rank": 1,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Overview"
-          ],
-          "chunk_sha": "094db42710bf",
-          "score": 0.7493
-        },
-        {
-          "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_backend_services_message_queue",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Backend Services"
-          ],
-          "chunk_sha": "05e76fd7280f",
-          "score": 0.7414
-        },
-        {
-          "rank": 3,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_mobile_applications",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Frontend"
-          ],
-          "chunk_sha": "90525c8e4099",
-          "score": 0.7331
-        },
-        {
-          "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iv_enforcement_section_401_penalties",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article IV - Enforcement"
-          ],
-          "chunk_sha": "376aea73f5da",
-          "score": 0.7293
-        },
-        {
-          "rank": 5,
           "source": "platform_guide.md",
           "section_id": "h2_cloudscale_platform_architecture_guide_components",
           "parent_chain": [
             "CloudScale Platform Architecture Guide"
           ],
           "chunk_sha": "2180f728cb9b",
-          "score": 0.3855
+          "score": 0.6145
         }
       ],
-      "contextual_text": [
-        {
-          "rank": 1,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article I - Definitions"
-          ],
-          "chunk_sha": "8d15fc1408a4",
-          "score": 0.8497
-        },
-        {
-          "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_backend_services_api_gateway",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Backend Services"
-          ],
-          "chunk_sha": "271e4776e3d1",
-          "score": 0.8229
-        },
-        {
-          "rank": 3,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_b_compliance_assistance",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article III - Compliance"
-          ],
-          "chunk_sha": "af36c33bbfc4",
-          "score": 0.7967
-        },
-        {
-          "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.7761
-        },
-        {
-          "rank": 5,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Overview"
-          ],
-          "chunk_sha": "094db42710bf",
-          "score": 0.7732
-        }
-      ],
-      "plain_text": [
-        {
-          "rank": 1,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_infrastructure_services_service_mesh",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Infrastructure Services"
-          ],
-          "chunk_sha": "dbc56730501d",
-          "score": 0.8199
-        },
-        {
-          "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_deployment_configuration_options",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Deployment"
-          ],
-          "chunk_sha": "f0d38ee3b6e7",
-          "score": 0.7552
-        },
-        {
-          "rank": 3,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iv_enforcement_section_401_penalties",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article IV - Enforcement"
-          ],
-          "chunk_sha": "376aea73f5da",
-          "score": 0.7487
-        },
-        {
-          "rank": 4,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_overview_system_requirements",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Overview"
-          ],
-          "chunk_sha": "a748bfb11f83",
-          "score": 0.7242
-        },
-        {
-          "rank": 5,
-          "source": "field_notes.txt",
-          "section_id": "chunk_0",
-          "parent_chain": [],
-          "chunk_sha": "c335598f3730",
-          "score": 0.7144
-        }
-      ],
+      "contextual_text": [],
+      "plain_text": [],
       "definition_phrase": [
         {
           "rank": 1,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_web_application",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Frontend"
-          ],
-          "chunk_sha": "6c1aa99c8157",
-          "score": 0.8124
-        },
-        {
-          "rank": 2,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article III - Compliance"
-          ],
-          "chunk_sha": "44825ee03edf",
-          "score": 0.7713
-        },
-        {
-          "rank": 3,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_v_miscellaneous_provisions_section_501_confidentiality",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article V - Miscellaneous Provisions"
-          ],
-          "chunk_sha": "7f089de3c5b4",
-          "score": 0.7647
-        },
-        {
-          "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_v_miscellaneous_provisions_section_502_judicial_review",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article V - Miscellaneous Provisions"
-          ],
-          "chunk_sha": "681748357bbd",
-          "score": 0.76
-        },
-        {
-          "rank": 5,
           "source": "legislation.md",
           "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
           "parent_chain": [
@@ -979,31 +671,30 @@
             "Article I - Definitions"
           ],
           "chunk_sha": "8d15fc1408a4",
-          "score": 0.437
+          "score": 0.563
         }
       ],
       "heading_phrase": [
         {
           "rank": 1,
           "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_overview_design_principles",
+          "section_id": "h3_cloudscale_platform_architecture_guide_security_network_security",
           "parent_chain": [
             "CloudScale Platform Architecture Guide",
-            "Overview"
+            "Security"
           ],
-          "chunk_sha": "094db42710bf",
-          "score": 0.8168
+          "chunk_sha": "7588e1500df1",
+          "score": 0.5652
         },
         {
           "rank": 2,
           "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_troubleshooting_performance_issues",
+          "section_id": "h2_cloudscale_platform_architecture_guide_security",
           "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Troubleshooting"
+            "CloudScale Platform Architecture Guide"
           ],
-          "chunk_sha": "54c25950aeb3",
-          "score": 0.8096
+          "chunk_sha": "d32dd9c060ae",
+          "score": 0.5617
         },
         {
           "rank": 3,
@@ -1016,77 +707,12 @@
             "Database Layer"
           ],
           "chunk_sha": "36cf59b54265",
-          "score": 0.5966
-        },
-        {
-          "rank": 4,
-          "source": "platform_guide.md",
-          "section_id": "h2_cloudscale_platform_architecture_guide_security",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide"
-          ],
-          "chunk_sha": "d32dd9c060ae",
-          "score": 0.4383
-        },
-        {
-          "rank": 5,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_security_network_security",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Security"
-          ],
-          "chunk_sha": "7588e1500df1",
-          "score": 0.4348
+          "score": 0.4034
         }
       ],
       "section_id_phrase": [
         {
           "rank": 1,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "73deba5c44a3",
-          "score": 0.6862
-        },
-        {
-          "rank": 2,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article III - Compliance"
-          ],
-          "chunk_sha": "44825ee03edf",
-          "score": 0.6747
-        },
-        {
-          "rank": 3,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "27aa444c4351",
-          "score": 0.6733
-        },
-        {
-          "rank": 4,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_303_inspections",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article III - Compliance"
-          ],
-          "chunk_sha": "20529c08fc14",
-          "score": 0.6616
-        },
-        {
-          "rank": 5,
           "source": "legislation.md",
           "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_a_compliance_monitoring",
           "parent_chain": [
@@ -1094,57 +720,21 @@
             "Article III - Compliance"
           ],
           "chunk_sha": "871364f696df",
-          "score": 0.6353
-        }
-      ],
-      "contextual_phrase": [
-        {
-          "rank": 1,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_202_reporting_timelines",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "ccb46918dc61",
-          "score": 0.7493
+          "score": 0.3647
         },
         {
           "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_security_data_protection",
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_303_inspections",
           "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Security"
+            "Sample Environmental Reporting Act",
+            "Article III - Compliance"
           ],
-          "chunk_sha": "15cac893e9ad",
-          "score": 0.7343
+          "chunk_sha": "20529c08fc14",
+          "score": 0.3384
         },
         {
           "rank": 3,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_203_reporting_guidelines",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "033e14143708",
-          "score": 0.7189
-        },
-        {
-          "rank": 4,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_mobile_applications",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Frontend"
-          ],
-          "chunk_sha": "90525c8e4099",
-          "score": 0.7129
-        },
-        {
-          "rank": 5,
           "source": "legislation.md",
           "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
           "parent_chain": [
@@ -1152,78 +742,10 @@
             "Article II - Reporting Requirements"
           ],
           "chunk_sha": "27aa444c4351",
-          "score": 0.4415
-        }
-      ],
-      "none": [
-        {
-          "rank": 1,
-          "source": "field_notes.txt",
-          "section_id": "chunk_0",
-          "parent_chain": [],
-          "chunk_sha": "c335598f3730",
-          "score": 0.8104
-        },
-        {
-          "rank": 2,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_deployment_configuration_options",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Deployment"
-          ],
-          "chunk_sha": "f0d38ee3b6e7",
-          "score": 0.7972
-        },
-        {
-          "rank": 3,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_deployment_prerequisites",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Deployment"
-          ],
-          "chunk_sha": "33ac16fff2c3",
-          "score": 0.7463
+          "score": 0.3267
         },
         {
           "rank": 4,
-          "source": "platform_guide.md",
-          "section_id": "h4_cloudscale_platform_architecture_guide_components_frontend_mobile_applications",
-          "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Components",
-            "Frontend"
-          ],
-          "chunk_sha": "90525c8e4099",
-          "score": 0.7404
-        },
-        {
-          "rank": 5,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "73deba5c44a3",
-          "score": 0.6152
-        }
-      ],
-      "punctuation_only": [
-        {
-          "rank": 1,
-          "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
-          "parent_chain": [
-            "Sample Environmental Reporting Act",
-            "Article II - Reporting Requirements"
-          ],
-          "chunk_sha": "73deba5c44a3",
-          "score": 0.8077
-        },
-        {
-          "rank": 2,
           "source": "legislation.md",
           "section_id": "h3_sample_environmental_reporting_act_article_iii_compliance_section_301_general_compliance_requirements",
           "parent_chain": [
@@ -1231,21 +753,23 @@
             "Article III - Compliance"
           ],
           "chunk_sha": "44825ee03edf",
-          "score": 0.8036
+          "score": 0.3253
         },
         {
-          "rank": 3,
-          "source": "platform_guide.md",
-          "section_id": "h3_cloudscale_platform_architecture_guide_deployment_configuration_options",
+          "rank": 5,
+          "source": "legislation.md",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
           "parent_chain": [
-            "CloudScale Platform Architecture Guide",
-            "Deployment"
+            "Sample Environmental Reporting Act",
+            "Article II - Reporting Requirements"
           ],
-          "chunk_sha": "f0d38ee3b6e7",
-          "score": 0.7982
-        },
+          "chunk_sha": "73deba5c44a3",
+          "score": 0.3138
+        }
+      ],
+      "contextual_phrase": [
         {
-          "rank": 4,
+          "rank": 1,
           "source": "legislation.md",
           "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_201_annual_reporting_obligations",
           "parent_chain": [
@@ -1253,20 +777,23 @@
             "Article II - Reporting Requirements"
           ],
           "chunk_sha": "27aa444c4351",
-          "score": 0.7691
-        },
+          "score": 0.5585
+        }
+      ],
+      "none": [
         {
-          "rank": 5,
+          "rank": 1,
           "source": "legislation.md",
-          "section_id": "h3_sample_environmental_reporting_act_article_i_definitions_section_101_general_definitions",
+          "section_id": "h3_sample_environmental_reporting_act_article_ii_reporting_requirements_section_204_verification_requirements",
           "parent_chain": [
             "Sample Environmental Reporting Act",
-            "Article I - Definitions"
+            "Article II - Reporting Requirements"
           ],
-          "chunk_sha": "8d15fc1408a4",
-          "score": 0.7414
+          "chunk_sha": "73deba5c44a3",
+          "score": 0.3848
         }
-      ]
+      ],
+      "punctuation_only": []
     },
     "keyword": {
       "definition": [
@@ -2082,7 +1609,7 @@
             "Article II - Reporting Requirements"
           ],
           "chunk_sha": "73deba5c44a3",
-          "score": 0.6152
+          "score": 0.3848
         },
         {
           "rank": 2,
@@ -2094,7 +1621,7 @@
             "Frontend"
           ],
           "chunk_sha": "90525c8e4099",
-          "score": 0.7404
+          "score": 0.2596
         },
         {
           "rank": 3,
@@ -2105,7 +1632,7 @@
             "Deployment"
           ],
           "chunk_sha": "33ac16fff2c3",
-          "score": 0.7463
+          "score": 0.2537
         },
         {
           "rank": 4,
@@ -2116,7 +1643,7 @@
             "Deployment"
           ],
           "chunk_sha": "f0d38ee3b6e7",
-          "score": 0.7972
+          "score": 0.2028
         },
         {
           "rank": 5,
@@ -2124,7 +1651,7 @@
           "section_id": "chunk_0",
           "parent_chain": [],
           "chunk_sha": "c335598f3730",
-          "score": 0.8104
+          "score": 0.1896
         }
       ],
       "punctuation_only": [
@@ -2137,7 +1664,7 @@
             "Article I - Definitions"
           ],
           "chunk_sha": "8d15fc1408a4",
-          "score": 0.7414
+          "score": 0.2586
         },
         {
           "rank": 2,
@@ -2148,7 +1675,7 @@
             "Article II - Reporting Requirements"
           ],
           "chunk_sha": "27aa444c4351",
-          "score": 0.7691
+          "score": 0.2309
         },
         {
           "rank": 3,
@@ -2159,7 +1686,7 @@
             "Deployment"
           ],
           "chunk_sha": "f0d38ee3b6e7",
-          "score": 0.7982
+          "score": 0.2018
         },
         {
           "rank": 4,
@@ -2170,7 +1697,7 @@
             "Article III - Compliance"
           ],
           "chunk_sha": "44825ee03edf",
-          "score": 0.8036
+          "score": 0.1964
         },
         {
           "rank": 5,
@@ -2181,7 +1708,7 @@
             "Article II - Reporting Requirements"
           ],
           "chunk_sha": "73deba5c44a3",
-          "score": 0.8077
+          "score": 0.1923
         }
       ]
     }

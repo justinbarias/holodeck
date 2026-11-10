@@ -7,8 +7,8 @@ Test IDs:
 - TBT002: DatabaseConfigMixin._resolve_database_config handles None
 - TBT003: DatabaseConfigMixin._resolve_database_config handles string ref
 - TBT004: DatabaseConfigMixin._resolve_database_config handles DatabaseConfig
-- TBT005: DatabaseConfigMixin._create_collection_with_fallback creates collection
-- TBT006: DatabaseConfigMixin._create_collection_with_fallback falls back on error
+- TBT005: DatabaseConfigMixin._create_adapter_with_fallback creates the adapter
+- TBT006: DatabaseConfigMixin._create_adapter_with_fallback falls back on error
 """
 
 from typing import Any
@@ -17,7 +17,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from holodeck.lib.retrieval import CollectionSchema, FieldSpec, VectorStoreAdapter
+from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
 from holodeck.tools.base_tool import DatabaseConfigMixin, EmbeddingServiceMixin
+from tests.unit.tools.fakes import FakeAdapter
+
+
+def _schema() -> CollectionSchema:
+    return CollectionSchema("docs", 4, (FieldSpec("content", full_text=True),))
 
 
 class MockConfig:
@@ -42,7 +49,7 @@ class DatabaseTestTool(DatabaseConfigMixin):
     def __init__(self, name: str = "test_tool") -> None:
         self.config = MockConfig(name=name)
         self._provider: str = "in-memory"
-        self._collection: Any = None
+        self._adapter: VectorStoreAdapter | None = None
         self._embedding_dimensions: int | None = None
 
 
@@ -137,105 +144,94 @@ class TestDatabaseConfigMixin:
         assert provider == "qdrant"
         assert "connection_string" not in kwargs
 
-    def test_create_collection_with_fallback_creates_collection(self) -> None:
-        """TBT005: _create_collection_with_fallback creates collection."""
+    def test_create_adapter_with_fallback_creates_adapter(self) -> None:
+        """TBT005: _create_adapter_with_fallback creates the provider's adapter."""
         tool = DatabaseTestTool()
-        mock_collection = MagicMock()
 
-        def mock_get_collection_factory(**kwargs: Any) -> MagicMock:
-            return MagicMock(return_value=mock_collection)
+        result = tool._create_adapter_with_fallback(
+            provider="in-memory", schema=_schema(), connection_kwargs={}
+        )
 
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory",
-            side_effect=mock_get_collection_factory,
-        ):
-            result = tool._create_collection_with_fallback(
-                provider="in-memory",
-                dimensions=1536,
-                connection_kwargs={},
-            )
+        assert isinstance(result, InMemoryAdapter)
+        assert result.schema == _schema()
+        assert tool._provider == "in-memory"
 
-            assert result is mock_collection
-            assert tool._provider == "in-memory"
-
-    def test_create_collection_with_fallback_falls_back_on_error(self) -> None:
-        """TBT006: _create_collection_with_fallback falls back on error."""
+    def test_create_adapter_with_fallback_falls_back_on_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """TBT006: _create_adapter_with_fallback falls back on error."""
         tool = DatabaseTestTool()
-        mock_collection = MagicMock()
-        call_count = 0
+        fallback = InMemoryAdapter(_schema())
+        calls: list[tuple[str, dict[str, object]]] = []
 
-        def factory_side_effect(**kwargs: Any) -> MagicMock:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                # First call (postgres) - return failing factory
-                def failing_factory() -> None:
-                    raise ConnectionError("Cannot connect")
+        def create(
+            provider: str,
+            schema: CollectionSchema,
+            connection: dict[str, object] | None = None,
+        ) -> InMemoryAdapter:
+            calls.append((provider, dict(connection or {})))
+            if provider == "postgres":
+                raise ConnectionError("Cannot connect")
+            return fallback
 
-                return MagicMock(side_effect=failing_factory)
-            else:
-                # Second call (in-memory) - return working factory
-                return MagicMock(return_value=mock_collection)
-
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory",
-            side_effect=factory_side_effect,
-        ):
-            result = tool._create_collection_with_fallback(
+        with patch("holodeck.lib.retrieval.create_adapter", side_effect=create):
+            result = tool._create_adapter_with_fallback(
                 provider="postgres",
-                dimensions=1536,
+                schema=_schema(),
                 connection_kwargs={"connection_string": "postgresql://localhost"},
             )
 
-            assert result is mock_collection
-            assert tool._provider == "in-memory"
+        assert result is fallback
+        assert tool._provider == "in-memory"
+        assert calls == [
+            ("postgres", {"connection_string": "postgresql://localhost"}),
+            ("in-memory", {}),
+        ]
+        assert "Failed to connect to postgres: Cannot connect" in caplog.text
 
-    def test_create_collection_raises_for_in_memory_failure(self) -> None:
-        """_create_collection_with_fallback raises for in-memory failures."""
+    def test_unknown_provider_falls_back_to_in_memory(self) -> None:
+        """An unknown provider falls back, as get_collection_factory's error did."""
         tool = DatabaseTestTool()
 
-        def failing_factory() -> None:
-            raise ValueError("Unexpected error")
+        result = tool._create_adapter_with_fallback(
+            provider="not-a-store", schema=_schema(), connection_kwargs={}
+        )
 
-        def mock_get_collection_factory(**kwargs: Any) -> MagicMock:
-            return MagicMock(side_effect=failing_factory)
+        assert isinstance(result, InMemoryAdapter)
+        assert tool._provider == "in-memory"
+
+    def test_create_adapter_raises_for_in_memory_failure(self) -> None:
+        """_create_adapter_with_fallback raises for in-memory failures."""
+        tool = DatabaseTestTool()
 
         with (
             patch(
-                "holodeck.lib.vector_store.get_collection_factory",
-                side_effect=mock_get_collection_factory,
+                "holodeck.lib.retrieval.create_adapter",
+                side_effect=ValueError("Unexpected error"),
             ),
             pytest.raises(ValueError, match="Unexpected error"),
         ):
-            tool._create_collection_with_fallback(
-                provider="in-memory",
-                dimensions=1536,
-                connection_kwargs={},
+            tool._create_adapter_with_fallback(
+                provider="in-memory", schema=_schema(), connection_kwargs={}
             )
 
-    def test_create_collection_passes_record_class_and_definition(self) -> None:
-        """_create_collection_with_fallback passes record_class and definition."""
+    @pytest.mark.asyncio
+    async def test_close_closes_the_adapter(self) -> None:
+        """close() and the backends' cleanup() hook release the adapter."""
         tool = DatabaseTestTool()
-        mock_collection = MagicMock()
-        mock_record_class = MagicMock()
-        mock_definition = MagicMock()
+        adapter = FakeAdapter(_schema())
+        tool._adapter = adapter
 
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory",
-        ) as mock_factory:
-            mock_factory.return_value = MagicMock(return_value=mock_collection)
+        await tool.close()
+        await tool.cleanup()
 
-            tool._create_collection_with_fallback(
-                provider="in-memory",
-                dimensions=768,
-                connection_kwargs={},
-                record_class=mock_record_class,
-                definition=mock_definition,
-            )
+        assert adapter.close_calls == 2
 
-            mock_factory.assert_called_once_with(
-                provider="in-memory",
-                dimensions=768,
-                record_class=mock_record_class,
-                definition=mock_definition,
-            )
+    @pytest.mark.asyncio
+    async def test_close_without_adapter_is_a_no_op(self) -> None:
+        """close() before setup does nothing."""
+        tool = DatabaseTestTool()
+
+        await tool.close()
+
+        assert tool._adapter is None

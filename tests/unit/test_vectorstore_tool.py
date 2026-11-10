@@ -76,9 +76,63 @@ if "semantic_kernel.text" in _mocked_modules:
         )
     )
 
+from types import SimpleNamespace  # noqa: E402
+from typing import Any  # noqa: E402
+
 import pytest  # noqa: E402
 
+from holodeck.lib.retrieval import (  # noqa: E402
+    Record,
+    ScoredRecord,
+    VectorQuery,
+)
+from holodeck.lib.retrieval.schemas import document_schema  # noqa: E402
 from holodeck.models.tool import VectorstoreTool  # noqa: E402
+from tests.unit.tools.fakes import FakeAdapter  # noqa: E402
+
+_DOC_FIELDS = (
+    "source_path",
+    "chunk_index",
+    "content",
+    "mtime",
+    "file_type",
+    "file_size_bytes",
+)
+
+
+def _doc_adapter(dimensions: int = 1536) -> FakeAdapter:
+    """An empty document-schema adapter."""
+    return FakeAdapter(document_schema(dimensions), provider="in-memory")
+
+
+def _doc_adapter_with(tool: Any, path: Path, **fields: Any) -> FakeAdapter:
+    """An adapter holding chunk 0 of ``path`` with ``fields``."""
+    adapter = _doc_adapter()
+    record_id = tool._record_id(tool._compute_source_key(path), 0)
+    adapter.put(Record(id=record_id, fields=fields, vector=[0.0] * 1536))
+    return adapter
+
+
+def _stored(adapter: FakeAdapter) -> list[SimpleNamespace]:
+    """Stored records with fields as attributes, in insertion order."""
+    return [
+        SimpleNamespace(id=record.id, embedding=record.vector, **record.fields)
+        for record in adapter.stored()
+    ]
+
+
+def _hits_from_mocks(results: list[Any]) -> list[ScoredRecord]:
+    """Convert SK-style mock results (``.record``, ``.score``) to scored records."""
+    return [
+        ScoredRecord(
+            record=Record(
+                id=result.record.id,
+                fields={name: getattr(result.record, name) for name in _DOC_FIELDS},
+            ),
+            score=result.score,
+        )
+        for result in results
+    ]
 
 
 class TestVectorStoreToolInitialization:
@@ -846,16 +900,12 @@ class TestSetupCollection:
 
         tool = VectorStoreTool(config)
 
-        # Mock get_collection_factory to avoid actual import
-        mock_collection = MagicMock()
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-            tool._setup_collection("openai")
+        tool._setup_collection("openai")
 
         assert tool._provider == "in-memory"
-        assert tool._collection is not None
+        assert tool._adapter is not None
+        assert tool._adapter.provider == "in-memory"
+        assert tool._adapter.schema.name == "documents_dim1536"
 
     def test_setup_collection_with_chromadb_provider(self, tmp_path: Path) -> None:
         """Test _setup_collection with ChromaDB provider."""
@@ -875,7 +925,7 @@ class TestSetupCollection:
 
         tool = VectorStoreTool(config)
 
-        # Mock get_collection_factory to avoid actual import
+        # The SK bridge builds its collection through get_collection_factory
         mock_collection = MagicMock()
         with patch(
             "holodeck.lib.vector_store.get_collection_factory"
@@ -884,7 +934,7 @@ class TestSetupCollection:
             tool._setup_collection("openai")
 
         assert tool._provider == "chromadb"
-        assert tool._collection is not None
+        assert tool._adapter is not None
 
     def test_setup_collection_with_connection_string(self, tmp_path: Path) -> None:
         """Test _setup_collection with connection string."""
@@ -907,7 +957,7 @@ class TestSetupCollection:
 
         tool = VectorStoreTool(config)
 
-        # Mock get_collection_factory to avoid actual import
+        # The SK bridge builds its collection through get_collection_factory
         mock_collection = MagicMock()
         with patch(
             "holodeck.lib.vector_store.get_collection_factory"
@@ -916,7 +966,7 @@ class TestSetupCollection:
             tool._setup_collection("openai")
 
         assert tool._provider == "chromadb"
-        assert tool._collection is not None
+        assert tool._adapter is not None
 
 
 class TestGetFileProcessor:
@@ -1347,13 +1397,8 @@ class TestStoreChunks:
         tool = VectorStoreTool(config)
 
         # Setup mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-        tool._collection = mock_collection
+        adapter = _doc_adapter()
+        tool._adapter = adapter
 
         # Create source file with chunks
         sf = SourceFile(
@@ -1369,10 +1414,9 @@ class TestStoreChunks:
         count = await tool._store_chunks(sf, embeddings)
 
         assert count == 2
-        mock_collection.upsert.assert_called_once()
 
         # Verify records were created correctly
-        call_args = mock_collection.upsert.call_args[0][0]
+        call_args = _stored(adapter)
         assert len(call_args) == 2
         assert call_args[0].content == "chunk1"
         assert call_args[1].content == "chunk2"
@@ -1441,21 +1485,7 @@ class TestInitializeFullFlow:
         mock_processor.process_file.side_effect = mock_process_file
         tool._file_processor = mock_processor
 
-        # Mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=None)
-
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-
-            await tool.initialize()
+        await tool.initialize()
 
         assert tool.is_initialized is True
         assert tool.document_count > 0
@@ -1489,21 +1519,7 @@ class TestInitializeFullFlow:
         )
         tool._file_processor = mock_processor
 
-        # Mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=None)
-
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-
-            await tool.initialize()
+        await tool.initialize()
 
         assert tool.is_initialized is True
         assert tool.document_count >= 0
@@ -1525,20 +1541,7 @@ class TestInitializeFullFlow:
 
         tool = VectorStoreTool(config)
 
-        # Mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-
-            await tool.initialize()
+        await tool.initialize()
 
         # Should still be initialized even with no files
         assert tool.is_initialized is True
@@ -1588,21 +1591,7 @@ class TestInitializeFullFlow:
         mock_processor.process_file.side_effect = mock_process_file
         tool._file_processor = mock_processor
 
-        # Mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=None)
-
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-
-            await tool.initialize()
+        await tool.initialize()
 
         # Should be initialized with only the successful file
         assert tool.is_initialized is True
@@ -1808,24 +1797,14 @@ class TestSearchDocuments:
         mock_result.score = 0.9  # Cosine similarity score
 
         # Create mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        # Mock search results
-        mock_search_results = MagicMock()
-        mock_search_results.results = MockAsyncIterator([mock_result])
-        mock_collection.search = AsyncMock(return_value=mock_search_results)
-
-        tool._collection = mock_collection
+        adapter = _doc_adapter()
+        adapter.vector_hits = _hits_from_mocks([mock_result])
+        tool._adapter = adapter
 
         query_embedding = [0.1] * 1536
         results = await tool._search_documents(query_embedding)
 
-        mock_collection.search.assert_called_once_with(
-            vector=query_embedding,
-            top=5,
-        )
+        assert adapter.vector_queries == [VectorQuery(vector=query_embedding, top_k=5)]
         assert len(results) == 1
         assert results[0].content == "Test content"
         # Score is clamped to [0.0, 1.0] range (cosine similarity)
@@ -1882,15 +1861,9 @@ class TestSearchDocuments:
             mock_result.score = score  # Cosine similarity score
             mock_results.append(mock_result)
 
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        mock_search_results = MagicMock()
-        mock_search_results.results = MockAsyncIterator(mock_results)
-        mock_collection.search = AsyncMock(return_value=mock_search_results)
-
-        tool._collection = mock_collection
+        adapter = _doc_adapter()
+        adapter.vector_hits = _hits_from_mocks(mock_results)
+        tool._adapter = adapter
 
         results = await tool._search_documents([0.1] * 1536)
 
@@ -1956,15 +1929,9 @@ class TestSearchDocuments:
             mock_result.score = raw_score
             mock_results.append((mock_result, expected_score))
 
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        mock_search_results = MagicMock()
-        mock_search_results.results = MockAsyncIterator([mr for mr, _ in mock_results])
-        mock_collection.search = AsyncMock(return_value=mock_search_results)
-
-        tool._collection = mock_collection
+        adapter = _doc_adapter()
+        adapter.vector_hits = _hits_from_mocks([mr for mr, _ in mock_results])
+        tool._adapter = adapter
 
         results = await tool._search_documents([0.1] * 1536)
 
@@ -2080,13 +2047,8 @@ class TestFileModificationTimestampTracking:
         tool = VectorStoreTool(config)
 
         # Setup mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-        tool._collection = mock_collection
+        adapter = _doc_adapter()
+        tool._adapter = adapter
 
         # Create source file with specific mtime
         expected_mtime = 1234567890.5
@@ -2103,8 +2065,7 @@ class TestFileModificationTimestampTracking:
         await tool._store_chunks(sf, embeddings)
 
         # Verify DocumentRecord was created with correct mtime
-        mock_collection.upsert.assert_called_once()
-        call_args = mock_collection.upsert.call_args[0][0]
+        call_args = _stored(adapter)
         assert len(call_args) == 1
         assert call_args[0].mtime == expected_mtime
 
@@ -2132,11 +2093,9 @@ class TestMtimeComparisonLogic:
         mock_record = MagicMock()
         mock_record.mtime = source_file.stat().st_mtime - 100  # Older than current
 
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(return_value=mock_record)
-        tool._collection = mock_collection
+        tool._adapter = _doc_adapter_with(
+            tool, source_file, mtime=float(mock_record.mtime)
+        )
 
         result = await tool._needs_reingest(source_file)
 
@@ -2167,11 +2126,9 @@ class TestMtimeComparisonLogic:
         mock_record = MagicMock()
         mock_record.mtime = current_mtime  # Same as current (rounded)
 
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(return_value=mock_record)
-        tool._collection = mock_collection
+        tool._adapter = _doc_adapter_with(
+            tool, source_file, mtime=float(mock_record.mtime)
+        )
 
         result = await tool._needs_reingest(source_file)
 
@@ -2196,11 +2153,7 @@ class TestMtimeComparisonLogic:
         tool = VectorStoreTool(config)
 
         # Mock collection returning None (no record found)
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(return_value=None)
-        tool._collection = mock_collection
+        tool._adapter = _doc_adapter()
 
         result = await tool._needs_reingest(source_file)
 
@@ -2265,20 +2218,7 @@ class TestForceIngestFlag:
         )
         tool._file_processor = mock_processor
 
-        # Mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-
-            await tool.initialize(force_ingest=True)
+        await tool.initialize(force_ingest=True)
 
         # Should have processed the file despite _needs_reingest returning False
         assert tool.is_initialized is True
@@ -2316,20 +2256,7 @@ class TestForceIngestFlag:
         # Mock _needs_reingest to return False (file unchanged)
         tool._needs_reingest = AsyncMock(return_value=False)
 
-        # Mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-
-            await tool.initialize(force_ingest=False)
+        await tool.initialize(force_ingest=False)
 
         # Should NOT have processed the file
         assert process_file_called is False
@@ -2376,20 +2303,7 @@ class TestForceIngestFlag:
         )
         tool._file_processor = mock_processor
 
-        # Mock collection
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.collection_exists = AsyncMock(return_value=False)
-        mock_collection.ensure_collection_exists = AsyncMock()
-        mock_collection.upsert = AsyncMock()
-
-        with patch(
-            "holodeck.lib.vector_store.get_collection_factory"
-        ) as mock_get_factory:
-            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
-
-            await tool.initialize(force_ingest=True)
+        await tool.initialize(force_ingest=True)
 
         # Should have called _delete_file_records
         assert delete_called is True
@@ -2414,32 +2328,19 @@ class TestDeleteFileRecords:
 
         tool = VectorStoreTool(config)
 
-        # Create mock records for chunks 0, 1, 2
-        mock_records = {
-            f"{source_file}_chunk_0": MagicMock(),
-            f"{source_file}_chunk_1": MagicMock(),
-            f"{source_file}_chunk_2": MagicMock(),
-        }
-
-        async def mock_get(record_id):
-            return mock_records.get(record_id)
-
-        deleted_ids = []
-
-        async def mock_delete(record_id):
-            deleted_ids.append(record_id)
-
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = mock_get
-        mock_collection.delete = mock_delete
-        tool._collection = mock_collection
+        # Records for chunks 0, 1, 2
+        record_ids = [f"{source_file}_chunk_{index}" for index in range(3)]
+        adapter = _doc_adapter()
+        adapter.put(
+            *(Record(id=key, fields={}, vector=[0.0] * 4) for key in record_ids)
+        )
+        tool._adapter = adapter
 
         count = await tool._delete_file_records(source_file)
 
         assert count == 3
-        assert len(deleted_ids) == 3
+        assert adapter.deleted == record_ids
+        assert adapter.stored() == []
 
     @pytest.mark.asyncio
     async def test_delete_file_records_returns_zero_when_no_collection(
@@ -2483,11 +2384,7 @@ class TestDeleteFileRecords:
         tool = VectorStoreTool(config)
 
         # Mock collection returning None for all gets
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(return_value=None)
-        tool._collection = mock_collection
+        tool._adapter = _doc_adapter()
 
         count = await tool._delete_file_records(source_file)
 

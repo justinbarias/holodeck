@@ -95,18 +95,18 @@ Record current behavior before any replacement, so later tasks have a fixed targ
 
 Design the `lib/retrieval/` types and the `VectorStoreAdapter` protocol. Present the interface to the maintainer before any adapter is written.
 
-- [ ] Typed records for the three record families, a portable filter type, query and result types, a capability declaration per adapter, and an error hierarchy that includes a missing-client error with the install command.
-- [ ] Score convention documented: similarity in `[0, 1]`; adapters convert distances.
-- [ ] Contract test suite skeleton, parametrized by adapter, covering each FR-013 operation.
+- [x] Typed records for the three record families, a portable filter type, query and result types, a capability declaration per adapter, and an error hierarchy that includes a missing-client error with the install command.
+- [x] Score convention documented: similarity in `[0, 1]`; adapters convert distances.
+- [x] Contract test suite skeleton, parametrized by adapter, covering each FR-013 operation.
 
 **Verify:** MyPy strict on the new package; the suite collects and runs against a stub.
 **Depends on:** T0. **Size:** M. **Model:** Fable inline. **Spec:** FR-012, FR-013, FR-015.
 
 #### T3. In-memory adapter and the temporary SK bridge
 
-- [ ] Native in-memory adapter passes the full contract suite.
-- [ ] One SK bridge adapter exposes existing SK collections through the protocol for every provider.
-- [ ] The bridge is marked temporary in code and listed for deletion in T16.
+- [x] Native in-memory adapter passes the full contract suite.
+- [x] One SK bridge adapter exposes existing SK collections through the protocol for every provider.
+- [x] The bridge is marked temporary in code and listed for deletion in T16.
 
 **Verify:** contract suite green for `in-memory` and for the bridge on `in-memory`.
 **Depends on:** T2. **Size:** M. **Model:** Opus `medium`. **Spec:** FR-013, FR-019.
@@ -115,9 +115,9 @@ Design the `lib/retrieval/` types and the `VectorStoreAdapter` protocol. Present
 
 Switch `vectorstore_tool.py`, `hierarchical_document_tool.py`, `base_tool.py`, `collection_filter.py` and `keyword_search.py` to the protocol. Behavior must not change.
 
-- [ ] No tool imports `semantic_kernel` or calls an SK collection method.
-- [ ] T0 golden fixtures unchanged on in-memory, Qdrant and Chroma.
-- [ ] Unsupported operations raise the capability error before ingestion.
+- [x] No tool imports `semantic_kernel` or calls an SK collection method.
+- [x] T0 golden fixtures unchanged on in-memory, Qdrant and Chroma.
+- [x] Unsupported operations raise the capability error before ingestion.
 
 **Verify:** existing tool tests, T0 fixtures, `make verify-live`.
 **Depends on:** T3. **Size:** L. Split by tool if the diff exceeds one review sitting. **Model:** Fable inline. **Spec:** FR-012, FR-014, AC-06.
@@ -387,6 +387,7 @@ T0 ──┬─ T1 (independent PR)
 ## Progress and decisions
 
 - 2026-11-10: The maintainer delegated the open questions. Decisions: (1) `faiss`, `sql-server` and `azure-cosmos-mongo` are retired with a config-time migration error (T9); (2) Pinecone and Azure AI Search use local or mocked evidence and their live items stay open; (3) the fingerprint is stored per collection (T15); (4) extra names are fixed in T21. Each phase is one PR on a single `gh stack`, with one Codex review round per phase.
+- 2026-11-10: T2 to T4 done. The contract is `src/holodeck/lib/retrieval/` (types, errors, `VectorStoreAdapter`, registry) with the contract suite in `tests/contract/retrieval/`. Tools hold an adapter; `lib/collection_filter.py` is deleted. Two behavior changes: Chroma results now rank by similarity (SK returned distance), and `HierarchicalDocumentTool` raises a capability error before ingestion on providers with no exact-filter read (pinecone, azure-ai-search, azure-cosmos-nosql and the three retired names). Before, those providers re-ingested on every start and never deleted stale chunks. Native adapters in Phases 2 and 3 restore them.
 - 2026-11-10: T0 done. Goldens under `tests/fixtures/golden/`, tests under `tests/integration/golden/` (14 pass on in-memory, Qdrant and Chroma). The goldens freeze six existing defects, listed in each expected file under `known_behavior`: Chroma semantic ranking is inverted (SK returns distance), Qdrant keyword mode returns nothing, Qdrant hybrid scores are raw RRF values, Qdrant hybrid order is not reproducible for multi-match queries, PDF and PowerPoint page selection is zero-based under a positive-only validator, and the plain splitter ignores overlap. A task that fixes one updates its golden on purpose.
 - 2026-11-10: T1 done. Removed `aiofiles`, `python-dateutil`, `absl-py`, `ml-dtypes`, `requests` and the `sentry-sdk` constraint. `anthropic` and `ollama` stay: DeepEval's `AnthropicModel` and `OllamaModel` need them.
 - 2026-11-10: Plan created after the second inventory and market scan. The retrieval direction changed from LlamaIndex to native adapters the same day; see the selection evidence. No implementation task has started.

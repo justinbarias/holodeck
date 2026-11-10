@@ -80,7 +80,6 @@ import pytest  # noqa: E402
 from holodeck.lib.vector_store import (  # noqa: E402
     DocumentRecord,
     QueryResult,
-    convert_document_to_query_result,
     create_chromadb_client,
     create_document_record_class,
     create_hierarchical_document_record_class,
@@ -436,125 +435,6 @@ class TestGetCollectionFactory:
         factory = get_collection_factory("in-memory")
         # This should work without errors, using default 1536
         assert callable(factory)
-
-
-class TestConvertDocumentToQueryResult:
-    """Tests for convert_document_to_query_result async function."""
-
-    @pytest.mark.asyncio
-    async def test_convert_basic_document(self) -> None:
-        """Test converting a basic DocumentRecord to QueryResult."""
-        doc = DocumentRecord(
-            id="doc_1",
-            content="Test content",
-            source_path="/test.txt",
-            chunk_index=0,
-        )
-        result = await convert_document_to_query_result(doc, score=0.9)
-        assert result.content == "Test content"
-        assert result.score == 0.9
-        assert result.source_path == "/test.txt"
-        assert result.chunk_index == 0
-
-    @pytest.mark.asyncio
-    async def test_convert_with_metadata(self) -> None:
-        """Test converting document with metadata."""
-        doc = DocumentRecord(
-            id="doc_2",
-            content="Content",
-            source_path="/docs/file.pdf",
-            chunk_index=5,
-            file_type=".pdf",
-            file_size_bytes=5000,
-            mtime=1234567890.0,
-        )
-        result = await convert_document_to_query_result(doc, score=0.75)
-        assert result.metadata["file_type"] == ".pdf"
-        assert result.metadata["file_size_bytes"] == 5000
-        assert result.metadata["mtime"] == 1234567890.0
-
-    @pytest.mark.asyncio
-    async def test_convert_with_zero_score(self) -> None:
-        """Test conversion with score of 0.0."""
-        doc = DocumentRecord(content="test", source_path="/test", chunk_index=0)
-        result = await convert_document_to_query_result(doc, score=0.0)
-        assert result.score == 0.0
-
-    @pytest.mark.asyncio
-    async def test_convert_with_perfect_score(self) -> None:
-        """Test conversion with perfect score."""
-        doc = DocumentRecord(content="test", source_path="/test", chunk_index=0)
-        result = await convert_document_to_query_result(doc, score=1.0)
-        assert result.score == 1.0
-
-    @pytest.mark.asyncio
-    async def test_convert_preserves_all_fields(self) -> None:
-        """Test that conversion preserves all relevant fields."""
-        doc = DocumentRecord(
-            id="unique_id",
-            content="Full content here",
-            source_path="/path/to/source",
-            chunk_index=42,
-            file_type=".txt",
-            file_size_bytes=2048,
-            mtime=9999999999.0,
-        )
-        result = await convert_document_to_query_result(doc, score=0.85)
-        assert result.content == "Full content here"
-        assert result.source_path == "/path/to/source"
-        assert result.chunk_index == 42
-        assert result.score == 0.85
-        assert result.metadata["file_type"] == ".txt"
-        assert result.metadata["file_size_bytes"] == 2048
-        assert result.metadata["mtime"] == 9999999999.0
-
-    @pytest.mark.asyncio
-    async def test_convert_invalid_score_too_low(self) -> None:
-        """Test that invalid score raises error during conversion."""
-        doc = DocumentRecord(content="test", source_path="/test", chunk_index=0)
-        with pytest.raises(ValueError, match="Score must be between 0.0 and 1.0"):
-            await convert_document_to_query_result(doc, score=-0.5)
-
-    @pytest.mark.asyncio
-    async def test_convert_invalid_score_too_high(self) -> None:
-        """Test that invalid score raises error during conversion."""
-        doc = DocumentRecord(content="test", source_path="/test", chunk_index=0)
-        with pytest.raises(ValueError, match="Score must be between 0.0 and 1.0"):
-            await convert_document_to_query_result(doc, score=1.5)
-
-    @pytest.mark.asyncio
-    async def test_convert_returns_query_result(self) -> None:
-        """Test that conversion returns QueryResult instance.
-
-        Note: We check class name instead of isinstance() because module reloading
-        during parallel test execution can cause class identity mismatches.
-        """
-        doc = DocumentRecord(content="test", source_path="/test", chunk_index=0)
-        result = await convert_document_to_query_result(doc, score=0.5)
-        # Check class name to handle module reloading during parallel tests
-        assert type(result).__name__ == "QueryResult"
-        # Verify it has expected QueryResult attributes
-        assert hasattr(result, "content")
-        assert hasattr(result, "score")
-        assert hasattr(result, "source_path")
-        assert hasattr(result, "chunk_index")
-        assert hasattr(result, "metadata")
-
-    @pytest.mark.asyncio
-    async def test_convert_with_empty_metadata_fields(self) -> None:
-        """Test conversion when document has empty metadata fields."""
-        doc = DocumentRecord(
-            content="test",
-            source_path="/test",
-            chunk_index=0,
-            file_type="",
-            file_size_bytes=0,
-            mtime=0.0,
-        )
-        result = await convert_document_to_query_result(doc, score=0.5)
-        assert result.metadata["file_type"] == ""
-        assert result.metadata["file_size_bytes"] == 0
-        assert result.metadata["mtime"] == 0.0
 
 
 class TestVectorStoreSearchTopK:

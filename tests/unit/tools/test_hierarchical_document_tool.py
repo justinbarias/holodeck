@@ -109,12 +109,27 @@ if "semantic_kernel.connectors.ai.function_choice_behavior" in _mocked_modules:
     mock_fcb = sys.modules["semantic_kernel.connectors.ai.function_choice_behavior"]
     mock_fcb.FunctionChoiceBehavior = MagicMock()
 
+from collections.abc import Sequence  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+from typing import Any  # noqa: E402
+
 import pytest  # noqa: E402
 
+from holodeck.lib.retrieval import (  # noqa: E402
+    BaseVectorStoreAdapter,
+    Capabilities,
+    Operation,
+    Record,
+    RecordFilter,
+    ScoredRecord,
+    VectorQuery,
+)
+from holodeck.lib.retrieval.schemas import hierarchical_schema  # noqa: E402
 from holodeck.models.tool import HierarchicalDocumentToolConfig  # noqa: E402
 from holodeck.tools.hierarchical_document_tool import (  # noqa: E402
     HierarchicalDocumentTool,
 )
+from tests.unit.tools.fakes import ALL_OPERATIONS, FakeAdapter  # noqa: E402
 
 # Capture the configured mock modules so the autouse fixture below can
 # re-establish them for each test, then restore sys.modules to its pre-import
@@ -180,6 +195,108 @@ if TYPE_CHECKING:
 _TOOL_LOGGER = "holodeck.tools.hierarchical_document_tool"
 
 
+class MockCollectionAdapter(BaseVectorStoreAdapter):
+    """Adapter over an SK-shaped ``MagicMock`` collection.
+
+    Lets the mock setups in this module (``search`` results with ``.record``
+    and ``.score``, ``upsert``/``delete`` calls) drive the tool through the
+    adapter contract. ``find_result`` is what ``find`` returns (records as
+    dicts with an ``"id"`` key) or raises.
+    """
+
+    def __init__(
+        self,
+        collection: Any,
+        find_result: "list[dict[str, Any]] | Exception | None" = None,
+        *,
+        provider: str = "mock",
+        native_hybrid: bool = False,
+    ) -> None:
+        operations = set(ALL_OPERATIONS)
+        if not native_hybrid:
+            operations.discard(Operation.HYBRID_SEARCH)
+        super().__init__(
+            hierarchical_schema(1536, "test_tool"),
+            Capabilities(provider, frozenset(operations)),
+        )
+        self.collection = collection
+        self.find_result = find_result if find_result is not None else []
+        self.close_calls = 0
+
+    def _validate(self, records: Sequence[Record]) -> None:
+        return None
+
+    async def collection_exists(self) -> bool:
+        return bool(await self.collection.collection_exists())
+
+    async def ensure_collection(self) -> None:
+        if not await self.collection.collection_exists():
+            await self.collection.ensure_collection_exists()
+
+    async def delete_collection(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+    async def upsert(self, records: Sequence[Record]) -> None:
+        await self.collection.upsert(
+            [SimpleNamespace(id=r.id, embedding=r.vector, **r.fields) for r in records]
+        )
+
+    async def delete(self, ids: Sequence[str]) -> None:
+        await self.collection.delete(list(ids))
+
+    async def find(
+        self, record_filter: RecordFilter, *, limit: int | None = None
+    ) -> list[Record]:
+        if isinstance(self.find_result, Exception):
+            raise self.find_result
+        found = [
+            Record(
+                id=str(row.get("id", "")),
+                fields={k: v for k, v in row.items() if k != "id"},
+            )
+            for row in self.find_result
+        ]
+        return found if limit is None else found[:limit]
+
+    async def vector_search(self, query: VectorQuery) -> list[ScoredRecord]:
+        results = await self.collection.search(
+            vector=list(query.vector), top=query.top_k
+        )
+        hits = []
+        async for result in results.results:
+            hits.append(
+                ScoredRecord(
+                    record=_record_from_mock(result.record), score=float(result.score)
+                )
+            )
+        return hits
+
+
+def _record_from_mock(record: Any) -> Record:
+    """Fields explicitly set on a mock or namespace record."""
+    fields = {
+        name: value
+        for name, value in vars(record).items()
+        if not name.startswith("_")
+        and name != "id"
+        and isinstance(value, str | int | float | bool)
+    }
+    return Record(id=str(record.id), fields=fields)
+
+
+def _fake(provider: str, *, native_hybrid: bool = False) -> FakeAdapter:
+    """An in-memory hierarchical adapter with ``provider``'s hybrid capability."""
+    operations = set(ALL_OPERATIONS)
+    if not native_hybrid:
+        operations.discard(Operation.HYBRID_SEARCH)
+    return FakeAdapter(
+        hierarchical_schema(1536, "test_tool"), provider=provider, operations=operations
+    )
+
+
 class TestHierarchicalDocumentToolInit:
     """T20/T36: Tests for HierarchicalDocumentTool initialization."""
 
@@ -224,13 +341,13 @@ class TestHierarchicalDocumentToolInit:
         assert hasattr(tool, "_embedding_service")
         assert tool._embedding_service is None
 
-    def test_init_has_collection_attribute(self, tmp_path: Path) -> None:
-        """Test that tool has _collection attribute."""
+    def test_init_has_adapter_attribute(self, tmp_path: Path) -> None:
+        """Test that tool has an _adapter attribute, unset until setup."""
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
-        assert hasattr(tool, "_collection")
-        assert tool._collection is None
+        assert hasattr(tool, "_adapter")
+        assert tool._adapter is None
 
     def test_set_embedding_service(self, tmp_path: Path) -> None:
         """Test embedding service injection via set_embedding_service."""
@@ -562,7 +679,7 @@ class TestStoreChunks:
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
         mock_collection.upsert = AsyncMock()
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         chunks = [
             DocumentChunk(
@@ -599,7 +716,7 @@ class TestStoreChunks:
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
         mock_collection.upsert = AsyncMock()
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         chunks = [
             DocumentChunk(
@@ -687,7 +804,7 @@ class TestSemanticSearch:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("test query")
 
@@ -726,7 +843,7 @@ class TestSemanticSearch:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("query")
 
@@ -763,7 +880,7 @@ class TestSemanticSearch:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("query")
 
@@ -794,7 +911,7 @@ class TestSemanticSearch:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         await tool.search("query")
 
@@ -845,7 +962,7 @@ class TestSearchResultFormat:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("query")
 
@@ -885,7 +1002,7 @@ class TestSearchResultFormat:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("query")
 
@@ -918,7 +1035,7 @@ class TestConfidenceIndication:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("nonexistent query")
 
@@ -957,7 +1074,7 @@ class TestConfidenceIndication:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("query")
 
@@ -1380,7 +1497,7 @@ class TestMinScoreFiltering:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("query")
 
@@ -1424,7 +1541,7 @@ class TestMinScoreFiltering:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool.search("query")
 
@@ -1466,7 +1583,7 @@ class TestGetContext:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         context = await tool.get_context("test query")
 
@@ -1496,7 +1613,7 @@ class TestGetContext:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         context = await tool.get_context("test query")
 
@@ -1722,7 +1839,7 @@ class TestNeedsReingest:
 
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
-        tool._collection = None
+        tool._adapter = None
 
         result = await tool._needs_reingest(doc_file)
         assert result is True
@@ -1739,13 +1856,9 @@ class TestNeedsReingest:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection, [])
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
-            AsyncMock(return_value=[]),
-        ):
-            result = await tool._needs_reingest(doc_file)
+        result = await tool._needs_reingest(doc_file)
         assert result is True
 
     @pytest.mark.asyncio
@@ -1761,13 +1874,11 @@ class TestNeedsReingest:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(
+            mock_collection, [{"mtime": current_mtime}]
+        )
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
-            AsyncMock(return_value=[{"mtime": current_mtime}]),
-        ):
-            result = await tool._needs_reingest(doc_file)
+        result = await tool._needs_reingest(doc_file)
         assert result is False
 
     @pytest.mark.asyncio
@@ -1783,13 +1894,11 @@ class TestNeedsReingest:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(
+            mock_collection, [{"mtime": current_mtime - 100}]
+        )
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
-            AsyncMock(return_value=[{"mtime": current_mtime - 100}]),
-        ):
-            result = await tool._needs_reingest(doc_file)
+        result = await tool._needs_reingest(doc_file)
         assert result is True
 
 
@@ -1804,7 +1913,7 @@ class TestDeleteFileRecords:
 
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
-        tool._collection = None
+        tool._adapter = None
 
         result = await tool._delete_file_records(doc_file)
         assert result == 0
@@ -1828,13 +1937,9 @@ class TestDeleteFileRecords:
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.delete = AsyncMock()
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection, mock_records)
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
-            AsyncMock(return_value=mock_records),
-        ):
-            result = await tool._delete_file_records(doc_file)
+        result = await tool._delete_file_records(doc_file)
 
         assert result == 3
         mock_collection.delete.assert_called_once()
@@ -1861,21 +1966,19 @@ class TestCollectionSetupFallback:
 
         tool = HierarchicalDocumentTool(config)
 
-        # Mock get_collection_factory at the source module
-        with patch("holodeck.lib.vector_store.get_collection_factory") as mock_factory:
-            # First call (postgres) raises error, second (in-memory) succeeds
-            mock_inmemory_collection = MagicMock()
-            mock_inmemory_factory = MagicMock(return_value=mock_inmemory_collection)
-            mock_factory.side_effect = [
-                ConnectionError("Failed to connect"),
-                mock_inmemory_factory,
-            ]
+        fallback = _fake("in-memory")
 
+        def create(provider: str, schema: Any, connection: Any = None) -> FakeAdapter:
+            if provider == "postgres":
+                raise ConnectionError("Failed to connect")
+            return fallback
+
+        with patch("holodeck.lib.retrieval.create_adapter", side_effect=create):
             tool._setup_collection("openai")
 
-            # Should have fallen back to in-memory
-            assert tool._provider == "in-memory"
-            assert tool._collection == mock_inmemory_collection
+        # Should have fallen back to in-memory
+        assert tool._provider == "in-memory"
+        assert tool._adapter is fallback
 
 
 class TestNeedsReingestExceptionHandling:
@@ -1895,13 +1998,11 @@ class TestNeedsReingestExceptionHandling:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(
+            mock_collection, Exception("Database error")
+        )
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
-            AsyncMock(side_effect=Exception("Database error")),
-        ):
-            result = await tool._needs_reingest(doc_file)
+        result = await tool._needs_reingest(doc_file)
         assert result is True  # Should return True on error
 
 
@@ -1920,13 +2021,11 @@ class TestDeleteFileRecordsExceptionHandling:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(
+            mock_collection, Exception("Database error")
+        )
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
-            AsyncMock(side_effect=Exception("Database error")),
-        ):
-            result = await tool._delete_file_records(doc_file)
+        result = await tool._delete_file_records(doc_file)
         assert result == 0  # Should return 0 on error
 
 
@@ -2037,7 +2136,7 @@ class TestIngestDocumentsEdgeCases:
             source=str(empty_dir),
         )
         tool = HierarchicalDocumentTool(config)
-        tool._collection = MagicMock()
+        tool._adapter = MockCollectionAdapter(MagicMock())
         tool._embedding_dimensions = 1536
 
         with caplog.at_level(logging.WARNING, logger=_TOOL_LOGGER):
@@ -2057,7 +2156,7 @@ class TestIngestDocumentsEdgeCases:
 
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
-        tool._collection = MagicMock()
+        tool._adapter = MockCollectionAdapter(MagicMock())
         tool._embedding_dimensions = 1536
 
         with (
@@ -2079,7 +2178,7 @@ class TestIngestDocumentsEdgeCases:
 
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
-        tool._collection = MagicMock()
+        tool._adapter = MockCollectionAdapter(MagicMock())
         tool._embedding_dimensions = 1536
 
         with (
@@ -2110,7 +2209,7 @@ class TestIngestDocumentsEdgeCases:
 
         config = create_config(tmp_path, source=str(doc_file))
         tool = HierarchicalDocumentTool(config)
-        tool._collection = MagicMock()
+        tool._adapter = MockCollectionAdapter(MagicMock())
         tool._embedding_dimensions = 1536
 
         with (
@@ -2163,7 +2262,7 @@ class TestContextualEmbeddings:
         """Generated context replaces each chunk's contextualized_content."""
         config = create_config(tmp_path, contextual_embeddings=True)
         tool = HierarchicalDocumentTool(config)
-        tool._collection = MagicMock()
+        tool._adapter = MockCollectionAdapter(MagicMock())
         tool._embedding_dimensions = 1536
 
         async def contextualize(
@@ -2205,7 +2304,7 @@ class TestContextualEmbeddings:
         """Skipped contextualization logs why and embeds the original content."""
         config = create_config(tmp_path, contextual_embeddings=enabled)
         tool = HierarchicalDocumentTool(config)
-        tool._collection = MagicMock()
+        tool._adapter = MockCollectionAdapter(MagicMock())
         tool._embedding_dimensions = 1536
         generator = MagicMock()
         generator.contextualize_batch = AsyncMock()
@@ -2336,7 +2435,7 @@ class TestStoreChunksEdgeCases:
         mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         await tool._store_chunks([mock_chunk])
 
@@ -2381,7 +2480,7 @@ class TestSemanticSearchJsonParsing:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool._semantic_search([0.1] * 1536, top_k=10)
 
@@ -2444,7 +2543,7 @@ class TestHybridSearch:
         mock_search_results = MagicMock()
         mock_search_results.results = mock_results()
         mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         results = await tool._hybrid_search("test query", [0.1] * 1536, top_k=10)
 
@@ -2637,7 +2736,7 @@ class TestLoadChunksFromStore:
         """Test returns [] when self._collection is None."""
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
-        tool._collection = None
+        tool._adapter = None
 
         result = await tool._load_chunks_from_store()
         assert result == []
@@ -2652,7 +2751,7 @@ class TestLoadChunksFromStore:
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=False)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         result = await tool._load_chunks_from_store()
         assert result == []
@@ -2667,13 +2766,9 @@ class TestLoadChunksFromStore:
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection, [])
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_all_records",
-            AsyncMock(return_value=[]),
-        ):
-            result = await tool._load_chunks_from_store()
+        result = await tool._load_chunks_from_store()
         assert result == []
 
     @pytest.mark.asyncio
@@ -2704,13 +2799,9 @@ class TestLoadChunksFromStore:
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection, [mock_record])
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_all_records",
-            AsyncMock(return_value=[mock_record]),
-        ):
-            result = await tool._load_chunks_from_store()
+        result = await tool._load_chunks_from_store()
 
         assert len(result) == 1
         chunk = result[0]
@@ -2755,13 +2846,9 @@ class TestLoadChunksFromStore:
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection, [mock_record])
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_all_records",
-            AsyncMock(return_value=[mock_record]),
-        ):
-            result = await tool._load_chunks_from_store()
+        result = await tool._load_chunks_from_store()
 
         assert len(result) == 1
         assert result[0].parent_chain == []
@@ -2796,13 +2883,9 @@ class TestLoadChunksFromStore:
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection, [mock_record])
 
-        with patch(
-            "holodeck.tools.hierarchical_document_tool.find_all_records",
-            AsyncMock(return_value=[mock_record]),
-        ):
-            result = await tool._load_chunks_from_store()
+        result = await tool._load_chunks_from_store()
 
         assert len(result) == 1
         assert result[0].chunk_type == ChunkType.CONTENT
@@ -2819,7 +2902,7 @@ class TestLoadChunksFromStore:
         mock_collection.collection_exists = AsyncMock(
             side_effect=Exception("Connection failed")
         )
-        tool._collection = mock_collection
+        tool._adapter = MockCollectionAdapter(mock_collection)
 
         result = await tool._load_chunks_from_store()
         assert result == []
@@ -2842,6 +2925,7 @@ class TestInitializeRebuild:
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
         tool._provider = "chromadb"
+        tool._adapter = _fake("chromadb")
 
         stored_chunks = [
             DocumentChunk(
@@ -2893,6 +2977,7 @@ class TestInitializeRebuild:
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
         tool._provider = "qdrant"
+        tool._adapter = _fake("qdrant", native_hybrid=True)
 
         with (
             patch.object(tool, "_setup_collection"),
@@ -2982,7 +3067,7 @@ class TestInitializeRebuild:
 
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
-        tool._collection = MagicMock()
+        tool._adapter = MockCollectionAdapter(MagicMock())
         tool._embedding_dimensions = 1536
 
         with patch.object(
@@ -2991,110 +3076,3 @@ class TestInitializeRebuild:
             result = await tool._ingest_documents(force_ingest=False)
 
             assert result == 1  # One file discovered, one skipped
-
-
-class TestEnsureQdrantPayloadIndexes:
-    """Tests for the qdrant payload-index workaround.
-
-    SK's qdrant connector doesn't translate ``is_indexed`` /
-    ``is_full_text_indexed`` field flags into payload-index API calls.
-    Qdrant >=1.18 then rejects MatchText / keyword filters on those fields
-    with ``400 Index required but not found``. The tool patches over the
-    gap by explicitly calling ``create_payload_index`` after
-    ``ensure_collection_exists``.
-    """
-
-    @pytest.mark.asyncio
-    async def test_creates_keyword_and_text_indexes_for_qdrant(
-        self, tmp_path: Path
-    ) -> None:
-        """Qdrant provider gets indexes on the four declared fields."""
-        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
-
-        tool = HierarchicalDocumentTool.__new__(HierarchicalDocumentTool)
-        tool._provider = "qdrant"
-        tool._qdrant_indexes_ensured = False
-
-        client = MagicMock()
-        client.create_payload_index = AsyncMock()
-        collection = MagicMock()
-        collection.qdrant_client = client
-        collection.collection_name = "test-coll"
-
-        await tool._ensure_qdrant_payload_indexes(collection)
-
-        # 4 keyword fields (incl. source_path used by _check_if_already_ingested
-        # and _delete_file_records) + 1 full-text field = 5 calls
-        assert client.create_payload_index.await_count == 5
-        called_fields = {
-            kwargs["field_name"]
-            for _, kwargs in client.create_payload_index.await_args_list
-        }
-        assert called_fields == {
-            "section_id",
-            "defined_term",
-            "defined_term_normalized",
-            "source_path",
-            "searchable_text",
-        }
-        assert tool._qdrant_indexes_ensured is True
-
-    @pytest.mark.asyncio
-    async def test_skip_for_non_qdrant_providers(self, tmp_path: Path) -> None:
-        """In-memory / other providers don't get qdrant index calls."""
-        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
-
-        tool = HierarchicalDocumentTool.__new__(HierarchicalDocumentTool)
-        tool._provider = "in-memory"
-        tool._qdrant_indexes_ensured = False
-
-        client = MagicMock()
-        client.create_payload_index = AsyncMock()
-        collection = MagicMock()
-        collection.qdrant_client = client
-
-        await tool._ensure_qdrant_payload_indexes(collection)
-
-        client.create_payload_index.assert_not_called()
-        assert tool._qdrant_indexes_ensured is False  # left untouched
-
-    @pytest.mark.asyncio
-    async def test_idempotent_after_first_call(self, tmp_path: Path) -> None:
-        """Second call is a no-op (flag prevents re-issuing API calls)."""
-        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
-
-        tool = HierarchicalDocumentTool.__new__(HierarchicalDocumentTool)
-        tool._provider = "qdrant"
-        tool._qdrant_indexes_ensured = True  # already done
-
-        client = MagicMock()
-        client.create_payload_index = AsyncMock()
-        collection = MagicMock()
-        collection.qdrant_client = client
-
-        await tool._ensure_qdrant_payload_indexes(collection)
-
-        client.create_payload_index.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_index_failure_is_logged_not_raised(self, tmp_path: Path) -> None:
-        """If qdrant rejects a single index, the rest still proceed."""
-        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
-
-        tool = HierarchicalDocumentTool.__new__(HierarchicalDocumentTool)
-        tool._provider = "qdrant"
-        tool._qdrant_indexes_ensured = False
-
-        client = MagicMock()
-        client.create_payload_index = AsyncMock(side_effect=RuntimeError("boom"))
-        collection = MagicMock()
-        collection.qdrant_client = client
-        collection.collection_name = "test-coll"
-
-        # Doesn't raise even though every call fails.
-        await tool._ensure_qdrant_payload_indexes(collection)
-
-        # All five attempts were made.
-        assert client.create_payload_index.await_count == 5
-        # Flag still set (idempotency works even on failures).
-        assert tool._qdrant_indexes_ensured is True
