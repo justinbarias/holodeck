@@ -29,6 +29,8 @@ from importlib.metadata import PackageNotFoundError, version
 import click
 from dotenv import load_dotenv
 
+from holodeck.cli.lazy_group import LazyGroup
+
 try:
     __version__ = version("holodeck-ai")
 except PackageNotFoundError:
@@ -62,7 +64,15 @@ def _load_dotenv_files() -> None:
 _load_dotenv_files()
 
 
-@click.group(invoke_without_command=True)
+# Each command module loads only when that command runs (or ``--help`` lists
+# it): `holodeck init` must not import the evaluation, SDK and server stacks.
+_COMMANDS = {
+    name: f"holodeck.cli.commands.{name}:{name}"
+    for name in ("chat", "config", "deploy", "init", "mcp", "serve", "test", "worker")
+}
+
+
+@click.group(cls=LazyGroup, lazy_subcommands=_COMMANDS, invoke_without_command=True)
 @click.version_option(version=__version__, prog_name="holodeck")
 @click.pass_context
 def main(ctx: click.Context) -> None:
@@ -81,27 +91,6 @@ def main(ctx: click.Context) -> None:
     # Show help if no command is provided
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
-
-
-# Import and register commands
-from holodeck.cli.commands.chat import chat  # noqa: E402, F401
-from holodeck.cli.commands.config import config  # noqa: E402, F401
-from holodeck.cli.commands.deploy import deploy  # noqa: E402, F401
-from holodeck.cli.commands.init import init  # noqa: E402, F401
-from holodeck.cli.commands.mcp import mcp  # noqa: E402, F401
-from holodeck.cli.commands.serve import serve  # noqa: E402, F401
-from holodeck.cli.commands.test import test  # noqa: E402, F401
-from holodeck.cli.commands.worker import worker  # noqa: E402, F401
-
-# Register commands
-main.add_command(init)
-main.add_command(test)
-main.add_command(chat)
-main.add_command(config)
-main.add_command(deploy)
-main.add_command(mcp)
-main.add_command(serve)
-main.add_command(worker)
 
 
 if __name__ == "__main__":
