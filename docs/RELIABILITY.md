@@ -62,14 +62,14 @@ Claude uses [live-full-claude.yaml](../tests/fixtures/verify/live-full-claude.ya
 | --- | --- | --- |
 | `function` (`smoke_echo`, `leak_probe`) | yes | yes |
 | `mcp` stdio (local FastMCP server, started with `uvx`) | yes | yes |
-| `vectorstore` on Qdrant and on ChromaDB (server), `hierarchical_document` on Qdrant | needs `OPENAI_API_KEY` | yes |
+| `vectorstore` on Qdrant, ChromaDB (server) and PostgreSQL (pgvector), `hierarchical_document` on Qdrant | needs `OPENAI_API_KEY` | yes |
 | subagents (`claude.agents` / `openai.agents` handoff) | yes | yes |
 | `skill` | no: the Claude backend does not adapt skills yet | yes |
 | `prompt` | no: no runtime adapter on any backend | no |
 
 Each tool type has one multi-turn test case with `expected_tools` and a `type: code` grader that checks the tool result or reply for a fixed marker. No case uses an LLM judge.
 The script reports PASS, FAIL or SKIP for each test case from the results JSON under the run copy's `results/`.
-Without `OPENAI_API_KEY` (embeddings), Qdrant or Chroma, it removes the vector tools from the run copy and reports their cases as SKIP. The other cases still run.
+Without `OPENAI_API_KEY` (embeddings), Qdrant, Chroma or Postgres, it removes the vector tools from the run copy and reports their cases as SKIP. The other cases still run.
 Then it starts `holodeck serve` and sends 2 threads x 2 turns. Thread A turn 2 must emit `TOOL_CALL_START` for `smoke_echo`. Thread B turn 2 must contain B's code word and not A's.
 It also fails when a credential value occurs in any file of the run directory.
 Each run uses an empty `HOME` and `CLAUDE_CONFIG_DIR`, so `~/.holodeck/.env` and a stored Claude login cannot replace the credential under test.
@@ -80,10 +80,11 @@ Docker containers (left running after the run; `--no-infra` skips them, and vect
 | --- | --- | --- |
 | `holodeck-verify-qdrant` | `qdrant/qdrant:v1.17.1` | 6333 |
 | `holodeck-verify-chroma` | `chromadb/chroma:1.5.9` (matches the locked client) | 8765 |
+| `holodeck-verify-postgres` | `pgvector/pgvector:pg17` (throwaway credentials, loopback only) | 54329 |
 | `holodeck-verify-aspire` | `mcr.microsoft.com/dotnet/aspire-dashboard:13.5.2` (anonymous) | 18888 UI, 4317 OTLP/gRPC, 4318 OTLP/HTTP |
 
-If another Aspire dashboard, Qdrant or Chroma already serves those ports, the script reuses it and does not stop it.
-Stop the managed containers with `docker rm -f holodeck-verify-qdrant holodeck-verify-chroma holodeck-verify-aspire`. Removing Qdrant or Chroma also clears the ingested fixture vectors.
+If another Aspire dashboard, Qdrant, Chroma or Postgres already serves those ports, the script reuses it and does not stop it.
+Stop the managed containers with `docker rm -f holodeck-verify-qdrant holodeck-verify-chroma holodeck-verify-postgres holodeck-verify-aspire`. Removing Qdrant, Chroma or Postgres also clears the ingested fixture vectors.
 Traces are for human review at <http://127.0.0.1:18888/traces>. Look for the services `holodeck-verify-live-claude` and `holodeck-verify-live-openai`.
 The `leak_probe` tool returns a fake `ghp_` token. Its span must show `[REDACTED:github-token]`, never the token.
 

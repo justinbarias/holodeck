@@ -51,7 +51,6 @@ _FIELD_TYPES = {
 }
 
 BRIDGED = [
-    "postgres",
     "azure-ai-search",
     "qdrant",
     "weaviate",
@@ -148,6 +147,7 @@ BRIDGE_CLASSES: dict[str, type[SKBridgeAdapter]] = {
 
 def test_registry_maps_every_bridged_provider() -> None:
     assert PROVIDERS["in-memory"].class_name == "InMemoryAdapter"
+    assert PROVIDERS["postgres"].class_name == "PostgresAdapter"
     for provider, class_name in NATIVE.items():
         assert PROVIDERS[provider].class_name == class_name
         assert PROVIDERS[provider].module.endswith(f".adapters.{provider}")
@@ -174,20 +174,6 @@ def _schema() -> CollectionSchema:
     return CollectionSchema("docs", 4, (FieldSpec("content", full_text=True),))
 
 
-def test_missing_client_with_an_extra_names_the_extra() -> None:
-    with (
-        patch(
-            "holodeck.lib.vector_store.get_collection_class",
-            side_effect=ImportError("no psycopg"),
-        ),
-        pytest.raises(MissingClientError) as raised,
-    ):
-        create_adapter("postgres", _schema(), {})
-
-    assert raised.value.extra == "postgres"
-    assert "pip install 'holodeck-ai[postgres]'" in str(raised.value)
-
-
 def test_missing_client_without_an_extra_keeps_the_package_hint() -> None:
     with (
         patch(
@@ -207,7 +193,6 @@ _FILTERS = {Operation.FIND, Operation.LIST, Operation.DELETE_WHERE, Operation.CO
 _BASE = {Operation.UPSERT, Operation.GET, Operation.DELETE, Operation.VECTOR_SEARCH}
 _HYBRID = {Operation.HYBRID_SEARCH}
 EXPECTED: dict[str, set[Operation]] = {
-    "postgres": _BASE | _FILTERS,
     "azure-ai-search": _BASE | _HYBRID,
     "qdrant": _BASE | _FILTERS | _HYBRID,
     "weaviate": _BASE | _FILTERS | _HYBRID,

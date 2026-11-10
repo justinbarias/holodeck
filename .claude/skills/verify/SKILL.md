@@ -26,7 +26,7 @@ Use the union of both lists.
 | live | backends, serve, tools or `tests/fixtures/verify` changed **and** `CLAUDE_CODE_OAUTH_TOKEN` or `OPENAI_API_KEY` is set (shell or `.verify/live.env`). Costs real model calls: run only when the user asks or approves | `make verify-live` |
 
 - Check credentials with `[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]`, `[ -n "$OPENAI_API_KEY" ]` and `[ -f .verify/live.env ]`. Never print their values.
-- Live starts Docker containers for Qdrant, Chroma and the Aspire dashboard. Without Docker, or with `LIVE_ARGS=--no-infra`, vector and trace checks SKIP.
+- Live starts Docker containers for Qdrant, Chroma, Postgres (pgvector) and the Aspire dashboard. Without Docker, or with `LIVE_ARGS=--no-infra`, vector and trace checks SKIP.
 - Live is the AGENTS.md live validation loop without the CopilotKit browser step. Exit 2 means every backend was skipped: report it as SKIPPED, not passed.
 - Run cheaper tiers first. If a tier fails, stop, report the failure, and do not run later tiers unless the user asks.
 

@@ -2552,6 +2552,7 @@ pinecone = [
     { name = "pinecone", extra = ["asyncio", "grpc"] },
 ]
 postgres = [
+    { name = "pgvector" },
     { name = "psycopg", extra = ["binary", "pool"] },
 ]
 qdrant = [
@@ -2565,6 +2566,7 @@ temporal = [
 ]
 vectorstores = [
     { name = "chromadb" },
+    { name = "pgvector" },
     { name = "pinecone", extra = ["asyncio", "grpc"] },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "qdrant-client" },
@@ -2638,6 +2640,8 @@ requires-dist = [
     { name = "optuna", specifier = ">=4.8.0" },
     { name = "otel-instrumentation-claude-agent-sdk", marker = "extra == 'claude-otel'", specifier = ">=0.0.6,<0.1.0" },
     { name = "pandas", marker = "extra == 'dashboard'", specifier = ">=2.0" },
+    { name = "pgvector", marker = "extra == 'postgres'", specifier = ">=0.5,<1.0" },
+    { name = "pgvector", marker = "extra == 'vectorstores'", specifier = ">=0.5,<1.0" },
     { name = "pinecone", extras = ["asyncio", "grpc"], marker = "extra == 'pinecone'", specifier = "~=7.0" },
     { name = "pinecone", extras = ["asyncio", "grpc"], marker = "extra == 'vectorstores'", specifier = "~=7.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7.0" },
@@ -2645,8 +2649,8 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.3.0" },
     { name = "prometheus-client", marker = "extra == 'otel-all'", specifier = ">=0.17.0,<1.0.0" },
     { name = "prometheus-client", marker = "extra == 'otel-prometheus'", specifier = ">=0.17.0,<1.0.0" },
-    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = "~=3.2" },
-    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'vectorstores'", specifier = "~=3.2" },
+    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'postgres'", specifier = ">=3.3,<4.0" },
+    { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'vectorstores'", specifier = ">=3.3,<4.0" },
     { name = "pydantic", specifier = ">=2.11.0" },
     { name = "pypdf", specifier = ">=6.21.4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
@@ -5639,6 +5643,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d9/5a/32b50c077c86bfccc7bed4881c5a2b823518f5450a30e639db5d3711952e/pfzy-0.3.4.tar.gz", hash = "sha256:717ea765dd10b63618e7298b2d98efd819e0b30cd5905c9707223dceeb94b3f1", size = 8396, upload-time = "2022-01-28T02:26:17.946Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8c/d7/8ff98376b1acc4503253b685ea09981697385ce344d4e3935c2af49e044d/pfzy-0.3.4-py3-none-any.whl", hash = "sha256:5f50d5b2b3207fa72e7ec0ef08372ef652685470974a107d0d4999fc5a903a96", size = 8537, upload-time = "2022-01-28T02:26:16.047Z" },
+]
+
+[[package]]
+name = "pgvector"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/23/96aa38899fbf8e103766db608d6e42acac269a96e08f3003fe9da3396fed/pgvector-0.5.1.tar.gz", hash = "sha256:94998a54b801b1075d623b8fa677fcb8210a7977b88f8e2203ab115c155af2e4", size = 35714, upload-time = "2026-10-09T01:50:22.779Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a2/8d/a9c2a531da0ebb54b4a7174450e8534a39db112a141ae3a437de28420111/pgvector-0.5.1-py3-none-any.whl", hash = "sha256:ec5bcd5ffaefe6ecb2dcc9564ca921d284564b969183bc837a144604773af8ea", size = 31056, upload-time = "2026-10-09T01:50:21.614Z" },
 ]
 
 [[package]]

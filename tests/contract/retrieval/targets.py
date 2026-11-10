@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from holodeck.lib.retrieval import CollectionSchema, VectorStoreAdapter
 from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
+from holodeck.lib.retrieval.adapters.postgres import PostgresAdapter
 from holodeck.lib.retrieval.adapters.qdrant import QdrantAdapter
 from holodeck.lib.retrieval.adapters.sk_bridge import (
     SKChromaAdapter,
@@ -21,6 +22,7 @@ from holodeck.lib.retrieval.adapters.sk_bridge import (
 
 QDRANT_URL = "http://127.0.0.1:6333"
 CHROMA_URL = "http://127.0.0.1:8765"
+POSTGRES_URL = "postgresql://postgres:holodeck@127.0.0.1:54329/holodeck"
 
 
 @dataclass(frozen=True)
@@ -75,5 +77,12 @@ TARGETS: list[ContractTarget] = [
             schema, {"connection_string": CHROMA_URL}
         ),
         available=port_open("127.0.0.1", 8765),
+    ),
+    ContractTarget(
+        name="postgres",
+        build=lambda schema: PostgresAdapter.create(
+            schema, {"connection_string": POSTGRES_URL}
+        ),
+        available=port_open("127.0.0.1", 54329),
     ),
 ]
