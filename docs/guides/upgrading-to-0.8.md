@@ -67,7 +67,7 @@ HoloDeck does not copy data between providers. Point the tool at the new provide
 
 Two more changes affect vector store tools:
 
-- **A missing client library is an error.** Before, a `vectorstore` tool whose client was not installed logged a warning and stored data in memory. Now it fails and prints the install command (Step 1). A store that cannot be reached still falls back to memory.
+- **A missing client library is an error.** Before, a `vectorstore` tool whose client was not installed logged a warning and stored data in memory. Now it fails and prints the install command (Step 1). A failure while the store adapter is created still falls back to memory. A client that connects on first use (Qdrant, for example) raises its connection error; it does not fall back.
 - **Chroma scores changed.** Chroma returned a distance that HoloDeck used as the score, so results ranked worst-first. The score is now `1 - distance`, and the best match comes first. If you tuned `min_similarity_score` against the old behavior, check it.
 
 ## Step 4: Check your vector collections

@@ -43,7 +43,7 @@ This release removes Semantic Kernel and splits the install into feature extras.
 
 5. **Download the METEOR data once.** METEOR no longer downloads NLTK data on first use. When `wordnet`, `punkt_tab` or `omw-1.4` is missing it raises `NLPMetricsError` that names the resource and the command `python -m nltk.downloader wordnet punkt_tab omw-1.4`. Run that command once on each machine that scores METEOR.
 
-6. **A missing vector store client is an error.** A `vectorstore` or `hierarchical_document` tool no longer falls back to in-memory storage when the provider's client library is missing or the provider name is retired. The tool fails with the install command or the migration text. A store that cannot be reached still falls back, as before.
+6. **A missing vector store client is an error.** A `vectorstore` or `hierarchical_document` tool no longer falls back to in-memory storage when the provider's client library is missing or the provider name is retired. The tool fails with the install command or the migration text. A failure while the store adapter is created still falls back to memory. A client that connects on first use (Qdrant, for example) raises its connection error; it does not fall back.
 
 7. **ChromaDB scores changed.** Chroma returned a cosine distance that was used as the similarity score, so semantic results ranked worst-first and `min_similarity_score` kept the least similar chunks. Scores are now `1 - distance`, and the best match ranks first. Review any threshold you tuned against the old ranking.
 

@@ -64,7 +64,14 @@ def schema_paths() -> list[Path]:
     new project offline. The copies must not drift from the published file.
     """
     templates = SCHEMA_PATH.parent.parent / "src" / "holodeck" / "templates"
-    return [SCHEMA_PATH, *sorted(templates.glob("*/schemas/agent.schema.json"))]
+    # List the template directories, not the existing copies: a deleted copy
+    # must fail ``--check`` and be written again.
+    copies = [
+        path / "schemas" / "agent.schema.json"
+        for path in sorted(templates.iterdir())
+        if path.is_dir() and not path.name.startswith("_")
+    ]
+    return [SCHEMA_PATH, *copies]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     for path in targets:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(rendered)
         print(f"Wrote {path}")
     return 0
