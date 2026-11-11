@@ -1071,8 +1071,12 @@ class FusionWeights(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    chunks: float = Field(default=1.0, ge=0.0, description="Weight of chunk hits")
-    graph: float = Field(default=1.0, ge=0.0, description="Weight of fact hits")
+    chunks: float = Field(
+        default=1.0, ge=0.0, allow_inf_nan=False, description="Weight of chunk hits"
+    )
+    graph: float = Field(
+        default=1.0, ge=0.0, allow_inf_nan=False, description="Weight of fact hits"
+    )
 
     @model_validator(mode="after")
     def check_not_both_zero(self) -> "FusionWeights":

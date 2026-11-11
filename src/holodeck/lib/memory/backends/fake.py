@@ -171,7 +171,16 @@ class FakeBackend:
                     llm_calls=self.llm_calls - calls_before,
                 )
             self.llm_calls += 1
-            for index, (subject, text) in enumerate(self._extract(episode)):
+            try:
+                extracted = list(self._extract(episode))
+            except Exception as exc:  # noqa: BLE001 - reported, as a backend would
+                return IngestReport(
+                    written=tuple(written),
+                    failed=episode.episode_id,
+                    error=str(exc),
+                    llm_calls=self.llm_calls - calls_before,
+                )
+            for index, (subject, text) in enumerate(extracted):
                 self._add_fact(space, episode, index, subject, text)
             space.episodes[episode.episode_id] = EpisodeRef(
                 episode_id=episode.episode_id,
@@ -200,7 +209,12 @@ class FakeBackend:
         valid_from = episode.reference_time
         same_subject = [f for f in space.facts.values() if f.subject == subject]
 
-        duplicate = next((f for f in same_subject if f.text == text), None)
+        # The same statement is a duplicate only while it is in force. A
+        # value that returns after a change starts a new period.
+        duplicate = next(
+            (f for f in same_subject if f.text == text and f.valid_at(valid_from)),
+            None,
+        )
         if duplicate is not None:
             space.facts[duplicate.fact_id] = replace(
                 duplicate, episode_ids=(*duplicate.episode_ids, episode.episode_id)
@@ -240,6 +254,8 @@ class FakeBackend:
 
     async def search(self, namespace: str, query: MemoryQuery) -> list[FactHit]:
         self._enter("search", MemoryOperation.SEARCH)
+        if query.seed_episode_ids:
+            self._capabilities.require(MemoryOperation.EXPAND)
         space = self._space(namespace)
         words = set(query.text.lower().split())
         seeds = set(query.seed_episode_ids)
@@ -258,7 +274,9 @@ class FakeBackend:
                     valid_from=fact.valid_from,
                     valid_to=fact.valid_to,
                     recorded_at=fact.recorded_at,
-                    expired_at=fact.expired_at,
+                    # A returned fact was not expired at known_at, so a later
+                    # expiry is not part of what the store believed then.
+                    expired_at=None,
                     sources=self._sources(space, fact),
                     score=float(overlap) + (1.0 if seeded else 0.0),
                     superseded_by=fact.superseded_by,

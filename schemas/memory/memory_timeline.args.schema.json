@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Arguments of ``memory_timeline``.",
+  "properties": {
+    "entity": {
+      "description": "The entity whose facts to list.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "Entity",
+      "type": "string"
+    }
+  },
+  "required": [
+    "entity"
+  ],
+  "title": "MemoryTimelineArgs",
+  "type": "object"
+}

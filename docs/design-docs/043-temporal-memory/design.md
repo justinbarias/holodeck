@@ -92,7 +92,7 @@ class ChunkRef:
     chunk_id: str            # the id the tool's store uses
     source_uri: str
     section_id: str
-    ordinal: int             # position in the document
+    ordinal: int             # position in the document; UNKNOWN_ORDINAL (-1) on a search hit
     text: str                # chunk content, front matter removed
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +118,7 @@ src/holodeck/tools/
 └── hierarchical_chunk_source.py    # adapter: HierarchicalDocumentTool -> ChunkSource
 ```
 
-The tool gains one method, `document_chunks()`, which returns every stored chunk grouped by source document. It cannot simply return the list the tool holds in memory: after a restart the tool skips unchanged files, and on a store with native hybrid search (Qdrant) it does not reload the corpus at all. The method therefore serves from memory when the tool ingested everything in this process, and loads from the store otherwise, through the tool's existing `_load_chunks_from_store`. Everything else is in the adapter. The memory library imports the protocol only, so `lib/` still does not depend on `tools/`.
+The tool gains one method, `document_chunks()`, which returns every stored chunk grouped by source document. It cannot simply return the list the tool holds in memory: after a restart the tool skips unchanged files, and on a store with native hybrid search (Qdrant) it does not reload the corpus at all. As built in T5, the method always loads from the store, through the tool's existing `_load_chunks_from_store`. The tool keeps no record that it ingested everything in this process, and a repeated `initialize` appends to the in-memory list, so that list is never a safe source. Everything else is in the adapter. The memory library imports the protocol only, so `lib/` still does not depend on `tools/`.
 
 ### Ingestion, end to end
 
@@ -207,6 +207,9 @@ Graphiti expands along outgoing edges only (decision D23), so a seed entity that
 | Front matter in the first chunk | The adapter removes it from `ChunkRef.text` | Otherwise the date line is extracted as a fact, and editing a date changes the episode hash. The chunker and the stored chunks do not change (spec assumption A6). The same function is applied to search hits, so ids still match. |
 | Which text is hashed and extracted | The raw chunk content | The contextual-embedding text depends on the context model. Raw content keeps the hash stable when that model changes. |
 | Remote sources | `mtime_reliable = False`; the date falls to front matter, then ingestion time | A downloaded file's mtime is the download time. The tool already avoids mtime for remote sources. |
+| A chunk that is only front matter | Left out of `chunks()` | The chunker makes front matter its own chunk when a heading follows. After stripping, its text is empty. |
+| Front matter in any chunk, not only the first | Stripped when the text starts with a `---` block that parses to a YAML mapping | A search hit does not carry its position, and both paths must give the same text |
+| Ordinal of a search hit | `UNKNOWN_ORDINAL` | The tool's search result has no position. Looking it up would load the whole corpus on every query, and retrieval does not use it. |
 | Chunk ids rewritten to UUIDs for Qdrant | `chunk_id` is whatever the store holds | Episode identity does not use the chunk id, so the rewrite has no effect on skipping. |
 
 ### What it does not do
@@ -217,6 +220,7 @@ Graphiti expands along outgoing edges only (decision D23), so a seed entity that
 
 ### Risks
 
+- The tool's store loader logs a store error and returns nothing. To the memory that looks like a source with no documents. T6 must treat an initialized source tool with zero documents as an error, not as "nothing to ingest".
 - A chunk that the tool splits differently after a chunking-setting change gets a new hash and is extracted again. This is correct but costs LLM calls; `--dry-run` shows the count first.
 - Two tools that index the same file produce the same episode once (spec assumption A8). The fact then cites one tool only.
 

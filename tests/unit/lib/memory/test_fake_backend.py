@@ -227,3 +227,75 @@ async def test_calls_are_counted_per_method() -> None:
     assert backend.calls["ingest"] == 1
     assert backend.calls["has_episode"] == 2
     assert backend.llm_calls == 1
+
+
+Y2024 = datetime(2024, 7, 1, tzinfo=UTC)
+
+
+async def test_a_fact_that_returns_after_a_change_starts_a_new_period() -> None:
+    backend = rate_backend()
+    again = episode("c3", "rate is 100", Y2024)
+    await backend.ingest(NS, [E1, E2, again], "")
+
+    assert await texts(backend, query(datetime(2025, 1, 1, tzinfo=UTC))) == [
+        "rate is 100"
+    ]
+    assert await texts(backend, query(datetime(2023, 1, 1, tzinfo=UTC))) == [
+        "rate is 120"
+    ]
+    periods = [
+        (e.text, e.valid_from, e.valid_to) for e in await backend.timeline(NS, "rate")
+    ]
+    assert periods == [
+        ("rate is 100", Y2020, Y2022),
+        ("rate is 120", Y2022, Y2024),
+        ("rate is 100", Y2024, None),
+    ]
+
+
+async def test_ing_05_an_extraction_error_is_reported_not_raised() -> None:
+    def extract(ep: EpisodeIn) -> list[tuple[str, str]]:
+        if ep is E1:
+            raise ValueError("bad episode")
+        return [("rate", ep.text)]
+
+    backend = FakeBackend(extract=extract)
+
+    report = await backend.ingest(NS, [E0, E1, E2], "")
+
+    assert report.written == (E0.episode_id,)
+    assert report.failed == E1.episode_id
+    assert report.error == "bad episode"
+    assert await backend.has_episode(NS, E1.episode_id) is False
+
+
+async def test_a_fact_seen_as_open_in_the_past_shows_no_later_expiry() -> None:
+    backend = rate_backend()
+    await backend.ingest(NS, [E1], "")
+    before_second = backend._clock()
+    await backend.ingest(NS, [E2], "")
+
+    hits = await backend.search(
+        NS, query(datetime(2023, 1, 1, tzinfo=UTC), known_at=before_second)
+    )
+
+    assert [(h.text, h.valid_to, h.expired_at) for h in hits] == [
+        ("rate is 100", None, None)
+    ]
+
+
+async def test_mb_03_seeds_need_the_expand_capability() -> None:
+    backend = rate_backend(supported=ALL_OPERATIONS - {MemoryOperation.EXPAND})
+    await backend.ingest(NS, [E2], "")
+    seeded = MemoryQuery(
+        text="rate",
+        valid_at=datetime(2023, 1, 1, tzinfo=UTC),
+        known_at=LATER,
+        seed_episode_ids=(E2.episode_id,),
+    )
+
+    with pytest.raises(MemoryNotSupportedError, match="graph expansion from seed"):
+        await backend.search(NS, seeded)
+    assert await texts(backend, query(datetime(2023, 1, 1, tzinfo=UTC))) == [
+        "rate is 120"
+    ]

@@ -9,6 +9,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from holodeck.lib.memory.tool_api import MEMORY_FUNCTION_NAMES
 from holodeck.models.claude_config import ClaudeConfig
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.deployment import DeploymentConfig
@@ -22,6 +23,7 @@ from holodeck.models.tool import (
     SkillTool,
     TemporalMemoryToolConfig,
     ToolUnion,
+    VectorstoreTool,
     memory_extraction_model_error,
 )
 
@@ -198,7 +200,8 @@ class Agent(BaseModel):
 
         Spec 043: one memory tool per agent (CFG-03); every source tool is a
         hierarchical_document tool of this agent (CFG-02); the source tools
-        share one embedding model (CFG-06); the extraction model, which
+        share one embedding model (CFG-06); no other tool takes one of the
+        three memory function names (HST-01); the extraction model, which
         defaults to the agent model, has a client (D24).
 
         Raises:
@@ -238,6 +241,17 @@ class Agent(BaseModel):
             raise ValueError(
                 f"{prefix} source tools use different embedding models: {listed}"
             )
+        for tool in self.tools or []:
+            exposed = (
+                f"{tool.name}_search"
+                if isinstance(tool, HierarchicalDocumentToolConfig | VectorstoreTool)
+                else tool.name
+            )
+            if tool is not memory and exposed in MEMORY_FUNCTION_NAMES:
+                raise ValueError(
+                    f"{prefix} tool '{tool.name}' would expose the function name "
+                    f"'{exposed}', which the memory tool uses"
+                )
         if memory.extraction_model is None:
             error = memory_extraction_model_error(memory.name, self.model)
             if error:

@@ -290,6 +290,8 @@ def test_gph_04_the_agent_model_is_checked_when_it_is_the_extraction_model() -> 
         ("namespace", "has space"),
         ("fusion_weights", {"chunks": 0.0, "graph": 0.0}),
         ("fusion_weights", {"chunks": -1.0, "graph": 1.0}),
+        ("fusion_weights", {"chunks": float("inf"), "graph": 1.0}),
+        ("fusion_weights", {"chunks": 1.0, "graph": float("nan")}),
         ("effective_date_key", " "),
         ("schema_hints", {"entity_types": ["Not Valid"]}),
     ],
@@ -297,3 +299,42 @@ def test_gph_04_the_agent_model_is_checked_when_it_is_the_extraction_model() -> 
 def test_out_of_range_values_are_rejected(field: str, value: object) -> None:
     with pytest.raises(ValidationError):
         TemporalMemoryToolConfig.model_validate(_memory(**{field: value}))
+
+
+@pytest.mark.parametrize(
+    ("tool", "function"),
+    [
+        (
+            {
+                "name": "memory_search",
+                "type": "function",
+                "description": "f",
+                "file": "tools.py",
+                "function": "f",
+            },
+            "memory_search",
+        ),
+        (
+            {
+                "name": "memory_timeline",
+                "type": "function",
+                "description": "f",
+                "file": "tools.py",
+                "function": "f",
+            },
+            "memory_timeline",
+        ),
+        (_doc_tool("memory"), "memory_search"),
+    ],
+)
+def test_hst_01_a_tool_that_takes_a_memory_function_name_fails(
+    tool: dict[str, Any], function: str
+) -> None:
+    with pytest.raises(
+        ValidationError,
+        match=(
+            f"temporal_memory tool 'law_memory': tool '{tool['name']}' would "
+            f"expose the function name '{function}'"
+        ),
+    ):
+        _agent([_doc_tool("family_law"), tool, _memory()])
