@@ -24,8 +24,9 @@ from holodeck.lib.memory.chunk_source import (
     ChunkRef,
     ChunkSource,
     SourceDocument,
+    is_positional_section_id,
 )
-from holodeck.lib.memory.effective_date import effective_date
+from holodeck.lib.memory.effective_date import document_series, effective_date
 from holodeck.lib.memory.errors import (
     MemoryBackendUnavailableError,
     MemoryConfigError,
@@ -62,6 +63,10 @@ DEFAULT_EXTRACTION_INSTRUCTIONS = (
 
 CONTEXT_CHUNKS = 2
 """Preceding chunks of the same document given to extraction as context."""
+
+SERIES_KEY = "series_id"
+"""Front-matter key of a document's lineage (``EpisodeIn.document_key``).
+Documents with the same series are versions of one document."""
 
 RUN_SPAN = "holodeck.memory.ingest"
 EPISODE_SPAN = "holodeck.memory.ingest_episode"
@@ -172,6 +177,12 @@ class _DatedDocument:
     document: SourceDocument
     date: datetime
     date_source: ReferenceTimeSource
+    document_key: str = ""
+
+
+SectionGroup = tuple[str, str, tuple[str, ...]]
+"""The chunks of one section of one document: ``(section id, "", ())`` for a
+heading id, ``("", number, path)`` for chunks with positional ids."""
 
 
 def _set_tokens(
@@ -292,11 +303,11 @@ class TemporalMemory:
                     "reachable."
                 )
             for document in documents:
-                date, date_source = await asyncio.to_thread(
-                    effective_date, document, self._effective_date_key, now
+                date, date_source, key = await asyncio.to_thread(
+                    _date_and_series, document, self._effective_date_key, now
                 )
                 dated.append(
-                    _DatedDocument(source, position, document, date, date_source)
+                    _DatedDocument(source, position, document, date, date_source, key)
                 )
         dated.sort(
             key=lambda item: (item.date, item.position, item.document.source_uri)
@@ -374,6 +385,7 @@ class TemporalMemory:
                 episode_id_for(self._namespace, chunk.section_id, chunk.text)
                 for chunk in chunks
             ]
+            sections = _section_episodes(chunks, ids)
             for index, chunk in enumerate(chunks):
                 episode_id = ids[index]
                 if episode_id in seen:
@@ -386,7 +398,7 @@ class TemporalMemory:
                 new += 1
                 if dry_run:
                     continue
-                report = await self._submit(item, chunk, ids, index)
+                report = await self._submit(item, chunk, ids, index, sections)
                 written.extend(report.written)
                 llm_calls += report.llm_calls
                 input_tokens = _add_optional(input_tokens, report.input_tokens)
@@ -697,12 +709,16 @@ class TemporalMemory:
         chunk: ChunkRef,
         ids: Sequence[UUID],
         index: int,
+        sections: dict[SectionGroup, tuple[UUID, ...]],
     ) -> IngestReport:
         own = ids[index]
         # The same text twice in one document gives one id. An episode cannot
         # be its own context, and an id is listed once.
         preceding = ids[max(0, index - CONTEXT_CHUNKS) : index]
         context = tuple(dict.fromkeys(i for i in preceding if i != own))
+        group = _section_group(chunk)
+        # A chunk in no section group carries no section keys, so the
+        # backend skips its closure check and its text closing.
         episode = EpisodeIn(
             episode_id=own,
             source_tool=chunk.source_tool,
@@ -712,6 +728,11 @@ class TemporalMemory:
             reference_time=item.date,
             reference_time_source=item.date_source,
             context_episode_ids=context,
+            section_id=chunk.section_id if group is not None else "",
+            section_number=chunk.section_number if group is not None else "",
+            section_path=chunk.section_path if group is not None else (),
+            section_episode_ids=sections.get(group, ()) if group is not None else (),
+            document_key=item.document_key,
         )
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -736,6 +757,15 @@ class TemporalMemory:
                 raise
             span.set_attribute("holodeck.memory.llm_calls", report.llm_calls)
             _set_tokens(span, report.input_tokens, report.output_tokens)
+            span.set_attribute("holodeck.memory.facts_closed", report.facts_closed)
+            span.set_attribute("holodeck.memory.facts_reopened", report.facts_reopened)
+            span.set_attribute(
+                "holodeck.memory.facts_reopened_no_replacement",
+                report.facts_reopened_no_replacement,
+            )
+            span.set_attribute(
+                "holodeck.memory.facts_closed_by_text", report.facts_closed_by_text
+            )
             if report.failed is not None:
                 span.set_status(Status(StatusCode.ERROR, EPISODE_FAILED_STATUS))
             return report
@@ -743,6 +773,51 @@ class TemporalMemory:
 
 def _ordinal_of(chunk: ChunkRef) -> int:
     return chunk.ordinal
+
+
+def _date_and_series(
+    document: SourceDocument, key: str, now: datetime
+) -> tuple[datetime, ReferenceTimeSource, str]:
+    """A document's effective date, its source and its series, in one thread."""
+    date, date_source = effective_date(document, key, now)
+    return date, date_source, document_series(document, SERIES_KEY)
+
+
+def _section_group(chunk: ChunkRef) -> SectionGroup | None:
+    """The section group of a chunk, or None when it is in none.
+
+    A heading id groups by the id. A positional id (``chunk_<n>``) names a
+    chunk, not a section, so its chunks group by section number and parent
+    headings, and only when both are known; otherwise the chunk is in none.
+    """
+    if not chunk.section_id:
+        return None
+    if not is_positional_section_id(chunk.section_id):
+        return (chunk.section_id, "", ())
+    if chunk.section_number and chunk.section_path:
+        return ("", chunk.section_number, chunk.section_path)
+    return None
+
+
+def _section_episodes(
+    chunks: Sequence[ChunkRef], ids: Sequence[UUID]
+) -> dict[SectionGroup, tuple[UUID, ...]]:
+    """Map each section group of one document to its chunks' episodes.
+
+    In document order, each id once. A chunk whose episode is already
+    complete is included: the backend reads that episode's text to rebuild
+    the section (the closure check). A chunk in no group (``_section_group``)
+    is left out.
+    """
+    sections: dict[SectionGroup, list[UUID]] = {}
+    for chunk, episode_id in zip(chunks, ids, strict=True):
+        group = _section_group(chunk)
+        if group is None:
+            continue
+        members = sections.setdefault(group, [])
+        if episode_id not in members:
+            members.append(episode_id)
+    return {group: tuple(members) for group, members in sections.items()}
 
 
 def _check_hops(hops: int) -> None:

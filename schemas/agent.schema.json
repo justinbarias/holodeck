@@ -2472,17 +2472,193 @@
       "title": "MCPTool",
       "type": "object"
     },
+    "MemoryEdgeAttribute": {
+      "additionalProperties": false,
+      "description": "One attribute the extraction model fills on an edge of a type.",
+      "properties": {
+        "name": {
+          "description": "Attribute name",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "description": "Value type. A date is an ISO 8601 string.",
+          "enum": [
+            "string",
+            "number",
+            "date",
+            "boolean"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the attribute holds",
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "MemoryEdgeAttribute",
+      "type": "object"
+    },
+    "MemoryEdgeType": {
+      "additionalProperties": false,
+      "description": "A relation type the extraction model should use for facts.",
+      "properties": {
+        "name": {
+          "description": "Edge type (relation) name",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "What the relation means. The extraction model reads it.",
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "attributes": {
+          "description": "Attributes of an edge of this type",
+          "items": {
+            "$ref": "#/$defs/MemoryEdgeAttribute"
+          },
+          "title": "Attributes",
+          "type": "array"
+        },
+        "single_valued": {
+          "default": false,
+          "description": "One value at a time per (source entity, edge type, key attribute values): a new edge of this type replaces the old one.",
+          "title": "Single Valued",
+          "type": "boolean"
+        },
+        "key_attributes": {
+          "description": "Attributes that, with the source entity, identify one value",
+          "items": {
+            "type": "string"
+          },
+          "title": "Key Attributes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "title": "MemoryEdgeType",
+      "type": "object"
+    },
+    "MemoryEdgeTypeMapEntry": {
+      "additionalProperties": false,
+      "description": "The edge types allowed from one entity type to another.",
+      "properties": {
+        "source": {
+          "description": "Source entity type, or \"Entity\" for any",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "description": "Target entity type, or \"Entity\" for any",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "title": "Target",
+          "type": "string"
+        },
+        "edges": {
+          "description": "Edge type names allowed for this pair",
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Edges",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source",
+        "target",
+        "edges"
+      ],
+      "title": "MemoryEdgeTypeMapEntry",
+      "type": "object"
+    },
+    "MemoryEntityType": {
+      "additionalProperties": false,
+      "description": "An entity type with a description for the extraction model.",
+      "properties": {
+        "name": {
+          "description": "Entity type name",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What an entity of this type is",
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "MemoryEntityType",
+      "type": "object"
+    },
     "MemorySchemaHints": {
       "additionalProperties": false,
       "description": "Optional guidance for extraction.",
       "properties": {
         "entity_types": {
-          "description": "Entity type names the extraction model should prefer",
+          "description": "Entity types the extraction model should prefer: names, or objects with a name and a description",
           "items": {
-            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/MemoryEntityType"
+              }
+            ]
           },
           "title": "Entity Types",
+          "type": "array"
+        },
+        "edge_types": {
+          "description": "Edge (relation) types the extraction model should use",
+          "items": {
+            "$ref": "#/$defs/MemoryEdgeType"
+          },
+          "title": "Edge Types",
+          "type": "array"
+        },
+        "edge_type_map": {
+          "description": "Which edge types may join which entity types. Unset allows every edge type between any two entities.",
+          "items": {
+            "$ref": "#/$defs/MemoryEdgeTypeMapEntry"
+          },
+          "title": "Edge Type Map",
           "type": "array"
         },
         "single_valued_predicates": {
@@ -3543,6 +3719,33 @@
           ],
           "default": null,
           "description": "Model that extracts facts. Defaults to the agent model."
+        },
+        "extraction_reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reasoning effort of an OpenAI or Azure OpenAI extraction model. Unset keeps Graphiti's default ('auto', which is 'none' for GPT-5.1 and later). Ignored, with a warning, for other providers.",
+          "title": "Extraction Reasoning Effort"
+        },
+        "close_on_text_change": {
+          "default": false,
+          "description": "Close an open fact when a newer version of its section no longer states it: its source line changed and the new text matches it clearly worse (lexical match). Graphiti backend on Neo4j only.",
+          "title": "Close On Text Change",
+          "type": "boolean"
         },
         "extraction_instructions": {
           "anyOf": [

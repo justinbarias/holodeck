@@ -114,6 +114,18 @@ class EpisodeIn:
         context_episode_ids: Episodes of the chunks that precede this one in
             the same document, nearest last. A backend may give them to its
             model as context. Empty for the first chunk of a document.
+        section_id: The source tool's id of the chunk's section. Empty when
+            the caller does not know it; a backend then skips the closure
+            check for this episode.
+        section_number: The leading number of the section's own heading
+            ("57GJ", "3A"), or empty when the heading has none.
+        section_path: The headings above the section, outermost first.
+        section_episode_ids: The episodes of every chunk of the same section
+            in the same document, in document order: this one, and chunks
+            skipped because their episode already exists.
+        document_key: The document's lineage: its front-matter ``series_id``,
+            or empty when it has none. Two documents with different keys
+            are never versions of each other.
     """
 
     episode_id: UUID
@@ -124,6 +136,11 @@ class EpisodeIn:
     reference_time: datetime
     reference_time_source: ReferenceTimeSource
     context_episode_ids: tuple[UUID, ...] = ()
+    section_id: str = ""
+    section_number: str = ""
+    section_path: tuple[str, ...] = ()
+    section_episode_ids: tuple[UUID, ...] = ()
+    document_key: str = ""
 
     def __post_init__(self) -> None:
         require_utc(self.reference_time, "reference_time")
@@ -166,6 +183,19 @@ class IngestReport:
         llm_calls: LLM calls the backend made.
         input_tokens: Prompt tokens, or None when the backend cannot count.
         output_tokens: Completion tokens, or None when it cannot count.
+        facts_closed: Facts the backend's extraction closed while writing
+            these episodes, as the closure check found them. 0 when the
+            backend runs no check.
+        facts_reopened: Of those, facts the check opened again because
+            their source text did not change.
+        facts_kept_closed: Of those, facts the check left closed.
+        facts_reopened_no_replacement: Of ``facts_reopened``, facts reopened
+            because no fact the episode wrote could replace them (same two
+            entities, or one endpoint in the same position and the same
+            relation name).
+        facts_closed_by_text: Open facts the backend closed because their
+            source line changed and the new section text no longer states
+            them (``close_on_text_change``). 0 when the setting is off.
     """
 
     written: tuple[UUID, ...]
@@ -174,6 +204,11 @@ class IngestReport:
     llm_calls: int = 0
     input_tokens: int | None = None
     output_tokens: int | None = None
+    facts_closed: int = 0
+    facts_reopened: int = 0
+    facts_kept_closed: int = 0
+    facts_reopened_no_replacement: int = 0
+    facts_closed_by_text: int = 0
 
 
 @dataclass(frozen=True, slots=True)

@@ -428,6 +428,139 @@ async def test_context_still_names_chunks_that_were_skipped(tmp_path: Path) -> N
     assert episode.context_episode_ids == (id_of("d", 0, "c0"), id_of("d", 1, "c1"))
 
 
+async def test_section_episodes_include_skipped_chunks_of_the_same_section(
+    tmp_path: Path,
+) -> None:
+    backend = SpyBackend()
+    source = FakeSource("a", tmp_path, [DocSpec("d", "2020-07-01", ("x",))])
+    path = ("Part 3—Family tax benefit", "Division 2—Rate")
+    source.chunk_lists["d"] = [
+        ChunkRef("a", f"d_chunk_{i}", "d", section, i, text, number, path)
+        for i, (section, text, number) in enumerate(
+            [("s61aa", "61AA first", "61AA"), ("s61aa", "61AA second", "61AA")]
+            + [("s61ab", "61AB only", "61AB")]
+        )
+    ]
+    service = memory(backend, [source])
+    await service.ingest()
+    backend.submitted.clear()
+    source.set_text("d", 1, "61AA second, changed")
+
+    await service.ingest()
+
+    (episode,) = backend.episodes
+    assert episode.section_episode_ids == (
+        episode_id_for(NS, "s61aa", "61AA first"),
+        episode_id_for(NS, "s61aa", "61AA second, changed"),
+    )
+    assert (episode.section_id, episode.section_number, episode.section_path) == (
+        "s61aa",
+        "61AA",
+        path,
+    )
+
+
+async def test_a_chunk_with_no_section_id_has_no_section_episodes(
+    tmp_path: Path,
+) -> None:
+    backend = SpyBackend()
+    source = FakeSource("a", tmp_path, [DocSpec("d", "2020-07-01", ("x",))])
+    source.chunk_lists["d"] = [ChunkRef("a", "d_chunk_0", "d", "", 0, "loose text")]
+
+    await memory(backend, [source]).ingest()
+
+    (episode,) = backend.episodes
+    assert (episode.section_id, episode.section_episode_ids) == ("", ())
+
+
+async def test_positional_section_ids_group_by_number_and_path(
+    tmp_path: Path,
+) -> None:
+    # The subsection-pattern chunker gives each body chunk its own
+    # ``chunk_<n>`` id. Chunks of one section share number and path; equal
+    # positions in another section mean nothing.
+    backend = SpyBackend()
+    source = FakeSource("a", tmp_path, [DocSpec("d", "2020-07-01", ("x",))])
+    path = ("Part 3—Family tax benefit",)
+    rows = [
+        ("chunk_4", "61AA first", "61AA", path),
+        ("chunk_5", "61AA second", "61AA", path),
+        ("chunk_6", "61AB only", "61AB", path),
+        # The same number under another Part is another section.
+        ("chunk_7", "Schedule 61AA", "61AA", ("Schedule 1",)),
+        # No number, or no path: no section at all.
+        ("chunk_8", "preamble", "", path),
+        ("chunk_9", "top level", "9", ()),
+    ]
+    source.chunk_lists["d"] = [
+        ChunkRef("a", f"d_chunk_{i}", "d", section, i, text, number, parents)
+        for i, (section, text, number, parents) in enumerate(rows)
+    ]
+
+    await memory(backend, [source]).ingest()
+
+    by_text = {episode.text: episode for episode in backend.episodes}
+    first = episode_id_for(NS, "chunk_4", "61AA first")
+    second = episode_id_for(NS, "chunk_5", "61AA second")
+    assert by_text["61AA first"].section_episode_ids == (first, second)
+    assert by_text["61AA second"].section_episode_ids == (first, second)
+    assert by_text["61AA second"].section_id == "chunk_5"
+    assert by_text["61AB only"].section_episode_ids == (
+        episode_id_for(NS, "chunk_6", "61AB only"),
+    )
+    assert by_text["Schedule 61AA"].section_episode_ids == (
+        episode_id_for(NS, "chunk_7", "Schedule 61AA"),
+    )
+    for text in ("preamble", "top level"):
+        episode = by_text[text]
+        assert (
+            episode.section_id,
+            episode.section_number,
+            episode.section_path,
+            episode.section_episode_ids,
+        ) == ("", "", (), ())
+        # The episode id still uses the chunk's own section id.
+        assert episode.episode_id == episode_id_for(
+            NS, f"chunk_{8 if text == 'preamble' else 9}", text
+        )
+
+
+async def test_series_id_in_front_matter_becomes_the_document_key(
+    tmp_path: Path,
+) -> None:
+    backend = SpyBackend()
+    source = FakeSource(
+        "a",
+        tmp_path,
+        [
+            DocSpec("keyed", "2020-07-01", ("x",)),
+            DocSpec("plain", "2020-07-01", ("y",)),
+        ],
+    )
+    keyed = (await source.documents())[0].path
+    keyed.write_text(
+        "---\neffective_date: 2020-07-01\nseries_id: employees-handbook\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    await memory(backend, [source]).ingest()
+
+    keys = {episode.source_uri: episode.document_key for episode in backend.episodes}
+    assert keys == {"keyed": "employees-handbook", "plain": ""}
+
+
+async def test_a_series_id_that_is_not_text_stops_the_run(tmp_path: Path) -> None:
+    source = FakeSource("a", tmp_path, [DocSpec("d", "2020-07-01", ("x",))])
+    path = (await source.documents())[0].path
+    path.write_text(
+        "---\neffective_date: 2020-07-01\nseries_id: [a, b]\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MemoryValueError, match="series_id is not a string"):
+        await memory(SpyBackend(), [source]).ingest()
+
+
 async def test_a_repeated_chunk_in_one_document_is_not_its_own_context(
     tmp_path: Path,
 ) -> None:

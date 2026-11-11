@@ -13,6 +13,7 @@ no store call. A dry run uses it (ING-08).
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -26,10 +27,58 @@ from holodeck.lib.memory.effective_date import strip_front_matter
 from holodeck.lib.structured_chunker import ChunkType, DocumentChunk
 from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
 
+_HEADING_LINE = re.compile(r"^#{1,6}\s+(.*\S)")
+_SECTION_NUMBER = re.compile(r"(\d+(?:\.\d+)*[A-Za-z]*)(?=$|[\s.:)\u2013\u2014-])")
+
 
 def _is_content(chunk: DocumentChunk) -> bool:
     """Return True for a chunk with content (the tool's header-only rule)."""
     return chunk.chunk_type != ChunkType.HEADER
+
+
+def section_number(heading: str) -> str:
+    """Return the leading number of a heading, or "" when it has none.
+
+    "57GJ Benefit restriction notice" gives "57GJ", "3A Applicable
+    percentage" gives "3A" and "1.2 Scope" gives "1.2". "Part 2" gives "":
+    the number must start the heading.
+    """
+    match = _SECTION_NUMBER.match(heading.strip())
+    return match.group(1) if match else ""
+
+
+def _own_heading(first: DocumentChunk) -> tuple[str, tuple[str, ...]]:
+    """Return a section's own heading and the headings above it.
+
+    ``first`` is the section's first stored chunk. The store keeps no
+    heading level, so the heading is read from the content: the chunker
+    starts a section's first chunk with its heading line. A chunk with no
+    heading line and a parent chain is a body the chunker split from its
+    heading (subsection patterns); the last entry of the chain is then its
+    own heading.
+    """
+    first_line = strip_front_matter(first.content).lstrip().split("\n", 1)[0]
+    match = _HEADING_LINE.match(first_line)
+    if match:
+        return match.group(1), tuple(first.parent_chain)
+    if first.parent_chain:
+        return first.parent_chain[-1], tuple(first.parent_chain[:-1])
+    return "", ()
+
+
+def _sections(
+    chunks: Sequence[DocumentChunk],
+) -> dict[str, tuple[str, tuple[str, ...]]]:
+    """Map each section id of one document to its number and path."""
+    firsts: dict[str, DocumentChunk] = {}
+    for chunk in sorted(chunks, key=lambda c: c.chunk_index):
+        if chunk.section_id:
+            firsts.setdefault(chunk.section_id, chunk)
+    sections: dict[str, tuple[str, tuple[str, ...]]] = {}
+    for section_id, first in firsts.items():
+        heading, path = _own_heading(first)
+        sections[section_id] = (section_number(heading), path)
+    return sections
 
 
 class HierarchicalChunkSource:
@@ -84,7 +133,12 @@ class HierarchicalChunkSource:
             return root / source_uri
         return Path(source_uri)
 
-    def _ref(self, chunk: DocumentChunk) -> ChunkRef:
+    def _ref(
+        self,
+        chunk: DocumentChunk,
+        sections: dict[str, tuple[str, tuple[str, ...]]],
+    ) -> ChunkRef:
+        number, path = sections.get(chunk.section_id, ("", ()))
         return ChunkRef(
             source_tool=self.name,
             chunk_id=chunk.id,
@@ -92,6 +146,8 @@ class HierarchicalChunkSource:
             section_id=chunk.section_id,
             ordinal=chunk.chunk_index,
             text=strip_front_matter(chunk.content),
+            section_number=number,
+            section_path=path,
         )
 
     async def documents(self) -> Sequence[SourceDocument]:
@@ -128,15 +184,14 @@ class HierarchicalChunkSource:
         """Return the content chunks of ``document`` in ascending ordinal.
 
         Header-only chunks, and chunks that are only front matter, are left
-        out: they have no fact to extract.
+        out: they have no fact to extract. Each chunk carries its section's
+        number and path, read from the section's first stored chunk.
         """
         self._require_initialized()
         stored = await self._stored_chunks()
-        refs = [
-            self._ref(chunk)
-            for chunk in stored.get(document.source_uri, [])
-            if _is_content(chunk)
-        ]
+        chunks = stored.get(document.source_uri, [])
+        sections = _sections(chunks)
+        refs = [self._ref(chunk, sections) for chunk in chunks if _is_content(chunk)]
         refs.sort(key=lambda ref: ref.ordinal)
         return [ref for ref in refs if ref.text.strip()]
 

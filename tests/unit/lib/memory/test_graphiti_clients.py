@@ -38,7 +38,7 @@ from holodeck.lib.memory.backends.graphiti_clients import (
 )
 from holodeck.models.claude_config import AuthProvider
 from holodeck.models.llm import LLMProvider, ProviderEnum
-from holodeck.models.tool import GraphBackendConfig
+from holodeck.models.tool import GraphBackendConfig, ReasoningEffort
 
 pytestmark = [pytest.mark.unit]
 
@@ -617,3 +617,158 @@ def test_gph_01_graphiti_log_records_are_redacted() -> None:
     assert records[0].getMessage() == "request failed: Incorrect API key provided: ***"
     assert "sk-log-canary-9914" not in (records[0].exc_text or "")
     assert "RuntimeError" in (records[0].exc_text or "")
+
+
+# --- reasoning effort --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("provider", "client_type", "default"),
+    [
+        # Graphiti's own defaults: "auto" for OpenAI, None for Azure.
+        (ProviderEnum.OPENAI, OpenAIClient, "auto"),
+        (ProviderEnum.AZURE_OPENAI, AzureOpenAILLMClient, None),
+    ],
+)
+@pytest.mark.parametrize("effort", ["high", "none", None])
+def test_reasoning_effort_reaches_the_openai_family_clients(
+    provider: ProviderEnum,
+    client_type: type[LLMClient],
+    default: str | None,
+    effort: ReasoningEffort | None,
+) -> None:
+    client = build_llm_client(model(provider), reasoning_effort=effort)
+
+    assert type(client) is client_type
+    assert isinstance(client, OpenAIClient | AzureOpenAILLMClient)
+    assert client.reasoning == (default if effort is None else effort)
+
+
+@pytest.mark.parametrize(
+    ("provider", "extra"),
+    [(ProviderEnum.ANTHROPIC, {}), (ProviderEnum.OLLAMA, {})],
+)
+def test_reasoning_effort_is_ignored_with_one_warning_elsewhere(
+    provider: ProviderEnum,
+    extra: dict[str, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING, logger=graphiti_clients.__name__):
+        build_llm_client(model(provider, **extra), reasoning_effort="high")
+        build_llm_client(model(provider, **extra))
+
+    warnings = [r for r in caplog.records if "extraction_reasoning_effort" in r.message]
+    assert len(warnings) == 1
+    assert provider.value in warnings[0].getMessage()
+
+
+def test_build_clients_passes_the_reasoning_effort_on() -> None:
+    clients = build_clients(
+        model(ProviderEnum.OPENAI), FixedEmbeddings(), reasoning_effort="medium"
+    )
+
+    assert isinstance(clients.llm.inner, OpenAIClient)
+    assert clients.llm.inner.reasoning == "medium"
+
+
+# --- entity and edge type models ----------------------------------------------
+
+
+def test_entity_type_models_carry_the_description_as_docstring() -> None:
+    from holodeck.models.tool import MemoryEntityType
+
+    models = graphiti_clients.entity_type_models(
+        [
+            MemoryEntityType(name="Payment"),
+            MemoryEntityType(name="Act", description="A law"),
+        ]
+    )
+
+    assert models["Act"].__doc__ == "A law"
+    assert models["Act"].model_fields == {}
+    assert models["Payment"].__name__ == "Payment"
+
+
+def test_edge_type_models_have_one_optional_field_per_attribute() -> None:
+    from graphiti_core.utils.ontology_utils.entity_types_utils import (
+        validate_entity_types,
+    )
+
+    from holodeck.models.tool import MemoryEdgeType
+
+    edge = MemoryEdgeType.model_validate(
+        {
+            "name": "HAS_RATE",
+            "description": "The rate of a payment.",
+            "attributes": [
+                {"name": "amount", "type": "number", "description": "Dollars"},
+                {"name": "period", "type": "string"},
+                {"name": "starts", "type": "date"},
+                {"name": "indexed", "type": "boolean"},
+            ],
+            "single_valued": True,
+            "key_attributes": ["period"],
+        }
+    )
+
+    model_type = graphiti_clients.edge_type_models([edge])["HAS_RATE"]
+
+    assert model_type.__name__ == "HAS_RATE"
+    doc = model_type.__doc__ or ""
+    assert doc.startswith("The rate of a payment.")
+    assert "one value at a time per (source entity, period)" in doc
+    fields = model_type.model_fields
+    assert list(fields) == ["amount", "period", "starts", "indexed"]
+    assert all(not field.is_required() for field in fields.values())
+    assert fields["amount"].annotation == float | None
+    assert fields["indexed"].annotation == bool | None
+    assert fields["starts"].annotation == str | None
+    assert "ISO 8601" in (fields["starts"].description or "")
+    assert fields["amount"].description == "Dollars"
+    filled = model_type.model_validate({"amount": 12.5, "indexed": True})
+    assert filled.model_dump() == {
+        "amount": 12.5,
+        "period": None,
+        "starts": None,
+        "indexed": True,
+    }
+    # Graphiti's own check accepts the models (it rejects reserved names).
+    assert validate_entity_types({"HAS_RATE": model_type})
+
+
+def test_a_multi_valued_edge_type_docstring_is_its_description() -> None:
+    from holodeck.models.tool import MemoryEdgeType
+
+    edge = MemoryEdgeType(name="MENTIONS", description="One text names another.")
+
+    assert graphiti_clients.edge_type_models([edge])["MENTIONS"].__doc__ == (
+        "One text names another."
+    )
+
+
+def test_edge_type_map_keys_are_type_pairs() -> None:
+    from holodeck.models.tool import MemoryEdgeTypeMapEntry
+
+    mapped = graphiti_clients.edge_type_map(
+        [
+            MemoryEdgeTypeMapEntry(
+                source="Payment", target="Entity", edges=["HAS_RATE"]
+            ),
+            MemoryEdgeTypeMapEntry(
+                source="Entity", target="Entity", edges=["MENTIONS"]
+            ),
+        ]
+    )
+
+    assert mapped == {
+        ("Payment", "Entity"): ["HAS_RATE"],
+        ("Entity", "Entity"): ["MENTIONS"],
+    }
+
+
+def test_reserved_edge_fields_match_graphiti_entity_edge() -> None:
+    from graphiti_core.edges import EntityEdge
+
+    from holodeck.models.tool import MEMORY_RESERVED_EDGE_FIELDS
+
+    assert frozenset(EntityEdge.model_fields) == MEMORY_RESERVED_EDGE_FIELDS

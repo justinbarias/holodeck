@@ -7,10 +7,10 @@ This inventory lists published JSON contracts and links storage code.
 
 | Schema | Title | Root properties | Definitions |
 | --- | --- | --- | --- |
-| [agent.schema.json](../../schemas/agent.schema.json) | Agent | 16 | 67 |
+| [agent.schema.json](../../schemas/agent.schema.json) | Agent | 16 | 71 |
 | [optimize-progress.schema.json](../../schemas/optimize-progress.schema.json) | optimize-progress.schema | 0 | 14 |
 
-<!-- agent.schema.json sha256: 0e2ab0796176c35d0248bc89c36afa95b9b99e526bdc3106c7001adb1da826fb -->
+<!-- agent.schema.json sha256: a7a3ebf81955a51b228d84fd8b56ad0356393d20ccd40044220b79dd33f326fc -->
 <!-- optimize-progress.schema.json sha256: ea6ea54961bac9b1c8e6c141ae74cc11ce9c394502bda0b244a90b486d92f18f -->
 
 ## Storage implementations
