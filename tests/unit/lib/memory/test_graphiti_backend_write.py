@@ -2101,13 +2101,13 @@ async def test_text_closing_closes_nothing_in_an_unchanged_section(
 
 
 @pytest.mark.asyncio
-async def test_text_closing_closes_a_subsection_fact_when_the_plural_drops_its_match(
+async def test_text_closing_keeps_a_subsection_fact_whose_line_was_reworded(
     store: FakeStore, fake: FakeGraphiti
 ) -> None:
     # "subsection"/"does" become "subsections"/"do", so the changed line
-    # matches the fact at 3/11 and the best new line at 0.3, against 0.625
-    # for the old line: far beyond the 0.1 margin. The fact closes although
-    # it is still true, a known limit of lexical matching.
+    # matches the fact at 3/11 against 0.625 for the old line: beyond the
+    # 0.1 margin. The new line still holds every anchored word (subsection,
+    # 4, not, apply) and adds no restrictive word: the fact stays open.
     section = SectionKey("h4_part_3_61ab_waiting", "61AB", RATE_PATH)
     old_text = (
         "#### 61AB Waiting period\n(1) For the waiting period:\n"
@@ -2127,8 +2127,9 @@ async def test_text_closing_closes_a_subsection_fact_when_the_plural_drops_its_m
         sectioned("61ab-2026", new_text, section),
     )
 
-    assert not is_open(store, "sub4")
-    assert report.facts_closed_by_text == 1
+    assert is_open(store, "sub4")
+    assert report.facts_closed_by_text == 0
+    assert not [q for q, _ in store.queries if q == CLOSE_FACTS_QUERY]
 
 
 @pytest.mark.asyncio

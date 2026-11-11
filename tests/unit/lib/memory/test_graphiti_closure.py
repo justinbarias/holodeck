@@ -13,6 +13,7 @@ from holodeck.lib.memory.backends.graphiti_closure import (
     SUPPORT_MARGIN,
     EdgeShape,
     SectionKey,
+    content_tokens,
     could_replace,
     decide_closure,
     decide_text_closure,
@@ -369,9 +370,11 @@ def test_text_closure_a_removed_clause_the_fact_never_named_is_within_the_margin
     assert (decision.close, decision.reason) == (False, "still_supported")
 
 
-def test_text_closure_an_added_qualifier_that_changes_the_words_closes() -> None:
-    # "subsections ... do" no longer share "subsection" and "does": 3/11
-    # against 5/8. The fact is still true; lexical matching closes it.
+def test_text_closure_a_reworded_line_keeps_the_fact_open() -> None:
+    # Codex finding 10. "subsections ... do" no longer share "subsection"
+    # and "does": 3/11 against 5/8, beyond the margin. Every anchored word
+    # (subsection, 4, not, apply) is in the new line, which adds no
+    # restrictive word: the fact is still stated.
     decision = decide_text_closure(
         fact="Subsection (4) does not apply to the waiting period",
         old_lines=["(c) subsection (4) does not apply;"],
@@ -379,7 +382,83 @@ def test_text_closure_an_added_qualifier_that_changes_the_words_closes() -> None
     )
 
     assert (decision.old_best, decision.new_best) == (0.625, pytest.approx(3 / 11))
+    assert (decision.close, decision.reason) == (False, "line_reworded")
+
+
+@pytest.mark.parametrize(
+    ("fact", "old_line", "new_text"),
+    [
+        # A dropped negation: "not" is anchored and gone.
+        (
+            "Subsection (4) does not apply to the waiting period",
+            "(c) subsection (4) does not apply;",
+            "(c) subsection (4) applies;",
+        ),
+        # An added negation: "not" is restrictive and not anchored.
+        (
+            "Subsection (4) applies to the waiting period",
+            "(c) subsection (4) applies;",
+            "(c) subsection (4) does not apply;",
+        ),
+        # Another name: "secretary" is anchored and gone.
+        (
+            "The Secretary administers the scheme",
+            "(1) The Secretary administers the scheme.",
+            "(1) The Chief Executive administers the scheme.",
+        ),
+        # Another amount: the anchor {rate, 10} lacks 10 in the new line.
+        ("The rate is $10", "(1) The rate is $10.", "(1) The rate is $20."),
+        # An added restriction: "only" is restrictive and not anchored.
+        (
+            "Subsection (4) applies to the waiting period",
+            "(c) subsection (4) applies;",
+            "(c) subsection (4) applies only to new claims;",
+        ),
+        # The anchor split over two new lines: no single line holds it.
+        (
+            "Subsection (4) does not apply to the waiting period",
+            "(c) subsection (4) does not apply;",
+            "(c) subsections (4) and (4A) are listed.\n(d) The rule does not apply;",
+        ),
+    ],
+)
+def test_text_closure_a_changed_meaning_still_closes(
+    fact: str, old_line: str, new_text: str
+) -> None:
+    decision = decide_text_closure(fact=fact, old_lines=[old_line], new_text=new_text)
+
     assert (decision.close, decision.reason) == (True, "line_changed")
+
+
+def test_text_closure_a_one_word_anchor_proves_nothing() -> None:
+    # Fact and old line share one content word, "levy"; the new line holds
+    # it and adds no restrictive word, but one word is too little to call
+    # the line reworded.
+    decision = decide_text_closure(
+        fact="The levy is payable",
+        old_lines=["The levy is due."],
+        new_text="A levy was abolished by statute.",
+    )
+
+    assert content_tokens("The levy is payable") & content_tokens(
+        "The levy is due."
+    ) == {"levy"}
+    assert (decision.old_best, decision.new_best) == (0.5, pytest.approx(1 / 6))
+    assert (decision.close, decision.reason) == (True, "line_changed")
+
+
+def test_content_tokens_drop_stopwords_and_plurals_and_keep_numbers() -> None:
+    assert content_tokens("Subsections (4) and (4A) do not apply to periods") == {
+        "subsection",
+        "4",
+        "4a",
+        "not",
+        "apply",
+        "period",
+    }
+    assert content_tokens("applies") == {"apply"}
+    assert content_tokens("class status basis") == {"class", "status", "basis"}
+    assert content_tokens("The rate is $3,806.95") == {"rate", "3,806.95"}
 
 
 def test_a_later_source_and_another_document_are_decided_first() -> None:

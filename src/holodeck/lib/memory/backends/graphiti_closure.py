@@ -53,11 +53,20 @@ E's section and by no episode dated after E:
 2. One of those lines is in E's section text: keep F open.
 3. ``new_best``, F's best Jaccard against the new lines, is not below
    ``old_best - SUPPORT_MARGIN``: keep F open (the new text still states it).
-4. Otherwise close F.
+4. For a best old line L, the anchor is the content words (``content_tokens``:
+   no stopwords, singular forms) that F and L share; skip L when it has
+   fewer than ``MIN_ANCHOR``. One new line holds every anchored word and
+   adds no ``RESTRICTIVE`` word ("not", "only", "unless", ...) the anchor
+   lacks: keep F open (``line_reworded``). "subsection (4) does not apply"
+   reworded to "subsections (4) and (4A) do not apply" stays open; a changed
+   number, a dropped or added "not", or another name closes.
+5. Otherwise close F.
 
 The matching is lexical: a changed line that F's wording still matches
 about as well as the old line is kept open by the margin, and a fact
-paraphrased far from its line is never closed.
+paraphrased far from its line is never closed. Step 4 can keep a fact
+whose meaning changed without losing an anchored word or adding a
+restrictive one ("applies to children" to "applies to children over 16").
 """
 
 from __future__ import annotations
@@ -86,6 +95,7 @@ TextClosureReason = Literal[
     "no_matching_line",
     "line_kept",
     "still_supported",
+    "line_reworded",
     "line_changed",
 ]
 
@@ -93,6 +103,26 @@ TextClosureReason = Literal[
 MIN_LINE_MATCH = 0.2
 # How much worse than its old line the new text must match a fact to close it.
 SUPPORT_MARGIN = 0.1
+
+# Words that carry no content for the reworded-line test (``content_tokens``).
+_STOPWORDS = frozenset(
+    {
+        "the", "and", "does", "did", "are", "was", "were", "has", "have", "had",
+        "for", "that", "this", "with", "any", "all", "its", "from", "into",
+        "under", "may", "must", "shall", "will", "been", "being",
+    }
+)  # fmt: skip
+# Words that narrow or negate a rule. A new line that adds one the fact's
+# anchored words lack does not restate the fact.
+RESTRICTIVE = frozenset(
+    {
+        "not", "never", "nil", "none", "cannot", "without", "except", "unless",
+        "only", "excluding",
+    }
+)  # fmt: skip
+# Fewest anchored words (fact and old line share them) the reworded-line
+# test needs; with fewer it proves nothing.
+MIN_ANCHOR = 2
 
 _WHITESPACE = re.compile(r"\s+")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
@@ -230,6 +260,58 @@ def tokens(text: str) -> frozenset[str]:
     return frozenset(_TOKEN.findall(text.lower()))
 
 
+def _singular(token: str) -> str:
+    """A word with a plural ending removed; a number unchanged.
+
+    "applies" gives "apply", "subsections" gives "subsection"; "class",
+    "status" and "basis" are kept.
+    """
+    if token[0].isdigit():
+        return token
+    if token.endswith("ies") and len(token) > 4:
+        return token[:-3] + "y"
+    if (
+        len(token) >= 4
+        and token.endswith("s")
+        and not token.endswith(("ss", "us", "is"))
+    ):
+        return token[:-1]
+    return token
+
+
+def content_tokens(text: str) -> frozenset[str]:
+    """``tokens`` without stopwords, words in singular form.
+
+    Used only by the reworded-line test of ``decide_text_closure``; the
+    Jaccard scores keep using ``tokens``.
+    """
+    return frozenset(
+        _singular(token)
+        for token in _TOKEN.findall(text.lower())
+        if token not in _STOPWORDS
+    )
+
+
+def _reworded(fact: str, best_lines: Sequence[str], new_lines: Sequence[str]) -> bool:
+    """True when one new line restates the fact's best old line in new words.
+
+    The anchor is the content words the fact shares with an old line (at
+    least ``MIN_ANCHOR``). One new line must hold every anchored word (a
+    changed number, a dropped "not" or another name fails) and add no
+    ``RESTRICTIVE`` word the anchor lacks.
+    """
+    wanted = content_tokens(fact)
+    new_sets = [content_tokens(line) for line in new_lines]
+    for line in best_lines:
+        anchor = wanted & content_tokens(line)
+        if len(anchor) < MIN_ANCHOR:
+            continue
+        for found in new_sets:
+            if anchor <= found and not (found & RESTRICTIVE) - anchor:
+                return True
+    return False
+
+
 def jaccard(left: frozenset[str], right: frozenset[str]) -> float:
     """Token-set Jaccard similarity; 0 when both sets are empty."""
     union = left | right
@@ -331,4 +413,6 @@ def decide_text_closure(
         return TextClosureDecision(False, "line_kept", old_best, new_best)
     if new_best >= old_best - SUPPORT_MARGIN:
         return TextClosureDecision(False, "still_supported", old_best, new_best)
+    if _reworded(fact, best_lines, new_lines):
+        return TextClosureDecision(False, "line_reworded", old_best, new_best)
     return TextClosureDecision(True, "line_changed", old_best, new_best)
