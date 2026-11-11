@@ -134,7 +134,7 @@ EXTRA_MODULES: dict[str, tuple[str, ...]] = {
     "azure-blob": ("azure.storage.blob",),
     "all-sources": ("boto3", "azure.storage.blob"),
     "temporal": ("temporalio",),
-    "graphiti": ("graphiti_core", "neo4j"),
+    "graphiti": ("graphiti_core", "neo4j", "anthropic"),
 }
 # The aggregate extra: every row above.
 ALL_EXTRA = "all"
@@ -162,7 +162,8 @@ PACKAGES: tuple[Package, ...] = (
     Package("twine", "twine"),
     # Installed only by their extra.
     Package("deepeval", "deepeval", ("eval",)),
-    Package("anthropic", "anthropic", ("eval",)),
+    # graphiti-core[anthropic] brings the SDK that its Anthropic client needs.
+    Package("anthropic", "anthropic", ("eval", "graphiti")),
     Package("ollama", "ollama", ("eval",)),
     Package("nltk", "nltk", ("nlp",)),
     Package("sacrebleu", "sacrebleu", ("nlp",)),
