@@ -22,6 +22,7 @@ from pydantic import (
     Discriminator,
     Field,
     SecretStr,
+    StringConstraints,
     Tag,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
@@ -33,7 +34,8 @@ from holodeck.config.context import agent_base_dir, is_stored_snapshot
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.retired_providers import retired_provider_message
 from holodeck.lib.skills import SkillLoadError, load_skill_definition, resolve_skill_dir
-from holodeck.models.llm import LLMProvider
+from holodeck.models.claude_config import AuthProvider
+from holodeck.models.llm import LLMProvider, ProviderEnum
 
 _SUPPORTED_SOURCE_SCHEMES = {"s3", "az", "https", "http", "file"}
 
@@ -1029,6 +1031,188 @@ class SkillTool(BaseModel):
         return self
 
 
+class GraphBackendConfig(BaseModel):
+    """Connection to the graph store behind a ``temporal_memory`` tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["graphiti"] = Field(
+        default="graphiti", description="Memory backend. Only graphiti is supported."
+    )
+    driver: Literal["neo4j", "falkordb", "neptune", "kuzu"] = Field(
+        ..., description="Graph database driver. kuzu is deprecated upstream."
+    )
+    uri: str | None = Field(
+        default=None,
+        description=(
+            "Connection URI for neo4j, falkordb and neptune. For kuzu, a "
+            "database path; unset means an in-memory database."
+        ),
+    )
+    user: str | None = Field(default=None, description="Database user")
+    password: SecretStr | None = Field(default=None, description="Database password")
+    aoss_host: str | None = Field(
+        default=None,
+        description="OpenSearch host. Required for neptune, unused otherwise.",
+    )
+
+    @model_validator(mode="after")
+    def check_driver_settings(self) -> "GraphBackendConfig":
+        """Require the settings each driver cannot run without."""
+        if self.driver != "kuzu" and not (self.uri and self.uri.strip()):
+            raise ValueError(f"backend.uri is required for {self.driver}")
+        if self.driver == "neptune" and not (self.aoss_host and self.aoss_host.strip()):
+            raise ValueError("backend.aoss_host is required for neptune")
+        return self
+
+
+class FusionWeights(BaseModel):
+    """Weights for reciprocal rank fusion of chunk hits and fact hits."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chunks: float = Field(default=1.0, ge=0.0, description="Weight of chunk hits")
+    graph: float = Field(default=1.0, ge=0.0, description="Weight of fact hits")
+
+    @model_validator(mode="after")
+    def check_not_both_zero(self) -> "FusionWeights":
+        """Reject weights that would rank nothing."""
+        if self.chunks == 0.0 and self.graph == 0.0:
+            raise ValueError("fusion_weights cannot both be 0")
+        return self
+
+
+class MemorySchemaHints(BaseModel):
+    """Optional guidance for extraction."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_types: list[
+        Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_]*$")]
+    ] = Field(
+        default_factory=list,
+        description="Entity type names the extraction model should prefer",
+    )
+    single_valued_predicates: list[str] = Field(
+        default_factory=list,
+        description="Not supported by the graphiti backend; loading fails if set.",
+    )
+
+
+_MEMORY_AUTH_PROVIDERS = frozenset({AuthProvider.api_key, AuthProvider.oauth_token})
+
+
+def memory_extraction_model_error(tool_name: str, model: LLMProvider) -> str | None:
+    """Return why ``model`` cannot be a memory extraction model, or None.
+
+    For Anthropic, ``auth_provider`` selects the client: ``api_key`` (the
+    default) or ``oauth_token``. No other value has a client (spec 043, D24).
+    """
+    if model.provider != ProviderEnum.ANTHROPIC or model.auth_provider is None:
+        return None
+    if model.auth_provider in _MEMORY_AUTH_PROVIDERS:
+        return None
+    return (
+        f"temporal_memory tool '{tool_name}': extraction_model auth_provider "
+        f"'{model.auth_provider.value}' is not supported; use api_key or oauth_token"
+    )
+
+
+class TemporalMemoryToolConfig(BaseModel):
+    """A bi-temporal knowledge graph built from hierarchical document tools.
+
+    The tool reads chunks from its ``source_tools``, extracts dated facts into
+    a graph, and gives the agent ``memory_search``, ``memory_timeline`` and
+    ``memory_provenance``. Rules that need the other tools of the agent are
+    checked by ``Agent``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        pattern=r"^[0-9A-Za-z_]+$",
+        description="Tool identifier (alphanumeric and underscores only)",
+    )
+    description: str = Field(..., description="Human-readable tool description")
+    type: Literal["temporal_memory"] = Field(
+        default="temporal_memory", description="Tool type"
+    )
+    source_tools: list[str] = Field(
+        ...,
+        description=(
+            "Names of hierarchical_document tools in this agent. One graph is "
+            "built across all of them."
+        ),
+    )
+    namespace: str | None = Field(
+        default=None,
+        pattern=r"^[a-zA-Z0-9_-]+$",
+        description="Graph namespace. Defaults to the tool name.",
+    )
+    backend: GraphBackendConfig = Field(..., description="Graph store connection")
+    extraction_model: LLMProvider | None = Field(
+        default=None,
+        description="Model that extracts facts. Defaults to the agent model.",
+    )
+    extraction_instructions: str | None = Field(
+        default=None,
+        description=(
+            "Guidance for extraction. Defaults to a built-in instruction for "
+            "amounts, rates and dates."
+        ),
+    )
+    effective_date_key: str = Field(
+        default="effective_date",
+        min_length=1,
+        pattern=r"^\S+$",
+        description="Front-matter key that holds a document's effective date",
+    )
+    ingest_on_start: bool = Field(
+        default=False,
+        description="Run graph ingestion when the tool is initialized",
+    )
+    hops: int = Field(default=1, ge=1, le=2, description="Expansion depth, 1 or 2")
+    top_k: int = Field(default=10, ge=1, le=100, description="Hits returned")
+    fusion_weights: FusionWeights = Field(
+        default_factory=FusionWeights,
+        description="Weights for fusing chunk hits and fact hits",
+    )
+    schema_hints: MemorySchemaHints | None = Field(
+        default=None, description="Optional extraction guidance"
+    )
+
+    @property
+    def resolved_namespace(self) -> str:
+        """The namespace in use: ``namespace``, or the tool name."""
+        return self.namespace or self.name
+
+    @model_validator(mode="after")
+    def check_tool_rules(self) -> "TemporalMemoryToolConfig":
+        """Apply the rules that need this tool only (CFG-02, CFG-04, D24)."""
+        prefix = f"temporal_memory tool '{self.name}':"
+        if not self.source_tools:
+            raise ValueError(
+                f"{prefix} source_tools must name at least one "
+                "hierarchical_document tool"
+            )
+        repeated = sorted(
+            {name for name in self.source_tools if self.source_tools.count(name) > 1}
+        )
+        if repeated:
+            raise ValueError(f"{prefix} source_tools repeats {', '.join(repeated)}")
+        if self.schema_hints and self.schema_hints.single_valued_predicates:
+            raise ValueError(
+                f"{prefix} schema_hints.single_valued_predicates is not supported "
+                f"by the {self.backend.provider} backend"
+            )
+        if self.extraction_model is not None:
+            error = memory_extraction_model_error(self.name, self.extraction_model)
+            if error:
+                raise ValueError(error)
+        return self
+
+
 def _get_tool_type(v: Any) -> str:
     """Extract tool type from dict or model for discrimination.
 
@@ -1053,6 +1237,7 @@ ToolUnion = Annotated[
     | Annotated[MCPTool, Tag("mcp")]
     | Annotated[PromptTool, Tag("prompt")]
     | Annotated[HierarchicalDocumentToolConfig, Tag("hierarchical_document")]
-    | Annotated[SkillTool, Tag("skill")],
+    | Annotated[SkillTool, Tag("skill")]
+    | Annotated[TemporalMemoryToolConfig, Tag("temporal_memory")],
     Discriminator(_get_tool_type),
 ]

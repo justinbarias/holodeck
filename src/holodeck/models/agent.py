@@ -17,7 +17,13 @@ from holodeck.models.llm import LLMProvider
 from holodeck.models.observability import ObservabilityConfig
 from holodeck.models.openai_config import OpenAIConfig
 from holodeck.models.test_case import TestCaseModel
-from holodeck.models.tool import SkillTool, ToolUnion
+from holodeck.models.tool import (
+    HierarchicalDocumentToolConfig,
+    SkillTool,
+    TemporalMemoryToolConfig,
+    ToolUnion,
+    memory_extraction_model_error,
+)
 
 
 class Instructions(BaseModel):
@@ -184,6 +190,58 @@ class Agent(BaseModel):
                 f"Duplicate tool names found: {', '.join(duplicates)}. "
                 "Each tool must have a unique name."
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_temporal_memory_tool(self) -> Self:
+        """Apply the temporal_memory rules that need the agent's other tools.
+
+        Spec 043: one memory tool per agent (CFG-03); every source tool is a
+        hierarchical_document tool of this agent (CFG-02); the source tools
+        share one embedding model (CFG-06); the extraction model, which
+        defaults to the agent model, has a client (D24).
+
+        Raises:
+            ValueError: Naming the memory tool and the entry at fault.
+        """
+        memory_tools = [
+            t for t in self.tools or [] if isinstance(t, TemporalMemoryToolConfig)
+        ]
+        if not memory_tools:
+            return self
+        if len(memory_tools) > 1:
+            names = ", ".join(sorted(t.name for t in memory_tools))
+            raise ValueError(
+                f"Only one temporal_memory tool is allowed per agent; found: {names}"
+            )
+        memory = memory_tools[0]
+        prefix = f"temporal_memory tool '{memory.name}':"
+        by_name = {t.name: t for t in self.tools or []}
+        sources: list[HierarchicalDocumentToolConfig] = []
+        for name in memory.source_tools:
+            source = by_name.get(name)
+            if source is None:
+                raise ValueError(
+                    f"{prefix} source_tools entry '{name}' names no tool in this agent"
+                )
+            if not isinstance(source, HierarchicalDocumentToolConfig):
+                raise ValueError(
+                    f"{prefix} source_tools entry '{name}' is a {source.type} tool; "
+                    "only hierarchical_document tools are allowed"
+                )
+            sources.append(source)
+        explicit = sorted(
+            (s.name, s.embedding_model) for s in sources if s.embedding_model
+        )
+        if len({model for _, model in explicit}) > 1:
+            listed = ", ".join(f"{name} ({model})" for name, model in explicit)
+            raise ValueError(
+                f"{prefix} source tools use different embedding models: {listed}"
+            )
+        if memory.extraction_model is None:
+            error = memory_extraction_model_error(memory.name, self.model)
+            if error:
+                raise ValueError(error)
         return self
 
     @model_validator(mode="after")

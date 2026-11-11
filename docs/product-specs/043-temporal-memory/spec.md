@@ -183,6 +183,7 @@ tools:
       uri: ${NEO4J_URI}
       user: ${NEO4J_USER}
       password: ${NEO4J_PASSWORD}
+      # aoss_host: required for neptune only (its OpenSearch host)
     extraction_model: { provider: openai, name: gpt-5.4-mini }   # default: agent model
     extraction_instructions: null       # default: built-in instruction for amounts, rates and dates
     effective_date_key: effective_date
@@ -234,7 +235,7 @@ Results are JSON with ISO 8601 UTC timestamps. A date argument with no time mean
 | MB-04 | Event-driven | When `purge` is called, the memory shall remove every episode, entity and fact in that namespace and no other. | MOD-05 |
 | CFG-01 | Ubiquitous | The agent schema shall accept a `temporal_memory` tool validated by a Pydantic model with `extra="forbid"`. | — |
 | CFG-02 | Unwanted | If `source_tools` is empty, repeats a name, or names anything other than a `hierarchical_document` tool in the same agent, then loading shall fail with the tool name. | — |
-| CFG-06 | Unwanted | If the source tools do not share one embedding model and dimension, then loading shall fail and name the tools that differ. | — |
+| CFG-06 | Unwanted | If the source tools set different embedding models, then loading shall fail and name the tools that differ. A hierarchical tool has no dimension setting, so the model alone is compared. | — |
 | CFG-03 | Unwanted | If more than one `temporal_memory` tool is configured, then loading shall fail. | HST-01 |
 | CFG-04 | Unwanted | If `schema_hints.single_valued_predicates` is set with the Graphiti backend, then loading shall fail and name the field. | TMP-07 |
 | CFG-05 | Unwanted | If the `graphiti` extra is not installed, then loading shall fail with the install command. | — |
