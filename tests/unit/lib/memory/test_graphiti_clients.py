@@ -12,6 +12,7 @@ import os
 import sys
 import types
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from graphiti_core.driver.neo4j_driver import Neo4jDriver
@@ -502,8 +503,8 @@ def test_gph_01_openai_endpoint_is_explicit_whatever_the_environment(
 
     client = build_llm_client(model(ProviderEnum.OPENAI))
 
-    assert "api.openai.com" in str(client.client.base_url)  # type: ignore[attr-defined]
-    assert "other.example" not in str(client.client.base_url)  # type: ignore[attr-defined]
+    base_url = str(client.client.base_url)  # type: ignore[attr-defined]
+    assert urlsplit(base_url).hostname == "api.openai.com"
 
 
 def test_gph_01_anthropic_endpoint_is_explicit_whatever_the_environment(
@@ -513,7 +514,8 @@ def test_gph_01_anthropic_endpoint_is_explicit_whatever_the_environment(
 
     client = build_llm_client(model(ProviderEnum.ANTHROPIC))
 
-    assert "api.anthropic.com" in str(client.client.base_url)  # type: ignore[attr-defined]
+    base_url = str(client.client.base_url)  # type: ignore[attr-defined]
+    assert urlsplit(base_url).hostname == "api.anthropic.com"
 
 
 @pytest.mark.parametrize(
