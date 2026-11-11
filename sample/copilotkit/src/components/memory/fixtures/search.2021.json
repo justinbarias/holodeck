@@ -1,0 +1,39 @@
+{
+  "name": "memory_search",
+  "args": {
+    "query": "base rate of Family Benefit",
+    "valid_at": "2021-01-01",
+    "known_at": "2026-11-11T12:00:00Z"
+  },
+  "result": {
+    "valid_at": "2021-01-01T00:00:00Z",
+    "known_at": "2026-11-11T12:00:00Z",
+    "degraded": false,
+    "hits": [
+      {
+        "kind": "fact",
+        "text": "From 1 July 2020, the base rate of Family Benefit is 100 dollars per fortnight for each child.",
+        "score": 0.01639344262295082,
+        "source_tool": "benefit_docs",
+        "chunk_id": "docs_rate-2020.md_chunk_1",
+        "source_uri": "docs/rate-2020.md",
+        "fact_id": "e28a99df-f0c4-4cbf-a457-2010092ce417",
+        "valid_from": "2020-07-01T00:00:00Z",
+        "valid_to": "2022-07-01T00:00:00Z",
+        "superseded_by": null
+      },
+      {
+        "kind": "fact",
+        "text": "Family Benefit was administered by the Benefits Agency until 1 July 2024, when the Benefits Agency stopped administering it.",
+        "score": 0.016129032258064516,
+        "source_tool": "benefit_docs",
+        "chunk_id": "docs_rate-2024.md_chunk_2",
+        "source_uri": "docs/rate-2024.md",
+        "fact_id": "938a53d8-a5ca-427a-884f-4bf7db20373e",
+        "valid_from": null,
+        "valid_to": "2024-07-01T00:00:00Z",
+        "superseded_by": null
+      }
+    ]
+  }
+}

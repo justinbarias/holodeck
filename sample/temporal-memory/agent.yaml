@@ -1,0 +1,249 @@
+# Temporal memory sample (spec 043) over two real Acts.
+#
+# The Act text is not in the repository. Run `python fetch_corpus.py` first:
+# it downloads the pinned compilations in manifest.json from the Federal
+# Register of Legislation and writes one markdown file per compilation under
+# docs/, with the compilation start date as `effective_date`.
+#
+# Services: `docker compose up -d` starts Qdrant and Neo4j (compose.yaml).
+# Environment: copy .env.example to .env and fill it in (see README.md).
+# Do not put an environment reference in a comment: the loader substitutes
+# them everywhere in this file, comments included.
+name: family-assistance-memory
+description: >-
+  Answers questions about the Family Assistance Act and the Family Assistance
+  Administration Act as they stood on a given date.
+
+model:
+  provider: openai
+  name: gpt-6-luna
+  # README.md shows the Anthropic alternatives.
+  api_key: ${OPENAI_API_KEY}
+  # A reasoning model: leave room for reasoning tokens.
+  max_tokens: 4000
+
+# One embedding model for both source tools and the memory graph (CFG-06).
+# For a local model use, for example, provider ollama with nomic-embed-text
+# (README.md). A change of embedding model needs a new vector collection.
+embedding_provider:
+  provider: openai
+  name: text-embedding-3-small
+  api_key: ${OPENAI_API_KEY}
+
+instructions:
+  inline: |
+    You answer questions about two Australian Acts: the A New Tax System
+    (Family Assistance) Act 1999 and the A New Tax System (Family
+    Assistance) (Administration) Act 1999. Your sources are compilations of
+    these Acts, each in force from its start date.
+
+    - For a rule, rate, amount or definition on a date, call memory_search.
+      When the user names a date, pass it as valid_at (YYYY-MM-DD).
+    - For how a provision changed over time, call memory_timeline with the
+      entity's name as the Act states it (for example "lower income
+      (base rate) threshold").
+    - For where a fact comes from, call memory_provenance with the fact id
+      that memory_search returned.
+    - Use family_assistance_act_search or family_assistance_admin_act_search
+      to read the full text of a section.
+
+    Always state the compilation date your answer is for, and cite the
+    section or clause number. If the memory has no dated fact and your answer
+    comes from a passage of the Act, say so. If the sources do not answer the
+    question, say that; do not answer from general knowledge.
+
+tools:
+  - name: family_assistance_act
+    type: hierarchical_document
+    description: >-
+      A New Tax System (Family Assistance) Act 1999, compilations in force on
+      1 July 2020 and 1 July 2026. One chunk per section.
+    source: docs/family-assistance-act/
+    chunking_strategy: structure
+    # fetch_corpus.py writes one markdown heading per Part, Division,
+    # Subdivision and section, so the plain structure chunker splits on them.
+    # The au_legislative domain is left off: its patterns would also read
+    # body lines that start with a number (table rows, amounts) as section
+    # headings.
+    document_domain: none
+    # Most sections fit; a long one (the definitions in section 3, the rate
+    # tables) is split at sentence boundaries.
+    max_chunk_tokens: 1000
+    chunk_overlap: 0
+    search_mode: hybrid
+    top_k: 5
+    # Off: it makes one model call per batch of chunks at vector ingestion.
+    # Each chunk already carries its Part, Division and section heading.
+    contextual_embeddings: false
+    database:
+      provider: qdrant
+      connection_string: ${QDRANT_URL}
+
+  - name: family_assistance_admin_act
+    type: hierarchical_document
+    description: >-
+      A New Tax System (Family Assistance) (Administration) Act 1999, volume 1
+      (Parts 1 to 5, sections 1 to 152D), compilations in force on 1 July 2020
+      and 1 July 2026. One chunk per section.
+    source: docs/family-assistance-admin-act/
+    chunking_strategy: structure
+    document_domain: none
+    max_chunk_tokens: 1000
+    chunk_overlap: 0
+    search_mode: hybrid
+    top_k: 5
+    contextual_embeddings: false
+    database:
+      provider: qdrant
+      connection_string: ${QDRANT_URL}
+
+  - name: benefit_memory
+    type: temporal_memory
+    description: >-
+      Dated facts from both Acts: rates, amounts, thresholds, definitions and
+      rules, with the compilation they come from and when they applied.
+    source_tools: [family_assistance_act, family_assistance_admin_act]
+    namespace: family-assistance
+    backend:
+      provider: graphiti
+      driver: neo4j
+      uri: ${NEO4J_URI}
+      user: ${NEO4J_USER}
+      password: ${NEO4J_PASSWORD}
+    effective_date_key: effective_date
+    # Ingestion makes several model calls per chunk: run
+    # `holodeck memory ingest agent.yaml --dry-run` first, then ingest by hand.
+    ingest_on_start: false
+    hops: 1
+    top_k: 10
+    schema_hints:
+      entity_types: [Act, Section, Payment, Rate, Threshold, Person]
+
+# Every ground truth below is taken from the converted text of the pinned
+# compilations (run fetch_corpus.py and read docs/). Tool names are bare:
+# the test runner matches them as substrings of the backend's tool names.
+test_cases:
+  # Administration Act s 109D(1)(a), compilation 104 (in force 2020-07-01).
+  # Compilation 131 (2026-07-01) says 90 days instead.
+  - name: review deadline in 2020
+    input: >-
+      On 1 August 2020, how long did a person have to apply for internal
+      review of a decision about child care subsidy?
+    expected_tools: [memory_search]
+    ground_truth: >-
+      Under section 109D(1)(a) of the Family Assistance Administration Act as
+      in force from 1 July 2020, an application for review of a decision in
+      relation to CCS or ACCS had to be made no later than 13 weeks after the
+      applicant was notified of the decision (52 weeks for other decisions).
+    evaluations:
+      - type: geval
+        name: ground truth agreement
+        criteria: >-
+          The response states that the review application deadline was 13 weeks after notification of the decision (the 2020 rule for child care subsidy decisions), and does not give 90 days as the 2020 answer.
+        evaluation_params: [input, actual_output, expected_output]
+        model: &judge
+          provider: openai
+          name: gpt-6-luna
+          api_key: ${OPENAI_API_KEY}
+          temperature: 0.0
+        threshold: 0.7
+        fail_on_error: true
+
+
+  # Family Assistance Act Schedule 2 clause 3, compilation 124 (2026-07-01):
+  # 90% at or below the lower income (base rate) threshold of $80,000.
+  # Compilation 101 (2020-07-01) has 85% and a lower income threshold of
+  # $65,710.
+  - name: child care subsidy percentage in 2026
+    input: >-
+      As at 1 July 2026, what child care subsidy percentage applies to a
+      family whose adjusted taxable income is at or below the lowest income
+      threshold, and what is that threshold?
+    expected_tools: [memory_search]
+    ground_truth: >-
+      From 1 July 2026, Schedule 2 clause 3 of the Family Assistance Act sets
+      the applicable percentage at 90% for an adjusted taxable income equal to
+      or below the lower income (base rate) threshold, which clause 3(4)
+      defines as $80,000 (indexed under Schedule 4).
+    evaluations:
+      - type: geval
+        name: ground truth agreement
+        criteria: >-
+          The response gives 90% as the percentage and $80,000 as the lower income (base rate) threshold for 1 July 2026, and does not give the 2020 values (85%, $65,710) as the 2026 answer.
+        evaluation_params: [input, actual_output, expected_output]
+        model: *judge
+        threshold: 0.7
+        fail_on_error: true
+
+
+  # Same clause in both compilations: 85% / $65,710 (compilation 101,
+  # 2020-07-01) became 90% / $80,000 (compilation 124, 2026-07-01).
+  - name: child care subsidy percentage over time
+    input: >-
+      How did the child care subsidy applicable percentage for the lowest
+      income band change between the 2020 and 2026 compilations?
+    expected_tools: [memory_timeline]
+    ground_truth: >-
+      In the compilation in force from 1 July 2020, Schedule 2 clause 3 gave
+      85% at or below the lower income threshold of $65,710. In the
+      compilation in force from 1 July 2026, it gives 90% at or below the
+      lower income (base rate) threshold of $80,000.
+    evaluations:
+      - type: geval
+        name: ground truth agreement
+        criteria: >-
+          The response states both values: 85% with a threshold of $65,710 in the 2020 compilation, and 90% with a threshold of $80,000 in the 2026 compilation. It does not swap them.
+        evaluation_params: [input, actual_output, expected_output]
+        model: *judge
+        threshold: 0.7
+        fail_on_error: true
+
+
+  # Family Assistance Act s 59(2), identical in compilation 101 (2020-07-01)
+  # and compilation 124 (2026-07-01).
+  - name: shared care percentage stable
+    input: >-
+      What shared care percentage does an individual have for an FTB child if
+      their percentage of care is 50%, and did that change between 2020 and
+      2026?
+    expected_tools: [memory_search]
+    ground_truth: >-
+      Under the table in section 59(2) of the Family Assistance Act, a
+      percentage of care of 48% to 52% gives a shared care percentage of 50%.
+      The table is the same in the compilations in force from 1 July 2020 and
+      from 1 July 2026.
+    evaluations:
+      - type: geval
+        name: ground truth agreement
+        criteria: >-
+          The response gives a shared care percentage of 50% for a percentage of care of 50%, and says it did not change between the 2020 and 2026 compilations. An answer that finds nothing, or says the provision changed, fails.
+        evaluation_params: [input, actual_output, expected_output]
+        model: *judge
+        threshold: 0.7
+        fail_on_error: true
+
+
+  # Administration Act s 111(1) and s 3 (ART means the Administrative Review
+  # Tribunal), compilation 131 (2026-07-01). Compilation 104 (2020-07-01)
+  # says AAT first review, and s 3 defines AAT as the Administrative Appeals
+  # Tribunal.
+  - name: tribunal review source
+    input: >-
+      In 2026, which tribunal reviews a family assistance decision after
+      internal review, and which provision says so? Show me the source.
+    expected_tools: [memory_search, memory_provenance]
+    ground_truth: >-
+      From 1 July 2026, section 111(1) of the Family Assistance
+      Administration Act lets a person apply to the ART for review (ART
+      review), and section 3 defines ART as the Administrative Review
+      Tribunal. In the compilation in force from 1 July 2020 the same section
+      provided for AAT first review by the Administrative Appeals Tribunal.
+    evaluations:
+      - type: geval
+        name: ground truth agreement
+        criteria: >-
+          The response names the Administrative Review Tribunal (ART) as the 2026 reviewer and cites section 111(1). An answer that finds nothing, or names the AAT as the 2026 reviewer, fails.
+        evaluation_params: [input, actual_output, expected_output]
+        model: *judge
+        threshold: 0.7
+        fail_on_error: true
