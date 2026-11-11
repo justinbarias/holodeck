@@ -9,10 +9,11 @@ only and initializes none. It prints nothing and knows nothing about the CLI.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from holodeck.lib.memory.chunk_source import ChunkSource
 from holodeck.lib.memory.errors import MemoryConfigError
@@ -37,6 +38,9 @@ from holodeck.models.tool import (
 from holodeck.tools.hierarchical_chunk_source import HierarchicalChunkSource
 from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
 from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+if TYPE_CHECKING:
+    from holodeck.lib.litellm_support import LiteLLMEmbeddingService
 
 AGENT_SDK_SECONDS_PER_EPISODE = 11.0
 """Middle of the 6.5 to 15.5 s measured per episode on the Agent SDK OAuth path."""
@@ -116,6 +120,90 @@ async def _preview_tool(
     return tool
 
 
+def chunk_sources(
+    config: TemporalMemoryToolConfig, tools: Mapping[str, object]
+) -> list[ChunkSource]:
+    """Wrap the memory's source tools as chunk sources, in ``source_tools`` order.
+
+    Args:
+        config: The memory tool.
+        tools: Initialized tool instances keyed by tool name.
+
+    Raises:
+        MemoryConfigError: A source tool is not an initialized
+            ``hierarchical_document`` tool.
+    """
+    sources: list[ChunkSource] = []
+    for name in config.source_tools:
+        tool = tools.get(name)
+        if not isinstance(tool, HierarchicalDocumentTool):
+            raise MemoryConfigError(
+                f"source tool '{name}' is not an initialized "
+                "hierarchical_document tool"
+            )
+        sources.append(HierarchicalChunkSource(tool))
+    return sources
+
+
+async def compose_memory(
+    agent: Agent,
+    config: TemporalMemoryToolConfig,
+    sources: Sequence[ChunkSource],
+    *,
+    embedding_service: LiteLLMEmbeddingService | None = None,
+    wrap_backend: Callable[[MemoryBackend], MemoryBackend] | None = None,
+) -> MemorySession:
+    """Create the backend and the service. Makes no store or model call.
+
+    The CLI (``open_memory``) and the agent-facing tool both build their
+    memory here.
+
+    Args:
+        agent: The agent that owns the memory tool.
+        config: The memory tool.
+        sources: Chunk sources, from ``chunk_sources`` or a preview.
+        embedding_service: The agent's shared embedding service. A new one is
+            created from the agent when None.
+        wrap_backend: Wraps the created backend before the service gets it.
+            The Temporal ingestion activity uses it to heartbeat per episode.
+            The session's ``backend`` is the wrapped one.
+
+    Raises:
+        MemoryConfigError: The backend is not supported.
+        MemoryValueError: A service setting is out of range.
+    """
+    entity_types = config.schema_hints.entity_types if config.schema_hints else []
+    backend = create_backend(
+        config.backend,
+        config.extraction_model or agent.model,
+        (
+            create_embedding_service(agent)
+            if embedding_service is None
+            else embedding_service
+        ),
+        entity_types,
+    )
+    if wrap_backend is not None:
+        backend = wrap_backend(backend)
+    try:
+        memory = TemporalMemory(
+            namespace=config.resolved_namespace,
+            backend=backend,
+            sources=sources,
+            effective_date_key=config.effective_date_key,
+            instructions=config.extraction_instructions,
+            seconds_per_episode=_seconds_per_episode(config, agent),
+            top_k=config.top_k,
+            hops=config.hops,
+            weight_chunks=config.fusion_weights.chunks,
+            weight_graph=config.fusion_weights.graph,
+        )
+    except BaseException:
+        await backend.close()
+        raise
+    return MemorySession(memory=memory, backend=backend, config=config)
+
+
 @asynccontextmanager
 async def open_memory(
     agent: Agent,
@@ -165,32 +253,13 @@ async def open_memory(
                     force_ingest=force_ingest_sources,
                     execution_config=execution_config,
                     base_dir=base_dir,
+                    initialize_memory=False,
                 )
             )
-            for name in config.source_tools:
-                tool = tools.get(name)
-                if not isinstance(tool, HierarchicalDocumentTool):
-                    raise MemoryConfigError(
-                        f"source tool '{name}' is not an initialized "
-                        "hierarchical_document tool"
-                    )
-                sources.append(HierarchicalChunkSource(tool))
-        entity_types = config.schema_hints.entity_types if config.schema_hints else []
-        backend = create_backend(
-            config.backend,
-            config.extraction_model or agent.model,
-            create_embedding_service(agent),
-            entity_types,
-        )
-        memory = TemporalMemory(
-            namespace=config.resolved_namespace,
-            backend=backend,
-            sources=sources,
-            effective_date_key=config.effective_date_key,
-            instructions=config.extraction_instructions,
-            seconds_per_episode=_seconds_per_episode(config, agent),
-        )
-        yield MemorySession(memory=memory, backend=backend, config=config)
+            sources = chunk_sources(config, tools)
+        session = await compose_memory(agent, config, sources)
+        backend = session.backend
+        yield session
     finally:
         try:
             if backend is not None:

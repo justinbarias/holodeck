@@ -7,9 +7,11 @@ field), so the tests read the lifecycle state the backend writes.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -28,9 +30,7 @@ from holodeck.lib.memory import (
     MemoryBackend,
     MemoryBackendUnavailableError,
     MemoryConfigError,
-    MemoryNotSupportedError,
-    MemoryOperation,
-    MemoryQuery,
+    TemporalMemoryError,
 )
 from holodeck.lib.memory.backends import graphiti_clients
 from holodeck.lib.memory.backends.graphiti import (
@@ -709,28 +709,96 @@ async def test_close_is_safe_before_use_and_closes_the_driver_once(
     assert fake.closed == 1
 
 
-# --- errors -----------------------------------------------------------------
+@dataclass
+class HeldBuild:
+    """A ``build_graphiti`` that waits in its thread until it is released."""
+
+    graphiti: FakeGraphiti
+    entered: threading.Event = field(default_factory=threading.Event)
+    release: threading.Event = field(default_factory=threading.Event)
+
+    def __call__(self, *args: object) -> graphiti_clients.GraphitiRuntime:
+        self.entered.set()
+        assert self.release.wait(timeout=10), "the test never released the build"
+        return graphiti_clients.GraphitiRuntime(
+            graphiti=self.graphiti,  # type: ignore[arg-type]
+            llm=self.graphiti.llm_client,  # type: ignore[arg-type]
+        )
+
+    async def wait_entered(self) -> None:
+        assert await asyncio.to_thread(self.entered.wait, 10)
+
+
+@pytest.fixture
+def held(store: FakeStore, monkeypatch: pytest.MonkeyPatch) -> HeldBuild:
+    build = HeldBuild(FakeGraphiti(store))
+    monkeypatch.setattr(graphiti_clients, "build_graphiti", build)
+    return build
+
+
+async def _cancelled_during_build(backend: GraphitiBackend, held: HeldBuild) -> None:
+    task = asyncio.create_task(backend.has_episode(NS, E1.episode_id))
+    await held.wait_entered()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
 
 @pytest.mark.asyncio
-async def test_mb_03_read_side_is_not_supported_yet(fake: FakeGraphiti) -> None:
+async def test_a_runtime_built_after_its_caller_was_cancelled_is_closed_once(
+    held: HeldBuild,
+) -> None:
     backend = make_backend()
-    query = MemoryQuery(text="rate", valid_at=WHEN, known_at=WHEN)
+    await _cancelled_during_build(backend, held)
+    assert held.graphiti.closed == 0
 
-    assert backend.capabilities().supported == frozenset(
-        {MemoryOperation.INGEST, MemoryOperation.PURGE}
-    )
-    with pytest.raises(MemoryNotSupportedError) as search:
-        await backend.search(NS, query)
-    with pytest.raises(MemoryNotSupportedError) as timeline:
-        await backend.timeline(NS, "rate")
-    with pytest.raises(MemoryNotSupportedError) as provenance:
-        await backend.provenance(NS, "fact-1")
+    held.release.set()
+    for _ in range(500):
+        if held.graphiti.closed:
+            break
+        await asyncio.sleep(0.01)
 
-    assert search.value.operation == MemoryOperation.SEARCH.value
-    assert timeline.value.operation == MemoryOperation.TIMELINE.value
-    assert provenance.value.operation == MemoryOperation.PROVENANCE.value
-    assert fake.builds == []  # type: ignore[attr-defined]
+    assert held.graphiti.closed == 1
+    await backend.close()
+    assert held.graphiti.closed == 1
+
+
+@pytest.mark.asyncio
+async def test_close_after_a_cancelled_build_waits_for_it_and_closes_it(
+    held: HeldBuild,
+) -> None:
+    backend = make_backend()
+    await _cancelled_during_build(backend, held)
+
+    closing = asyncio.create_task(backend.close())
+    await asyncio.sleep(0.05)
+    assert not closing.done()  # the runtime does not exist yet
+    held.release.set()
+    await closing
+
+    assert held.graphiti.closed == 1
+
+
+@pytest.mark.asyncio
+async def test_close_during_a_build_closes_the_runtime_it_produces(
+    held: HeldBuild,
+) -> None:
+    backend = make_backend()
+    using = asyncio.create_task(backend.has_episode(NS, E1.episode_id))
+    await held.wait_entered()
+
+    closing = asyncio.create_task(backend.close())
+    await asyncio.sleep(0.05)
+    held.release.set()
+    await asyncio.gather(using, closing)
+
+    # close() waited for the build, so the runtime it produced is closed.
+    assert held.graphiti.closed == 1
+    await backend.close()
+    assert held.graphiti.closed == 1
+
+
+# --- errors -----------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -748,6 +816,24 @@ async def test_unreachable_store_raises_unavailable_without_secrets(
     assert raised.value.backend == "graphiti"
     assert PASSWORD not in str(raised.value)
     assert "ConnectionRefusedError" in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_a_store_error_that_is_not_a_lost_store_is_not_unavailable(
+    store: FakeStore, fake: FakeGraphiti
+) -> None:
+    store.fail_load = ValueError(f"bad query parameter (auth {PASSWORD})")
+    backend = make_backend()
+
+    with pytest.raises(TemporalMemoryError) as checked:
+        await backend.has_episode(NS, E1.episode_id)
+    with pytest.raises(TemporalMemoryError) as ingested:
+        await backend.ingest(NS, [E1], "x")
+
+    for raised in (checked, ingested):
+        assert not isinstance(raised.value, MemoryBackendUnavailableError)
+        assert "ValueError" in str(raised.value)
+        assert PASSWORD not in str(raised.value)
 
 
 @pytest.mark.asyncio

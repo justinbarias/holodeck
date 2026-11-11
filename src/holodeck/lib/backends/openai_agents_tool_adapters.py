@@ -7,9 +7,15 @@ SK and Claude backends use) and wrapped with an ``on_invoke_tool`` coroutine
 that parses the model-supplied JSON arguments, invokes the callable, and returns
 its stringified result.
 
-Supported types: function, vectorstore, and hierarchical_document tools (the
-last two wrap the same initialized ``.search()`` instances the Claude adapter
-uses, supplied via ``tool_instances``). ``type: mcp`` tools are skipped here —
+Supported types: function, vectorstore, hierarchical_document and
+temporal_memory tools (the vectorstore and hierarchical-document tools wrap the
+same initialized ``.search()`` instances the Claude adapter uses, supplied via
+``tool_instances``). A ``temporal_memory`` tool contributes three function tools
+with fixed names (``memory_search``, ``memory_timeline``, ``memory_provenance``;
+spec 043, HST-01). Each one passes its raw JSON arguments to
+``TemporalMemoryTool.call`` and returns the JSON text unchanged, so results match
+the Claude binding byte for byte. The memory modules are imported only when the
+agent has a memory tool. ``type: mcp`` tools are skipped here —
 they become SDK ``mcp_servers`` built separately by
 :mod:`holodeck.lib.backends.openai_agents_mcp`. ``type: skill`` tools are
 likewise skipped — they become handoff-target agents built by
@@ -42,12 +48,15 @@ from holodeck.models.tool import (
     MCPTool,
     PromptTool,
     SkillTool,
+    TemporalMemoryToolConfig,
     ToolUnion,
     VectorstoreTool,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
     from agents import Tool as SDKTool
+
+    from holodeck.tools.temporal_memory_tool import TemporalMemoryTool
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +234,86 @@ def _extract_query(input_json: str) -> str:
     return ""
 
 
+def _make_memory_on_invoke(
+    instance: TemporalMemoryTool,
+    name: str,
+) -> Callable[[Any, str], Any]:
+    """Build the ``on_invoke_tool`` coroutine of memory function *name*.
+
+    The SDK does not validate the arguments of a low-level function tool, so
+    this parses the JSON text and passes the object to the handler layer,
+    which validates it. Text that is not a JSON object becomes the same
+    ``invalid_argument`` result the handler layer returns for a bad argument.
+    """
+
+    async def _on_invoke(_ctx: Any, input_json: str) -> str:
+        try:
+            arguments = json.loads(input_json) if input_json else {}
+        except (ValueError, RecursionError):
+            # ValueError covers a JSON syntax error and an integer of more than
+            # 4,300 digits; RecursionError covers deeply nested text.
+            arguments = None
+        if not isinstance(arguments, dict):
+            from holodeck.lib.memory.tool_api import tool_error
+
+            return tool_error(
+                "invalid_argument", "arguments: expected a JSON object"
+            ).model_dump_json()
+        return await instance.call(name, arguments)
+
+    return _on_invoke
+
+
+def _build_memory_tools(
+    cfg: TemporalMemoryToolConfig,
+    instance: TemporalMemoryTool,
+) -> list[SDKTool]:
+    """Build the three function tools of a memory tool (spec 043, HST-01).
+
+    The parameter schema is the JSON Schema of the argument model, unchanged,
+    so ``strict_json_schema`` is off: strict mode needs every property
+    required, which would make ``valid_at``, ``known_at`` and ``hops`` mandatory.
+    """
+    from agents import FunctionTool as SDKFunctionTool
+
+    from holodeck.lib.memory.tool_api import (
+        MEMORY_FUNCTION_NAMES,
+        MEMORY_TOOL_MODELS,
+        function_description,
+    )
+
+    tools: list[SDKTool] = []
+    for name in MEMORY_FUNCTION_NAMES:
+        args_model, _ = MEMORY_TOOL_MODELS[name]
+        tools.append(
+            SDKFunctionTool(
+                name=name,
+                description=function_description(name, cfg.description),
+                params_json_schema=args_model.model_json_schema(),
+                on_invoke_tool=_make_memory_on_invoke(instance, name),
+                strict_json_schema=False,
+            )
+        )
+    return tools
+
+
+def _require_memory_instance(
+    instances: dict[str, Any],
+    cfg: TemporalMemoryToolConfig,
+) -> TemporalMemoryTool:
+    """Return the memory tool instance for *cfg* or raise ``BackendInitError``."""
+    from holodeck.tools.temporal_memory_tool import TemporalMemoryTool
+
+    instance = instances.get(cfg.name)
+    if not isinstance(instance, TemporalMemoryTool):
+        raise BackendInitError(
+            f"No initialized instance found for tool '{cfg.name}' "
+            f"(type: {cfg.type}). Ensure tool initialization completed before "
+            "building SDK tools."
+        )
+    return instance
+
+
 def build_sdk_tools(
     tool_configs: list[ToolUnion] | None,
     base_dir: Path | None,
@@ -255,8 +344,8 @@ def build_sdk_tools(
         A list of ``agents.FunctionTool`` objects ready to pass to ``Agent``.
 
     Raises:
-        BackendInitError: If a vectorstore / hierarchical-document tool has no
-            matching initialized instance.
+        BackendInitError: If a vectorstore / hierarchical-document / memory
+            tool has no matching initialized instance.
         ConfigError: If a tool type is unsupported on this backend, a function
             tool fails to load, or two configs would surface under the same
             SDK tool name (for example vectorstore ``kb`` and function
@@ -309,6 +398,9 @@ def build_sdk_tools(
                     strict_json_schema=False,
                 )
             )
+        elif isinstance(cfg, TemporalMemoryToolConfig):
+            memory = _require_memory_instance(instances, cfg)
+            tools.extend(_build_memory_tools(cfg, memory))
         elif isinstance(cfg, MCPTool):
             # MCP tools become SDK ``mcp_servers`` (built separately via
             # ``openai_agents_mcp.build_mcp_servers``), not ``FunctionTool``s, so
@@ -342,7 +434,8 @@ def sdk_tool_name_for(cfg: ToolUnion) -> str | None:
     Function tools keep their config name; vectorstore and
     hierarchical-document tools are surfaced as ``{name}_search``. MCP,
     prompt, and skill configs produce no SDK ``FunctionTool`` and return
-    ``None``.
+    ``None``. A memory tool surfaces as three fixed names, so it also returns
+    ``None`` here; :func:`sdk_tool_names_for` lists all names of any config.
 
     Args:
         cfg: A tool config from the parent's ``tools:`` list.
@@ -357,6 +450,27 @@ def sdk_tool_name_for(cfg: ToolUnion) -> str | None:
     return None
 
 
+def sdk_tool_names_for(cfg: ToolUnion) -> tuple[str, ...]:
+    """Return every SDK tool name a HoloDeck tool config is surfaced under.
+
+    One name for function, vectorstore and hierarchical-document tools, the
+    three fixed names for a ``temporal_memory`` tool (no ``{name}_search``
+    entry), and none for the types that produce no function tool.
+
+    Args:
+        cfg: A tool config from the parent's ``tools:`` list.
+
+    Returns:
+        The SDK tool names, possibly empty.
+    """
+    if isinstance(cfg, TemporalMemoryToolConfig):
+        from holodeck.lib.memory.tool_api import MEMORY_FUNCTION_NAMES
+
+        return MEMORY_FUNCTION_NAMES
+    name = sdk_tool_name_for(cfg)
+    return () if name is None else (name,)
+
+
 def _reject_sdk_name_collisions(tool_configs: list[ToolUnion] | None) -> None:
     """Fail when two configs map to one SDK tool name (before any filtering).
 
@@ -368,17 +482,16 @@ def _reject_sdk_name_collisions(tool_configs: list[ToolUnion] | None) -> None:
     """
     owners: dict[str, str] = {}
     for cfg in tool_configs or []:
-        sdk_name = sdk_tool_name_for(cfg)
-        if sdk_name is None:
-            continue
-        if sdk_name in owners:
-            raise ConfigError(
-                f"tools.{cfg.name}",
-                f"tool '{cfg.name}' ({cfg.type}) and tool '{owners[sdk_name]}' "
-                f"both surface as SDK tool '{sdk_name}' on the openai_agents "
-                "backend; rename one of them.",
-            )
-        owners[sdk_name] = cfg.name
+        for sdk_name in sdk_tool_names_for(cfg):
+            if sdk_name in owners:
+                raise ConfigError(
+                    f"tools.{cfg.name}",
+                    f"tool '{cfg.name}' ({cfg.type}) and tool "
+                    f"'{owners[sdk_name]}' both surface as SDK tool "
+                    f"'{sdk_name}' on the openai_agents backend; rename one "
+                    "of them.",
+                )
+            owners[sdk_name] = cfg.name
 
 
 def _require_instance(

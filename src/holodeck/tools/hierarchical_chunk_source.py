@@ -12,6 +12,7 @@ no store call. A dry run uses it (ING-08).
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -106,6 +107,22 @@ class HierarchicalChunkSource:
             )
             for source_uri in sorted(stored)
         ]
+
+    async def document(self, source_uri: str) -> SourceDocument | None:
+        """Return the document for a source key, or None when its file is gone.
+
+        The path comes from the tool's own mapping, so no store is read. The
+        file check runs in a thread.
+        """
+        path = self._path_of(source_uri)
+        if not await asyncio.to_thread(path.is_file):
+            return None
+        return SourceDocument(
+            source_tool=self.name,
+            source_uri=source_uri,
+            path=path,
+            mtime_reliable=not self._tool._is_remote,
+        )
 
     async def chunks(self, document: SourceDocument) -> Sequence[ChunkRef]:
         """Return the content chunks of ``document`` in ascending ordinal.

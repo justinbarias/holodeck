@@ -203,6 +203,9 @@ class FileSource:
     async def documents(self) -> Sequence[SourceDocument]:
         return [self._document]
 
+    async def document(self, source_uri: str) -> SourceDocument | None:
+        return self._document if source_uri == self._document.source_uri else None
+
     async def chunks(self, document: SourceDocument) -> Sequence[ChunkRef]:
         assert document == self._document
         return list(self._chunks)

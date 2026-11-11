@@ -82,7 +82,21 @@ class MemoryBackend(Protocol):
     async def timeline(self, namespace: str, entity_ref: str) -> list[TimelineEntry]:
         """Return every fact about an entity, ordered by ``valid_from``.
 
-        Includes closed and expired facts. An unknown entity returns ``[]``.
+        Includes closed and expired facts. ``entity_ref`` is resolved by
+        ``holodeck.lib.memory.entity_match.resolve_entities``:
+
+        1. Entities whose id equals ``entity_ref``, or whose name equals it
+           ignoring case. If there is one, only these are used; a longer
+           name that contains the reference is not added.
+        2. Otherwise, every entity whose whole name appears in
+           ``entity_ref``, ignoring case, at word boundaries: the character
+           before and the character after the occurrence are not letters or
+           digits, and the start and end of ``entity_ref`` count as
+           boundaries. "Family Benefit base rate" names "Family Benefit";
+           "history of s. 10" names "s. 10" and not "s. 1"; "the rate over
+           time" names "rate" and not "rat".
+
+        If no entity is named, the result is ``[]``.
         """
         ...
 

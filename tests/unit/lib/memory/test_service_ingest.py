@@ -98,6 +98,12 @@ class FakeSource:
     async def documents(self) -> Sequence[SourceDocument]:
         return list(self._documents)
 
+    async def document(self, source_uri: str) -> SourceDocument | None:
+        for document in self._documents:
+            if document.source_uri == source_uri:
+                return document
+        return None
+
     async def chunks(self, document: SourceDocument) -> Sequence[ChunkRef]:
         self.chunk_calls += 1
         return list(self.chunk_lists[document.source_uri])

@@ -159,11 +159,18 @@ async def test_service_settings_come_from_the_tool_config(wiring: _Wiring) -> No
         effective_date_key="valid_from",
         extraction_instructions="Extract rates.",
         schema_hints={"entity_types": ["Payment", "Person"]},
+        top_k=7,
+        hops=2,
+        fusion_weights={"chunks": 0.25, "graph": 2.0},
     )
     async with open_memory(agent):
         pass
 
     assert wiring.service_kwargs["effective_date_key"] == "valid_from"
+    assert wiring.service_kwargs["top_k"] == 7
+    assert wiring.service_kwargs["hops"] == 2
+    assert wiring.service_kwargs["weight_chunks"] == 0.25
+    assert wiring.service_kwargs["weight_graph"] == 2.0
     assert wiring.service_kwargs["instructions"] == "Extract rates."
     config, model, embedding, entity_types = wiring.backend_args
     assert config.driver == "kuzu"

@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from holodeck.lib.backends.openai_agents_tool_adapters import sdk_tool_name_for
+from holodeck.lib.backends.openai_agents_tool_adapters import sdk_tool_names_for
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.skills import SkillLoadError, load_skill_definition, resolve_skill_dir
 from holodeck.models.tool import MCPTool, SkillTool, ToolUnion
@@ -71,13 +71,16 @@ class ParentToolSurface:
     Attributes:
         tools: Every SDK tool built for the parent, in build order.
         mcp_servers: Every connected SDK MCP server, in build order.
-        tools_by_name: Config name to SDK tool, for tools that produced one.
+        tools_by_name: Config name to its SDK tools, for configs that produced
+            any. Most configs produce one; a ``temporal_memory`` config
+            produces three (``memory_search``, ``memory_timeline``,
+            ``memory_provenance``), granted together.
         mcp_by_name: Config name to MCP server.
     """
 
     tools: list[SDKTool] = field(default_factory=list)
     mcp_servers: list[MCPServer] = field(default_factory=list)
-    tools_by_name: dict[str, SDKTool] = field(default_factory=dict)
+    tools_by_name: dict[str, list[SDKTool]] = field(default_factory=dict)
     mcp_by_name: dict[str, MCPServer] = field(default_factory=dict)
 
     @property
@@ -112,12 +115,14 @@ def index_parent_tools(
             if server is not None:
                 surface.mcp_by_name[cfg.name] = server
             continue
-        sdk_name = sdk_tool_name_for(cfg)
-        if sdk_name is None:
-            continue
-        tool = sdk_by_name.get(sdk_name)
-        if tool is None:
-            # Not built (disallowed upstream) — leave it ungrantable.
+        built = [
+            sdk_by_name[sdk_name]
+            for sdk_name in sdk_tool_names_for(cfg)
+            if sdk_name in sdk_by_name
+        ]
+        if not built:
+            # No function tool, or not built (disallowed upstream): leave it
+            # ungrantable.
             continue
         if cfg.name in surface.tools_by_name:  # pragma: no cover - guarded upstream
             raise ConfigError(
@@ -125,7 +130,7 @@ def index_parent_tools(
                 f"duplicate tool config name '{cfg.name}' while indexing the "
                 "parent tool surface.",
             )
-        surface.tools_by_name[cfg.name] = tool
+        surface.tools_by_name[cfg.name] = built
     return surface
 
 
@@ -157,7 +162,12 @@ def _select_tools(
             f"Available: {known}.",
         )
     wanted = set(names)
-    tools = [tool for name, tool in surface.tools_by_name.items() if name in wanted]
+    tools = [
+        tool
+        for name, built in surface.tools_by_name.items()
+        if name in wanted
+        for tool in built
+    ]
     servers = [server for name, server in surface.mcp_by_name.items() if name in wanted]
     return tools, servers
 

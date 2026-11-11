@@ -22,6 +22,7 @@ from holodeck.lib.memory.tool_api import (
     MemorySearchResult,
     MemoryTimelineArgs,
     MemoryToolError,
+    parse_arguments,
 )
 from holodeck.lib.memory.types import EpisodeRef, MemoryHit, Provenance
 
@@ -230,3 +231,37 @@ def test_hst_01_the_model_layer_reserves_the_same_function_names() -> None:
     from holodeck.models import tool as tool_models
 
     assert tool_models.MEMORY_FUNCTION_NAMES == MEMORY_FUNCTION_NAMES
+
+
+@pytest.mark.parametrize(
+    ("model", "arguments", "expected"),
+    [
+        (
+            MemorySearchArgs,
+            {"query": "rate", "valid_at": "https://secret-host/?api_key=sk-example"},
+            "valid_at must be an ISO 8601 date or datetime, for example "
+            "2022-07-01 or 2022-07-01T09:30:00Z",
+        ),
+        (
+            MemorySearchArgs,
+            {"query": "rate", "known_at": "z" * 5000},
+            "known_at must be an ISO 8601 date or datetime, for example "
+            "2022-07-01 or 2022-07-01T09:30:00Z",
+        ),
+        (MemorySearchArgs, {"query": "rate", "hops": 9}, "hops must be 1 or 2"),
+        (MemorySearchArgs, {}, "query must be a non-empty string"),
+        (MemoryTimelineArgs, {"entity": " "}, "entity must be a non-empty string"),
+        (MemoryProvenanceArgs, {"fact_id": 5}, "fact_id must be a non-empty string"),
+        (MemorySearchArgs, {"query": "rate", "sk-secret-key": 1}, "an unknown field"),
+    ],
+)
+def test_an_invalid_argument_message_is_fixed_text(
+    model: type[MemorySearchArgs | MemoryTimelineArgs | MemoryProvenanceArgs],
+    arguments: dict[str, object],
+    expected: str,
+) -> None:
+    result = parse_arguments(model, arguments)
+
+    assert isinstance(result, MemoryToolError)
+    assert result.error.code == "invalid_argument"
+    assert result.error.message == expected
