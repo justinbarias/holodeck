@@ -159,7 +159,12 @@ With `ingest_on_start: true` the same two phases run at agent start: the tool in
 
 Initializing a source tool can itself cost LLM calls: when contextual embeddings are on, the tool makes one call per new chunk before any graph work starts.
 
-`--dry-run` reads chunks through the tool's preview path (convert and chunk, no embedding and no store write) and asks the graph which episodes exist. It can do that because the episode id is a hash of the raw chunk text, which is the same before and after the chunk is stored.
+`--dry-run` reads chunks through the tool's preview path (convert and chunk, no embedding and no store write) and asks the graph which episodes exist. It can do that because the episode id is a hash of the raw chunk text, which is the same before and after the chunk is stored. As built: `open_memory(preview_sources=True)` builds each source tool read-only and does not initialize it, and `HierarchicalChunkSource(preview=True)` lists chunks from `preview_document_chunks()`. A test holds the preview listing equal to the stored listing (source key, section id, ordinal and text), for local and remote sources. The preview counts the files on disk now; a remote source is downloaded to a temporary directory and removed afterwards.
+
+Limits of the dry-run count (phase 2 review, second pass):
+
+- It counts the files on disk, chunked with the current settings. A full run reads the vector store, so the two differ when the store holds chunks the files no longer produce: a deleted or emptied file whose records are still stored (the full run submits them, the dry run does not), and a chunking-setting change on unchanged files (the tool skips unchanged files, so the full run keeps the old chunks while the dry run counts the new ones).
+- "No graph write" means no episode, entity or fact. The Kuzu driver creates its tables when it opens a database, and the FalkorDB driver schedules index creation when it is cloned for a namespace. Both happen on the read path too. Read from Graphiti's source; neither driver has been run.
 
 ### How ingestion uses it
 
@@ -167,7 +172,7 @@ Initializing a source tool can itself cost LLM calls: when contextual embeddings
 for each source tool
   for each document in source.documents()
     date, date_source = effective_date(document, key)
-order all documents from all tools by date
+order all documents from all tools by date; on a tie, by position in source_tools
 for each document, oldest first
   for each chunk in source.chunks(document), by ordinal
     episode_id = episode_id_for(namespace, chunk.section_id, chunk.text)
@@ -221,7 +226,7 @@ Graphiti expands along outgoing edges only (decision D23), so a seed entity that
 ### Risks
 
 - The tool's store loader logs a store error and returns nothing. To the memory that looks like a source with no documents. T6 must treat an initialized source tool with zero documents as an error, not as "nothing to ingest".
-- A chunk that the tool splits differently after a chunking-setting change gets a new hash and is extracted again. This is correct but costs LLM calls; `--dry-run` shows the count first.
+- A chunk that the tool splits differently after a chunking-setting change gets a new hash and is extracted again. This happens only when the tool re-ingests the file (the file changed, or ingestion is forced); an unchanged file keeps its stored chunks. `--dry-run` counts with the new settings, so it can overstate the count for unchanged files.
 - Two tools that index the same file produce the same episode once (spec assumption A8). The fact then cites one tool only.
 
 ## 3. Episode lifecycle in the Graphiti backend
@@ -263,11 +268,15 @@ ingest_one(episode)
     save node(uuid, state=pending, fields below)
   else if node.state is complete
     return skipped                               # the service normally filters these out first
+  if node exists with another name or body
+    return failed                                # not written by this backend
   add_episode(uuid, previous_episode_uuids, instructions, entity_types)
-  load node, set state=complete, save
+  set state=complete where the node still exists # a conditional update, never a save
 ```
 
-`has_episode` is true only for the complete state.
+The last step is one update query that matches the node by uuid and namespace. It cannot create a node. If a purge removed the episode during extraction, the update matches nothing and the episode is reported as failed, so an episode is never complete without its facts. `previous_episode_uuids` holds only the context episodes that exist in the same namespace.
+
+`has_episode` is true only for the complete state. Complete is decided by the name prefix `hd1:complete:` alone, which is also what the count query matches.
 
 ### Where each value is stored
 
@@ -310,6 +319,19 @@ This needs one new field on `EpisodeIn`, which is now in `types.py`. An episode 
 +    context_episode_ids: tuple[UUID, ...] = ()    # preceding chunks of the same document
 ```
 
+### Closing a superseded fact
+
+Graphiti closes an old fact in two steps. One model call (`dedupe_edges.resolve_edge`) names the existing facts that a new fact contradicts. Plain code then sets each contradicted older fact's end date to the new fact's start date. That code needs a start date on both facts and the older one to start strictly earlier. A contradicted fact with no start date, or with the same start date, stays open.
+
+Graphiti's own prompt for that call is written for conversations: it forbids inferring a replacement from dates and wants explicit replacement wording. A dated provision replaces the earlier value without saying so, and the live fixture left superseded rates open (see [graphiti-evidence.md](graphiti-evidence.md), supersession probe).
+
+`build_graphiti` therefore passes a prompt library (`create_prompt_library`, a supported Graphiti argument) that replaces that one prompt with `backends/graphiti_prompts.py`. The rule is: two facts that state different values of the same single-valued attribute (a rate, amount, percentage, threshold, limit or period) of the same subject contradict each other. A role or power contradicts an earlier holder only when it has one holder by its nature or the text says the earlier holder stopped. Inputs, output fields and duplicate rules are Graphiti's.
+
+- The extraction instructions do not reach this call, so they cannot change the decision.
+- The prompt is a copy to keep in step with Graphiti. A unit test pins the hash of Graphiti's own prompt, so an upgrade that changes it fails the test and forces a review.
+- The decision is still a model decision. The risk in the other direction, closing a fact that should stay open (two categories of one rate), is not measured yet. T16 covers both directions.
+- The override is always on. A YAML switch is not added until a corpus needs Graphiti's default.
+
 ### Decisions in this seam
 
 | Question | Decision | Reason |
@@ -321,13 +343,22 @@ This needs one new field on `EpisodeIn`, which is now in `types.py`. An episode 
 | Two ingest runs on one namespace at once | Not prevented in the MVP | Both would process the same pending episodes: wasted calls and duplicate mention edges, no wrong facts. Documented as a limit. |
 | Counting episodes | One count query filtered on the `name` prefix | Loading every episode node would also load every chunk's text |
 
-### Verify in T7
+### Verified in T7
 
-- `add_episode` on a loaded node keeps `name` and `source_description` unchanged when it saves.
-- Whether `add_episode` writes its nodes and edges in one transaction, which decides what "pending, partly written" can look like.
-- `name` is not in a full-text index that search uses.
-- The simple count query runs on Neo4j and FalkorDB.
-- How a namespace is cleared for `purge`.
+Observed on Neo4j 5.26 with a stub LLM client and a stub embedder (no model call):
+
+| Question | Observed |
+| --- | --- |
+| Does `add_episode` keep `name` and `source_description` on a pre-saved node? | Yes. `content` is kept too, and `entity_edges` is filled. |
+| Does a failed `add_episode` leave partial data? | No. Graphiti writes everything in one transaction at the end. An exception injected inside it left only the pending episode node; a retry wrote normally. |
+| Is `name` in a full-text index? | No. The episode index covers `content`, `source`, `source_description` and `group_id`. |
+| Does the count query run? | Yes, on Neo4j: 0 for a pending-only group, 2 after two episodes. |
+| How is a namespace cleared? | Graphiti's `clear_data` with that one group. Two other groups were unchanged. |
+| Re-run | 2 episodes cost 5 stub LLM calls; the second run wrote 0 with 0 calls. |
+
+So on Neo4j the "pending, facts written" state happens only when the process dies between a successful `add_episode` and the marker save.
+
+Not observed: FalkorDB, Neptune and Kuzu, whose packages are not installed. On FalkorDB, Graphiti keeps one graph per group, so the backend does its own reads and writes on the driver Graphiti clones for the namespace. That path is covered by unit tests with Graphiti mocked only.
 
 ## 4. Model client selection
 
@@ -363,11 +394,11 @@ Read from the 0.31.2 source, or measured in T1 where stated:
 
 | `provider` | `auth_provider` | LLM client | Endpoint |
 | --- | --- | --- | --- |
-| `openai` | not used | Graphiti `OpenAIClient` | OpenAI default |
+| `openai` | not used | Graphiti `OpenAIClient` | `endpoint`, else `https://api.openai.com/v1`, always passed explicitly |
 | `azure_openai` | not used | Graphiti `AzureOpenAILLMClient` with an `AsyncOpenAI` client | `<endpoint>/openai/v1`, the same URL rule the embedding path uses |
 | `ollama` | not used | Graphiti `OpenAIGenericClient` | `<endpoint>/v1` |
-| `anthropic` | `api_key` or not set | Graphiti `AnthropicClient` | Anthropic default |
-| `anthropic` | `oauth_token` | HoloDeck `AgentSdkLLMClient` | The Claude Code CLI |
+| `anthropic` | `api_key` or not set | Graphiti `AnthropicClient` | `endpoint`, else `https://api.anthropic.com`, always passed explicitly |
+| `anthropic` | `oauth_token` | HoloDeck `AgentSdkLLMClient` | The Claude Code CLI. Loading fails when `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` or a `CLAUDE_CODE_USE_*` variable is set, because the CLI would then use another provider, endpoint or credential. |
 | `anthropic` | `bedrock`, `vertex`, `foundry`, `custom` | None. Loading fails with `MemoryConfigError`. | — |
 
 ```text
@@ -390,7 +421,7 @@ build_clients(extraction_model, embedding_service)
 | `small_model` | The same name | Decision: one extraction model. If it is not set, the OpenAI clients call a built-in model name that the YAML does not contain. |
 | `temperature` | `extraction_model.temperature` | The HoloDeck default is 0.3. Graphiti omits it for reasoning models. |
 | `max_tokens` | `extraction_model.max_tokens` only when the YAML sets it; otherwise Graphiti's 16384 | The HoloDeck default is 1000, which would cut extraction JSON short. Pydantic's `model_fields_set` tells a set value from a default. |
-| `api_key` | Unwrapped from `SecretStr` at the call | Never logged, never put in an error message |
+| `api_key` | Unwrapped from `SecretStr` at the call | Never logged, never put in an error message. Error text and Graphiti's own log records are redacted for every credential the clients can use: the YAML value, the environment variable, the database password and a password inside the URI. |
 | `cache` | `False` | The cache writes document text to the working directory |
 | `max_coroutines` | Graphiti's default for the API clients; 4 for the Agent SDK client | Each Agent SDK call starts a CLI process. 4 is a starting value, to be measured in T23. |
 
@@ -418,8 +449,9 @@ The backend always passes `RefusingCrossEncoder`. Its `rank` raises `TemporalMem
 _generate_response(messages, response_model, max_tokens, model_size)
   system = system messages, joined
   user   = the other messages, joined
-  options = ClaudeAgentOptions(model, system_prompt=system, tools=[], max_turns=1,
-                               setting_sources=[], output_format=schema of response_model)
+  options = ClaudeAgentOptions(model, system_prompt=system, tools=[], max_turns=2,
+                               setting_sources=[], strict_mcp_config=True,
+                               output_format=schema of response_model)
   repeat up to 3 times
     reply = query(user, options)
     if reply is an error result: raise
@@ -439,7 +471,9 @@ Differences from the T1 script, which measured 31 calls with no schema failure:
 | Class-name checks and `cast(Any, ...)` | `isinstance` on the SDK message types | Repository rule: no `Any` to bypass known types |
 | No token count | Tokens from the result message go to the token tracker | `IngestReport` reports them |
 
-`setting_sources=[]` stays. It stops the CLI from loading the user's `CLAUDE.md`, hooks and MCP servers into an extraction call.
+`setting_sources=[]` stays. It stops the CLI from loading the user's `CLAUDE.md`, hooks and MCP servers into an extraction call. T23 added `strict_mcp_config=True` for MCP servers from global configuration.
+
+As built, `max_turns` is 2. The CLI implements structured output as an internal tool whose input it checks against the schema. A valid reply ends in one turn; the second turn lets the CLI send a rejected reply back to the model once. The Checkpoint C live run confirmed it: a successful call reported two turns, so 2 is the minimum that works.
 
 ### Where the code goes
 

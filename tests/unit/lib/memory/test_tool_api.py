@@ -224,3 +224,9 @@ def test_ret_04_a_boolean_is_not_a_hop_count() -> None:
     with pytest.raises(ValidationError):
         MemorySearchArgs.model_validate({"query": "rate", "hops": True})
     assert MemorySearchArgs.model_validate({"query": "rate", "hops": 2}).hops == 2
+
+
+def test_hst_01_the_model_layer_reserves_the_same_function_names() -> None:
+    from holodeck.models import tool as tool_models
+
+    assert tool_models.MEMORY_FUNCTION_NAMES == MEMORY_FUNCTION_NAMES

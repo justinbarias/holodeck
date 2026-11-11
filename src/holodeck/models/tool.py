@@ -1103,6 +1103,14 @@ class MemorySchemaHints(BaseModel):
     )
 
 
+MEMORY_FUNCTION_NAMES = ("memory_search", "memory_timeline", "memory_provenance")
+"""The functions a temporal_memory tool gives the agent (spec 043, HST-01).
+
+The same names are in ``holodeck.lib.memory.tool_api``, which a test keeps
+equal. They are repeated here so that loading an agent does not import the
+memory package.
+"""
+
 _MEMORY_AUTH_PROVIDERS = frozenset({AuthProvider.api_key, AuthProvider.oauth_token})
 
 

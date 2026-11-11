@@ -394,6 +394,7 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "docker: marks tests that need a running Docker daemon",
+    "graphiti: marks tests that run the Graphiti memory backend on a real Neo4j with stub model clients",
 ]
 
 [tool.bandit]

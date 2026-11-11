@@ -246,7 +246,7 @@ Results are JSON with ISO 8601 UTC timestamps. A date argument with no time mean
 | ING-05 | Unwanted | If the backend fails on an episode, then the memory shall stop, report the episodes written, and leave the rest for the next run. | ING-04 |
 | ING-06 | Ubiquitous | The memory shall emit one trace per ingestion run with a span per episode and token counts. | ING-10 |
 | ING-07 | Optional | Where `ingest_on_start` is true, the tool shall run ingestion during initialization, and shall fail to start if the backend is unavailable. Under a Temporal worker, `ingest_on_start: true` shall fail at worker start and name the ingestion activity. | HST-03 |
-| ING-08 | Event-driven | When `--dry-run` is given, ingestion shall report the count of new episodes and an estimated duration, and make no LLM calls. | — |
+| ING-08 | Event-driven | When `--dry-run` is given, ingestion shall report the count of new episodes and an estimated duration, and make no LLM call, no embedding call, no vector store write, and no write of an episode, entity or fact to the graph. | — |
 | ING-09 | Unwanted | If an episode exists but is not marked complete, then the memory shall process it again. | ING-08 |
 | ING-10 | Ubiquitous | The memory shall pass `extraction_instructions` to the backend, or the built-in default when the field is unset. | ING-03 |
 | RET-01 | Ubiquitous | The memory shall default `valid_at` and `known_at` to the time of the query. | RET-01 |

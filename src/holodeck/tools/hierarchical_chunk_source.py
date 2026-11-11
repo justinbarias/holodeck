@@ -4,6 +4,10 @@ Read-only. It reads stored chunks through ``document_chunks()`` and search
 hits through ``search()``; it never starts ingestion. Text on both paths goes
 through ``strip_front_matter``, so a chunk has the same text whether it was
 listed or found.
+
+With ``preview`` it reads the source files through
+``preview_document_chunks()`` and needs no initialized tool: no embedding and
+no store call. A dry run uses it (ING-08).
 """
 
 from __future__ import annotations
@@ -33,10 +37,18 @@ class HierarchicalChunkSource:
     Stored chunks are read once and kept until ``documents()`` is called
     again, so listing every document does not scan the store once per
     document.
+
+    Args:
+        tool: The wrapped tool. Initialized, unless ``preview`` is set.
+        preview: List the chunks an ingestion would store, read from the
+            source files. ``find`` is not available.
     """
 
-    def __init__(self, tool: HierarchicalDocumentTool) -> None:
+    def __init__(
+        self, tool: HierarchicalDocumentTool, *, preview: bool = False
+    ) -> None:
         self._tool = tool
+        self._preview = preview
         self._stored: dict[str, list[DocumentChunk]] | None = None
 
     @property
@@ -45,13 +57,18 @@ class HierarchicalChunkSource:
         return self._tool.config.name
 
     def _require_initialized(self) -> None:
+        if self._preview:
+            return
         if not self._tool._initialized:
             from holodeck.lib.backends.base import BackendSessionError
 
             raise BackendSessionError(f"Tool '{self.name}' is not initialized")
 
     async def _load(self) -> dict[str, list[DocumentChunk]]:
-        self._stored = await self._tool.document_chunks()
+        if self._preview:
+            self._stored = await self._tool.preview_document_chunks()
+        else:
+            self._stored = await self._tool.document_chunks()
         return self._stored
 
     async def _stored_chunks(self) -> dict[str, list[DocumentChunk]]:
@@ -112,7 +129,17 @@ class HierarchicalChunkSource:
         It reads nothing but the search result, so a query never loads the
         corpus. A hit does not carry its position: its ordinal is
         ``UNKNOWN_ORDINAL``.
+
+        Raises:
+            BackendSessionError: The tool is not initialized, or the source
+                is a preview.
         """
+        if self._preview:
+            from holodeck.lib.backends.base import BackendSessionError
+
+            raise BackendSessionError(
+                f"Tool '{self.name}' is a preview source and cannot search"
+            )
         self._require_initialized()
         results = await self._tool.search(query, top_k)
         return [
