@@ -69,7 +69,7 @@ Out of scope: the .NET host, conversation turns as episodes, the context provide
 | D21 | Episode identity on Graphiti | Pre-save the episode node under the content-hash uuid, run `add_episode` on it, then mark it complete. Skip only complete episodes. Decided after the T1 evidence run. |
 | D22 | Extraction instructions | Optional `extraction_instructions` field, with a built-in default that asks for amounts, rates, dates and thresholds as entities. |
 | D23 | Expansion direction | Accept Graphiti's outgoing-only traversal in the MVP. Seed from every entity the hit chunks mention, and measure recall in the eval. |
-| D24 | Anthropic extraction | By credential: `ANTHROPIC_API_KEY` uses Graphiti's `AnthropicClient`; the Claude Code OAuth token alone uses a HoloDeck client on the Claude Agent SDK. |
+| D24 | Anthropic extraction | By `auth_provider` on `extraction_model`: `api_key` (the default) uses Graphiti's `AnthropicClient`; `oauth_token` uses a HoloDeck client on the Claude Agent SDK. `bedrock`, `vertex`, `foundry` and `custom` are refused at load in the MVP. No environment variable selects the client. |
 
 ### Working assumptions
 
@@ -139,16 +139,24 @@ An episode left incomplete by a crash is processed again on the next run. A comp
 
 ```python
 class MemoryBackend(Protocol):
+    @property
+    def name(self) -> str: ...
     def capabilities(self) -> MemoryCapabilities: ...
     async def has_episode(self, namespace: str, episode_id: UUID) -> bool: ...
-    async def ingest(self, namespace: str, episodes: Sequence[EpisodeIn]) -> IngestReport: ...
+    async def episode_count(self, namespace: str) -> int: ...
+    async def ingest(self, namespace: str, episodes: Sequence[EpisodeIn], instructions: str) -> IngestReport: ...
     async def search(self, namespace: str, query: MemoryQuery) -> list[FactHit]: ...
     async def timeline(self, namespace: str, entity_ref: str) -> list[TimelineEntry]: ...
-    async def provenance(self, namespace: str, fact_id: str) -> Provenance: ...
+    async def provenance(self, namespace: str, fact_id: str) -> Provenance | None: ...
     async def purge(self, namespace: str) -> None: ...
+    async def close(self) -> None: ...
 ```
 
-No Graphiti type appears in a port signature. Time is a timezone-aware UTC `datetime`. Errors are typed: `MemoryNotSupportedError(operation)`, `MemoryBackendUnavailableError`, `MemoryConfigError`.
+No Graphiti type appears in a port signature. Time is a timezone-aware UTC `datetime`. Errors are typed: `MemoryNotSupportedError`, `MemoryBackendUnavailableError`, `MemoryConfigError` and `MemoryValueError`, all under `TemporalMemoryError`.
+
+`has_episode` is true only for a completed episode. `ingest` stops at the first failed episode and reports it in `IngestReport` instead of raising. A namespace uses letters, digits, `_` and `-` only, which is Graphiti's `group_id` rule applied to every backend.
+
+**Known-at semantics.** A fact closed by a later one stays visible to a query whose `known_at` is before the closing was recorded, and it is seen as still open. Graphiti keeps one edge and stamps `expired_at` when it closes it, so a filter of `expired_at IS NULL OR expired_at > known_at` alone would hide closed facts from every current query. The Graphiti backend must apply the rule `created_at <= known_at`, and treat `invalid_at` as unset when `expired_at > known_at`.
 
 ### Configuration
 
@@ -186,17 +194,17 @@ tools:
       entity_types: [Act, Section, Payment, Person, Rate]
 ```
 
-Provider mapping for `extraction_model`: `openai` to `OpenAIClient`, `azure_openai` to `AzureOpenAILLMClient`, `ollama` to `OpenAIGenericClient`. For `anthropic`, the credential decides: with `ANTHROPIC_API_KEY`, Graphiti's `AnthropicClient`; with only `CLAUDE_CODE_OAUTH_TOKEN`, a HoloDeck client that calls the Claude Agent SDK. The Agent SDK path measured 6.5 to 15.5 seconds per chunk. The embedder comes from the source tools' shared embedding settings (CFG-06).
+Provider mapping for `extraction_model`: `openai` to `OpenAIClient`, `azure_openai` to `AzureOpenAILLMClient`, `ollama` to `OpenAIGenericClient`. For `anthropic`, `auth_provider` decides: `api_key` or not set, Graphiti's `AnthropicClient`; `oauth_token`, a HoloDeck client that calls the Claude Agent SDK; any other value fails at load with `MemoryConfigError`. The Agent SDK path measured 6.5 to 15.5 seconds per chunk. The embedder comes from the source tools' shared embedding settings (CFG-06).
 
 ### Tools
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `memory_search` | `query`, `valid_at?`, `known_at?`, `hops?` | `MemoryHit[]`: fact or chunk text, score, `fact_id?`, `source_tool`, `chunk_id`, `source_uri`, `valid_from`, `valid_to`, `superseded_by?`, `degraded` |
+| `memory_search` | `query`, `valid_at?`, `known_at?`, `hops?` | An object with the `valid_at` and `known_at` used, `degraded`, and `hits`: `MemoryHit[]` with fact or chunk text, score, `fact_id?`, `source_tool`, `chunk_id`, `source_uri`, `valid_from`, `valid_to`, `superseded_by?` |
 | `memory_timeline` | `entity` | `TimelineEntry[]` ordered by `valid_from`, including closed facts |
-| `memory_provenance` | `fact_id` | `Provenance`: episodes, source tools, chunk ids, source URIs, effective date and its source |
+| `memory_provenance` | `fact_id` | `Provenance`: episodes, source tools, chunk ids, source URIs, chunk text, effective date and its source |
 
-Results are JSON with ISO 8601 UTC timestamps. JSON schemas for arguments and results live in `schemas/memory/` and are host-neutral.
+Results are JSON with ISO 8601 UTC timestamps. A date argument with no time means the start of that day in UTC. A cause the model can correct is returned as an error result, not raised. The [design doc](../../design-docs/043-temporal-memory/design.md) section 6 has the detail. JSON schemas for arguments and results live in `schemas/memory/` and are host-neutral.
 
 ### Graphiti capability table
 
@@ -236,7 +244,7 @@ Results are JSON with ISO 8601 UTC timestamps. JSON schemas for arguments and re
 | ING-04 | Ubiquitous | The memory shall submit sources from all source tools in one ascending effective-date order, and chunks in document order within a source. | TMP-05 |
 | ING-05 | Unwanted | If the backend fails on an episode, then the memory shall stop, report the episodes written, and leave the rest for the next run. | ING-04 |
 | ING-06 | Ubiquitous | The memory shall emit one trace per ingestion run with a span per episode and token counts. | ING-10 |
-| ING-07 | Optional | Where `ingest_on_start` is true, the tool shall run ingestion during initialization. | HST-03 |
+| ING-07 | Optional | Where `ingest_on_start` is true, the tool shall run ingestion during initialization, and shall fail to start if the backend is unavailable. Under a Temporal worker, `ingest_on_start: true` shall fail at worker start and name the ingestion activity. | HST-03 |
 | ING-08 | Event-driven | When `--dry-run` is given, ingestion shall report the count of new episodes and an estimated duration, and make no LLM calls. | — |
 | ING-09 | Unwanted | If an episode exists but is not marked complete, then the memory shall process it again. | ING-08 |
 | ING-10 | Ubiquitous | The memory shall pass `extraction_instructions` to the backend, or the built-in default when the field is unset. | ING-03 |
@@ -255,7 +263,7 @@ Results are JSON with ISO 8601 UTC timestamps. JSON schemas for arguments and re
 | GPH-01 | Ubiquitous | The Graphiti backend shall pass no document content to a model or endpoint that the YAML does not name. | Boundary |
 | GPH-02 | Ubiquitous | The Graphiti backend shall disable Graphiti telemetry. | Boundary |
 | GPH-03 | Ubiquitous | The Graphiti backend shall accept the drivers `neo4j`, `falkordb`, `neptune` and `kuzu`. | D13 |
-| GPH-04 | Ubiquitous | For an `anthropic` extraction model, the Graphiti backend shall use the API-key client when `ANTHROPIC_API_KEY` is set and the Agent SDK client otherwise. | D24 |
+| GPH-04 | Ubiquitous | For an `anthropic` extraction model, the Graphiti backend shall use the API-key client when `auth_provider` is `api_key` or not set, the Agent SDK client when it is `oauth_token`, and shall fail at load for any other value. | D24 |
 | GPH-05 | Unwanted | If the driver's package is not installed, then loading shall fail with the install command for that driver. | — |
 | CLI-01 | Event-driven | When `holodeck memory ingest <agent.yaml>` runs, it shall ingest and print an `IngestReport`: sources, episodes new and skipped, tokens, duration. | — |
 | CLI-02 | Event-driven | When `holodeck memory status <agent.yaml>` runs, it shall print the backend, namespace, episode count and declared capabilities. | — |
