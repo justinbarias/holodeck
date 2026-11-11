@@ -138,14 +138,16 @@ class HierarchicalChunkSource:
             if _is_content(chunk)
         ]
         refs.sort(key=lambda ref: ref.ordinal)
-        return [ref for ref in refs if ref.text]
+        return [ref for ref in refs if ref.text.strip()]
 
     async def find(self, query: str, top_k: int) -> list[ChunkMatch]:
         """Return the tool's search hits in the tool's order and scores.
 
         It reads nothing but the search result, so a query never loads the
         corpus. A hit does not carry its position: its ordinal is
-        ``UNKNOWN_ORDINAL``.
+        ``UNKNOWN_ORDINAL``. A hit whose text is empty or whitespace once
+        front matter is removed is left out, so fewer than ``top_k`` hits may
+        come back.
 
         Raises:
             BackendSessionError: The tool is not initialized, or the source
@@ -159,7 +161,7 @@ class HierarchicalChunkSource:
             )
         self._require_initialized()
         results = await self._tool.search(query, top_k)
-        return [
+        matches = [
             ChunkMatch(
                 chunk=ChunkRef(
                     source_tool=self.name,
@@ -173,3 +175,4 @@ class HierarchicalChunkSource:
             )
             for result in results
         ]
+        return [match for match in matches if match.chunk.text.strip()]

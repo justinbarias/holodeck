@@ -13,6 +13,7 @@ import pytest
 import pytest_asyncio
 
 from holodeck.lib.backends.base import BackendSessionError
+from holodeck.lib.hybrid_search import SearchResult
 from holodeck.lib.memory.chunk_source import (
     UNKNOWN_ORDINAL,
     ChunkSource,
@@ -129,6 +130,32 @@ async def test_ret02_find_keeps_tool_order_and_scores(
     assert results, "the query must match, or the comparison proves nothing"
     assert [(m.chunk.chunk_id, m.score) for m in matches] == [
         (r.chunk_id, r.fused_score) for r in results
+    ]
+
+
+async def test_find_drops_hits_that_are_only_front_matter(
+    source: HierarchicalChunkSource, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def hit(chunk_id: str, content: str, score: float) -> SearchResult:
+        return SearchResult(
+            chunk_id=chunk_id,
+            content=content,
+            fused_score=score,
+            source_path="/docs/a.md",
+            parent_chain=[],
+            section_id="1",
+        )
+
+    results = [
+        hit("a", "---\neffective_date: 2019-07-01\n---", 0.9),
+        hit("b", "# T\n\nbody", 0.5),
+    ]
+    monkeypatch.setattr(source._tool, "search", AsyncMock(return_value=results))
+
+    matches = await source.find("query", 5)
+
+    assert [(m.chunk.chunk_id, m.chunk.text, m.score) for m in matches] == [
+        ("b", "# T\n\nbody", 0.5)
     ]
 
 
