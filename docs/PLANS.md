@@ -31,7 +31,6 @@ An earlier release does not close unfinished work. The inventory remains the sou
 | Test Optimizer | [033-holodeck-test-optimizer](exec-plans/active/033-holodeck-test-optimizer/index.md) |
 | Production Hardening | [034-production-hardening](exec-plans/active/034-production-hardening/index.md) |
 | Dependency Stack Revamp (Semantic Kernel removal) | Implementation complete 2026-11-10; live evidence open, so the plan stays active. [Execution plan](exec-plans/active/042-dependency-stack-revamp/2026-11-10-remove-semantic-kernel.md); [records](exec-plans/active/042-dependency-stack-revamp/index.md) |
-| Temporal Knowledge Graph Memory | Plan approved 2026-11-11; T0, T1 and Checkpoint A done. [Execution plan](exec-plans/active/043-temporal-memory/2026-11-11-temporal-memory-graphiti.md); [records](exec-plans/active/043-temporal-memory/index.md) |
 | OpenAI Agents SDK Backend | [Completion execution plan](exec-plans/active/035-openai-agents-backend/2026-09-06-complete-035.md); [historical records](exec-plans/active/035-openai-agents-backend/index.md) |
 
 Drafts without an execution plan yet: [037](product-specs/037-gepa-optimizer/index.md), [041](product-specs/041-temporal-file-inputs/index.md).
@@ -70,6 +69,7 @@ Frozen historical plans share `completed/` but are explicitly labeled archived. 
 | Multi-Turn Test Cases & Evaluators | Completed | [032-multi-turn-test-cases](exec-plans/completed/032-multi-turn-test-cases/index.md) |
 | Optimizer Progress Stream | Completed | [038-optimizer-progress-stream](exec-plans/completed/038-optimizer-progress-stream/index.md) |
 | HoloDeck Agents on Temporal | Completed | [040-holodeck-temporal](exec-plans/completed/040-holodeck-temporal/index.md) |
+| Temporal Knowledge Graph Memory | Completed 2026-11-12 (stack #447–#457) | [043-temporal-memory](exec-plans/completed/043-temporal-memory/index.md) |
 | Ollama Endpoint Support | Archived / superseded by Claude-backend routing (021) | [009-ollama-endpoint-support](exec-plans/completed/009-ollama-endpoint-support/index.md) |
 | MCP Tool Operations | Archived / superseded by 021 and 035 MCP paths | [010-mcp-tool-operations](exec-plans/completed/010-mcp-tool-operations/index.md) |
 | Vectorstore Reranking | Archived / folded into 020 | [015-vectorstore-reranking](exec-plans/completed/015-vectorstore-reranking/index.md) |
