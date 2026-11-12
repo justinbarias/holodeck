@@ -1,0 +1,128 @@
+{
+  "$defs": {
+    "MemoryHitOut": {
+      "additionalProperties": false,
+      "description": "One search hit: a fact or a source passage.",
+      "properties": {
+        "chunk_id": {
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "fact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fact Id"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "chunk"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "source_tool": {
+          "title": "Source Tool",
+          "type": "string"
+        },
+        "source_uri": {
+          "title": "Source Uri",
+          "type": "string"
+        },
+        "superseded_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Superseded By"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid To"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "score",
+        "source_tool",
+        "chunk_id",
+        "source_uri",
+        "fact_id",
+        "valid_from",
+        "valid_to",
+        "superseded_by"
+      ],
+      "title": "MemoryHitOut",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Result of ``memory_search``.",
+  "properties": {
+    "degraded": {
+      "title": "Degraded",
+      "type": "boolean"
+    },
+    "hits": {
+      "items": {
+        "$ref": "#/$defs/MemoryHitOut"
+      },
+      "title": "Hits",
+      "type": "array"
+    },
+    "known_at": {
+      "title": "Known At",
+      "type": "string"
+    },
+    "valid_at": {
+      "title": "Valid At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "valid_at",
+    "known_at",
+    "degraded",
+    "hits"
+  ],
+  "title": "MemorySearchResult",
+  "type": "object"
+}

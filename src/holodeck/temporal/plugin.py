@@ -35,6 +35,7 @@ from temporalio.plugin import SimplePlugin
 from holodeck.lib.errors import ConfigError
 from holodeck.models.workflow import EdgeNode
 from holodeck.temporal.activity import agent_activity
+from holodeck.temporal.memory_activity import memory_ingest_activity
 from holodeck.temporal.models import AgentActivityInput, AgentActivityResult
 
 _ActivityCallable = Callable[[AgentActivityInput], Awaitable[AgentActivityResult]]
@@ -49,6 +50,9 @@ class HoloDeckPlugin(SimplePlugin):
         agent_activities: The activities built from the nodes, in the order the
             nodes were given. Exposed so a caller that builds its own ``Worker``
             without the plugin can register exactly the same objects.
+        memory_ingest: The memory ingestion activity (spec 043), or ``None``
+            when no node's agent has a ``temporal_memory`` tool. Registered
+            after the agent activities.
     """
 
     def __init__(
@@ -88,10 +92,14 @@ class HoloDeckPlugin(SimplePlugin):
         self.agent_activities: list[_ActivityCallable] = [
             agent_activity(node, base_dir) for node in nodes
         ]
+        self.memory_ingest = memory_ingest_activity(nodes, base_dir)
+        activities: list[Callable[..., object]] = list(self.agent_activities)
+        if self.memory_ingest is not None:
+            activities.append(self.memory_ingest)
         super().__init__(
             name,
             data_converter=pydantic_data_converter,
-            activities=list(self.agent_activities),
+            activities=activities,
         )
 
 

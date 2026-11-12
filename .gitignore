@@ -47,6 +47,8 @@ metrics/*
 /sample/*
 !/sample/temporal-hardship/
 !/sample/openai-agents-full/
+!/sample/copilotkit/
+!/sample/temporal-memory/
 report.md
 
 # Git worktrees

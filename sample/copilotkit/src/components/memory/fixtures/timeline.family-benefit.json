@@ -1,0 +1,163 @@
+{
+  "name": "memory_timeline",
+  "args": {
+    "entity": "Family Benefit"
+  },
+  "result": {
+    "entity": "Family Benefit",
+    "entries": [
+      {
+        "fact_id": "938a53d8-a5ca-427a-884f-4bf7db20373e",
+        "text": "Family Benefit was administered by the Benefits Agency until 1 July 2024, when the Benefits Agency stopped administering it.",
+        "valid_from": null,
+        "valid_to": "2024-07-01T00:00:00Z",
+        "recorded_at": "2026-11-11T07:31:49.890500Z",
+        "expired_at": "2026-11-11T07:31:53.240257Z",
+        "sources": [
+          {
+            "episode_id": "a71aff2e-b62a-53a8-a23e-4f7be02dd6e0",
+            "source_tool": "benefit_docs",
+            "chunk_id": "docs_rate-2024.md_chunk_2",
+            "source_uri": "docs/rate-2024.md",
+            "reference_time": "2024-07-01T00:00:00Z",
+            "reference_time_source": "front_matter",
+            "text": null
+          }
+        ]
+      },
+      {
+        "fact_id": "43d703ca-9e44-4c73-9e8e-11bb01f2f2b1",
+        "text": "From 1 July 2019, the base rate of Family Benefit is 90 dollars per fortnight for each child.",
+        "valid_from": "2019-07-01T00:00:00Z",
+        "valid_to": "2020-07-01T00:00:00Z",
+        "recorded_at": "2026-11-11T07:30:01.949314Z",
+        "expired_at": "2026-11-11T07:30:31.288105Z",
+        "sources": [
+          {
+            "episode_id": "7b350c93-d553-58d6-9968-f7244a72468e",
+            "source_tool": "benefit_docs",
+            "chunk_id": "docs_rate-2019.md_chunk_1",
+            "source_uri": "docs/rate-2019.md",
+            "reference_time": "2019-07-01T00:00:00Z",
+            "reference_time_source": "front_matter",
+            "text": null
+          }
+        ]
+      },
+      {
+        "fact_id": "e28a99df-f0c4-4cbf-a457-2010092ce417",
+        "text": "From 1 July 2020, the base rate of Family Benefit is 100 dollars per fortnight for each child.",
+        "valid_from": "2020-07-01T00:00:00Z",
+        "valid_to": "2022-07-01T00:00:00Z",
+        "recorded_at": "2026-11-11T07:30:27.954898Z",
+        "expired_at": "2026-11-11T07:31:02.901961Z",
+        "sources": [
+          {
+            "episode_id": "b0c192bb-4150-5c24-beeb-cb4435747cad",
+            "source_tool": "benefit_docs",
+            "chunk_id": "docs_rate-2020.md_chunk_1",
+            "source_uri": "docs/rate-2020.md",
+            "reference_time": "2020-07-01T00:00:00Z",
+            "reference_time_source": "front_matter",
+            "text": null
+          }
+        ]
+      },
+      {
+        "fact_id": "645906e9-ccc8-46e0-a761-3c3ef8bf580c",
+        "text": "The young child supplement is payable with Family Benefit from 1 July 2021.",
+        "valid_from": "2021-07-01T00:00:00Z",
+        "valid_to": null,
+        "recorded_at": "2026-11-11T07:30:43.783315Z",
+        "expired_at": null,
+        "sources": [
+          {
+            "episode_id": "2df433a2-5b7c-5113-88c1-09dc058d6d29",
+            "source_tool": "benefit_docs",
+            "chunk_id": "docs_supplement-2021.md_chunk_1",
+            "source_uri": "docs/supplement-2021.md",
+            "reference_time": "2021-07-01T00:00:00Z",
+            "reference_time_source": "front_matter",
+            "text": null
+          }
+        ]
+      },
+      {
+        "fact_id": "9e9b87f7-fefd-4a3e-a4af-4c013984c9d8",
+        "text": "The base rate of Family Benefit is 120 dollars per fortnight for each child, starting from 1 July 2022.",
+        "valid_from": "2022-07-01T00:00:00Z",
+        "valid_to": "2024-07-01T00:00:00Z",
+        "recorded_at": "2026-11-11T07:30:59.103088Z",
+        "expired_at": "2026-11-11T07:31:38.569243Z",
+        "sources": [
+          {
+            "episode_id": "d96cffdd-a0ea-5399-99f4-fa4c079e7db5",
+            "source_tool": "benefit_docs",
+            "chunk_id": "docs_rate-2022.md_chunk_1",
+            "source_uri": "docs/rate-2022.md",
+            "reference_time": "2022-07-01T00:00:00Z",
+            "reference_time_source": "front_matter",
+            "text": null
+          }
+        ]
+      },
+      {
+        "fact_id": "d9b08131-ae08-41a0-8361-0f2a54d01587",
+        "text": "Family Benefit is administered by the Benefits Agency.",
+        "valid_from": "2022-07-01T00:00:00Z",
+        "valid_to": "2024-07-01T00:00:00Z",
+        "recorded_at": "2026-11-11T07:31:12.673175Z",
+        "expired_at": "2026-11-11T07:31:53.240256Z",
+        "sources": [
+          {
+            "episode_id": "0bb730f4-8f1a-59f6-b5c4-8d408c861f18",
+            "source_tool": "benefit_docs",
+            "chunk_id": "docs_rate-2022.md_chunk_2",
+            "source_uri": "docs/rate-2022.md",
+            "reference_time": "2022-07-01T00:00:00Z",
+            "reference_time_source": "front_matter",
+            "text": null
+          }
+        ]
+      },
+      {
+        "fact_id": "9f87ed20-3484-4d29-910c-38b0b70bed1f",
+        "text": "From 1 July 2024, the base rate of Family Benefit is 150 dollars per fortnight for each child.",
+        "valid_from": "2024-07-01T00:00:00Z",
+        "valid_to": null,
+        "recorded_at": "2026-11-11T07:31:34.327700Z",
+        "expired_at": null,
+        "sources": [
+          {
+            "episode_id": "f475b3f1-4754-59dd-b877-44ea3324be2b",
+            "source_tool": "benefit_docs",
+            "chunk_id": "docs_rate-2024.md_chunk_1",
+            "source_uri": "docs/rate-2024.md",
+            "reference_time": "2024-07-01T00:00:00Z",
+            "reference_time_source": "front_matter",
+            "text": null
+          }
+        ]
+      },
+      {
+        "fact_id": "ac6ecdee-97f7-45a4-b5c7-a136e14dacba",
+        "text": "From 1 July 2024, Family Benefit is administered by the Social Services Office.",
+        "valid_from": "2024-07-01T00:00:00Z",
+        "valid_to": null,
+        "recorded_at": "2026-11-11T07:31:49.890409Z",
+        "expired_at": null,
+        "sources": [
+          {
+            "episode_id": "a71aff2e-b62a-53a8-a23e-4f7be02dd6e0",
+            "source_tool": "benefit_docs",
+            "chunk_id": "docs_rate-2024.md_chunk_2",
+            "source_uri": "docs/rate-2024.md",
+            "reference_time": "2024-07-01T00:00:00Z",
+            "reference_time_source": "front_matter",
+            "text": null
+          }
+        ]
+      }
+    ]
+  }
+}

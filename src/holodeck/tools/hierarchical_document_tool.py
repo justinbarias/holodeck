@@ -722,8 +722,23 @@ class HierarchicalDocumentTool(
         Runs conversion and chunking only: no embedding, context-generation
         or vector store call. ``holodeck vectorstore inspect`` uses it.
         """
+        return [
+            (source_key, [chunk.content for chunk in chunks])
+            for source_key, chunks in (await self.preview_document_chunks()).items()
+        ]
+
+    async def preview_document_chunks(self) -> dict[str, list[DocumentChunk]]:
+        """Return the content chunks an ingestion would store, without storing.
+
+        Grouped by source key, in chunk order, with the source path, section
+        id, chunk index and content that ``document_chunks`` returns after an
+        ingestion of the same files. Runs conversion and chunking only: no
+        embedding, context-generation or vector store call, and the tool
+        does not have to be initialized. Chunk ids are the chunker's; a
+        store that rewrites ids (Qdrant) holds different ones.
+        """
         chunker = self._get_chunker()
-        preview: list[tuple[str, list[str]]] = []
+        grouped: dict[str, list[DocumentChunk]] = {}
         for file_path in self._discover_files():
             markdown_content = await self._convert_to_markdown(str(file_path))
             if not markdown_content.strip():
@@ -731,10 +746,27 @@ class HierarchicalDocumentTool(
             chunks = chunker.parse(
                 markdown_content, str(file_path), file_path.stat().st_mtime
             )
-            texts = [c.content for c in chunks if c.chunk_type != ChunkType.HEADER]
-            if texts:
-                preview.append((self._compute_source_key(file_path), texts))
-        return preview
+            self._remap_chunk_keys(chunks, file_path)
+            chunks = [c for c in chunks if c.chunk_type != ChunkType.HEADER]
+            if chunks:
+                grouped[self._compute_source_key(file_path)] = chunks
+        return grouped
+
+    async def document_chunks(self) -> dict[str, list[DocumentChunk]]:
+        """Return every stored chunk, grouped by source key, in chunk order.
+
+        Read-only. Always reads the vector store through
+        ``_load_chunks_from_store``: the chunks held in memory are not the
+        whole corpus after a restart (unchanged files are skipped) or on a
+        native-hybrid store (the corpus is not reloaded), and a repeated
+        ``initialize`` appends to them. An uninitialized tool returns ``{}``.
+        """
+        grouped: dict[str, list[DocumentChunk]] = {}
+        for chunk in await self._load_chunks_from_store():
+            grouped.setdefault(chunk.source_path, []).append(chunk)
+        for chunks in grouped.values():
+            chunks.sort(key=lambda chunk: chunk.chunk_index)
+        return grouped
 
     async def _ingest_documents(
         self,

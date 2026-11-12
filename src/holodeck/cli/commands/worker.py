@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+from collections.abc import Callable
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -149,11 +150,18 @@ async def _run_worker(config: WorkerConfig) -> None:
     from temporalio.worker import Worker
 
     from holodeck.temporal.activity import agent_activity
+    from holodeck.temporal.memory_activity import memory_ingest_activity
 
     # Factory direct (decision 14's core layer): an activities-only worker
     # needs no plugin, and every authoring fault the factory settles at bind
     # time surfaces here, before a single poll.
-    activities = [agent_activity(node, config.base_dir) for node in config.nodes]
+    activities: list[Callable[..., object]] = [
+        agent_activity(node, config.base_dir) for node in config.nodes
+    ]
+    # Spec 043: one ingestion activity when any node's agent has a memory.
+    ingest = memory_ingest_activity(config.nodes, config.base_dir)
+    if ingest is not None:
+        activities.append(ingest)
 
     connection = config.temporal
     client = await Client.connect(
@@ -178,6 +186,10 @@ async def _run_worker(config: WorkerConfig) -> None:
     click.echo(f"  TLS:        {'on' if connection.tls else 'off'}")
     for node in config.nodes:
         click.echo(f"  activity:   {node.id}")
+    if ingest is not None:
+        from holodeck.temporal.models import MEMORY_INGEST_ACTIVITY
+
+        click.echo(f"  activity:   {MEMORY_INGEST_ACTIVITY}")
 
     running = Worker(
         client,

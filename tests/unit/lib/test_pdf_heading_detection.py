@@ -14,6 +14,10 @@ import pytest
 
 from holodeck.lib.file_processor import FileProcessor
 from holodeck.models.test_case import FileInput
+from holodeck.models.test_result import ProcessedFileInput
+
+# Generous limit for the real-PDF tests; see TestRealPDFFixture.
+_REAL_PDF_TIMEOUT_MS = 180_000
 
 
 class TestFileProcessorPDFIntegration:
@@ -96,9 +100,13 @@ class TestFileProcessorPDFIntegration:
 
 @pytest.mark.integration
 class TestRealPDFFixture:
-    """Integration tests using the real HR8847 PDF fixture."""
+    """Integration tests using the real HR8847 PDF fixture.
 
-    @pytest.fixture
+    The PDF is processed once per class. The default 30-second processing
+    limit is not under test here, and a loaded CI runner can exceed it.
+    """
+
+    @pytest.fixture(scope="class")
     def hr8847_pdf_path(self) -> Path:
         """Get the path to the HR8847 PDF test fixture."""
         path = Path("tests/fixtures/hierarchical/HR8847_CNIMDT_AIGCE_STD_Act.pdf")
@@ -106,18 +114,22 @@ class TestRealPDFFixture:
             pytest.skip("HR8847 PDF fixture not found")
         return path
 
-    def test_hr8847_has_heading_markers(self, hr8847_pdf_path: Path) -> None:
-        """Test that processing HR8847 PDF produces heading markers."""
-        processor = FileProcessor()
+    @pytest.fixture(scope="class")
+    def hr8847(self, hr8847_pdf_path: Path) -> ProcessedFileInput:
+        """Process the HR8847 PDF once, with a generous time limit."""
+        processor = FileProcessor(processing_timeout_ms=_REAL_PDF_TIMEOUT_MS)
         result = processor.process_file(
             FileInput(path=str(hr8847_pdf_path), type="pdf")
         )
+        assert result.error is None, result.error
+        return result
 
-        assert result.error is None
-        assert result.metadata.get("pdf_heading_detection") is True
+    def test_hr8847_has_heading_markers(self, hr8847: ProcessedFileInput) -> None:
+        """Test that processing HR8847 PDF produces heading markers."""
+        assert hr8847.metadata.get("pdf_heading_detection") is True
 
         # Should have heading markers
-        content = result.markdown_content
+        content = hr8847.markdown_content
         assert "# " in content or "## " in content
 
         # Count headings
@@ -125,41 +137,27 @@ class TestRealPDFFixture:
         headings = [line for line in lines if line.startswith("#")]
         assert len(headings) > 50  # HR8847 has many sections
 
-    def test_hr8847_title_headings_detected(self, hr8847_pdf_path: Path) -> None:
+    def test_hr8847_title_headings_detected(self, hr8847: ProcessedFileInput) -> None:
         """Test that TITLE headings are detected in HR8847 PDF."""
-        processor = FileProcessor()
-        result = processor.process_file(
-            FileInput(path=str(hr8847_pdf_path), type="pdf")
-        )
-
-        content = result.markdown_content
+        content = hr8847.markdown_content
 
         # TITLE headings should be present (16pt font = h1)
         assert "TITLE I" in content
         assert "TITLE II" in content
 
-    def test_hr8847_section_headings_detected(self, hr8847_pdf_path: Path) -> None:
+    def test_hr8847_section_headings_detected(self, hr8847: ProcessedFileInput) -> None:
         """Test that SEC. headings are detected in HR8847 PDF."""
-        processor = FileProcessor()
-        result = processor.process_file(
-            FileInput(path=str(hr8847_pdf_path), type="pdf")
-        )
-
-        content = result.markdown_content
+        content = hr8847.markdown_content
 
         # SEC. headings should be present (12pt font = h2)
         assert "SEC. 101" in content
         assert "SEC. 102" in content
 
-    def test_hr8847_body_text_no_heading_markers(self, hr8847_pdf_path: Path) -> None:
+    def test_hr8847_body_text_no_heading_markers(
+        self, hr8847: ProcessedFileInput
+    ) -> None:
         """Test that body text doesn't have heading markers."""
-        processor = FileProcessor()
-        result = processor.process_file(
-            FileInput(path=str(hr8847_pdf_path), type="pdf")
-        )
-
-        content = result.markdown_content
-        lines = content.split("\n")
+        lines = hr8847.markdown_content.split("\n")
 
         # Count lines with and without heading markers
         heading_lines = [line for line in lines if line.startswith("#")]
@@ -171,19 +169,14 @@ class TestRealPDFFixture:
         assert len(body_lines) > len(heading_lines) * 2
 
     def test_hr8847_structured_chunker_compatibility(
-        self, hr8847_pdf_path: Path
+        self, hr8847: ProcessedFileInput, hr8847_pdf_path: Path
     ) -> None:
         """Test that output is compatible with StructuredChunker."""
         from holodeck.lib.structured_chunker import StructuredChunker
 
-        processor = FileProcessor()
-        result = processor.process_file(
-            FileInput(path=str(hr8847_pdf_path), type="pdf")
-        )
-
         # StructuredChunker should be able to parse the output
         chunker = StructuredChunker(max_tokens=800)
-        chunks = chunker.parse(result.markdown_content, str(hr8847_pdf_path))
+        chunks = chunker.parse(hr8847.markdown_content, str(hr8847_pdf_path))
 
         # Should produce chunks with parent chains
         assert len(chunks) > 0

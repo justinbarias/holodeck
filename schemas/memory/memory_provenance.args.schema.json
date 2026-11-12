@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Arguments of ``memory_provenance``.",
+  "properties": {
+    "fact_id": {
+      "description": "The fact_id of a fact returned by another memory tool.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "Fact Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "fact_id"
+  ],
+  "title": "MemoryProvenanceArgs",
+  "type": "object"
+}

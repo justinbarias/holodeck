@@ -1,0 +1,61 @@
+{
+  "note": "Pinned compilations for the temporal-memory sample. Discovered on 2026-11-11 from the Register API (https://api.prod.legislation.gov.au/v1/Versions and /v1/Documents). Default choice: for each Act, the compilation in force on 1 July 2020 and the compilation in force on 1 July 2026. To change the choice, edit this file: set url, start_date, compilation_number and register_id, and set retrieved, size_bytes and sha256 to null. The next run downloads the file and records them.",
+  "compilations": [
+    {
+      "tool": "family-assistance-act",
+      "title": "A New Tax System (Family Assistance) Act 1999",
+      "series_id": "C2004A00490",
+      "register_id": "C2020C00214",
+      "compilation_number": 101,
+      "start_date": "2020-07-01",
+      "selected_as": "in force on 2020-07-01",
+      "volume": null,
+      "url": "https://www.legislation.gov.au/C2004A00490/2020-07-01/2020-07-01/text/original/word",
+      "retrieved": "2026-11-11",
+      "size_bytes": 769387,
+      "sha256": "5e6bec6d57729b33821e0ebf938e92b5e60b1de9faf7cfa592203908185c908d"
+    },
+    {
+      "tool": "family-assistance-act",
+      "title": "A New Tax System (Family Assistance) Act 1999",
+      "series_id": "C2004A00490",
+      "register_id": "C2026C00331",
+      "compilation_number": 124,
+      "start_date": "2026-07-01",
+      "selected_as": "in force on 2026-07-01",
+      "volume": null,
+      "url": "https://www.legislation.gov.au/C2004A00490/2026-07-01/2026-07-01/text/original/word",
+      "retrieved": "2026-11-11",
+      "size_bytes": 687717,
+      "sha256": "d7bb04a0d1d027c002bcf89080536789cc9b59b4cb2be1f3de1dabd3e93fdd44"
+    },
+    {
+      "tool": "family-assistance-admin-act",
+      "title": "A New Tax System (Family Assistance) (Administration) Act 1999",
+      "series_id": "C2004A00491",
+      "register_id": "C2020C00232",
+      "compilation_number": 104,
+      "start_date": "2020-07-01",
+      "selected_as": "in force on 2020-07-01",
+      "volume": 1,
+      "url": "https://www.legislation.gov.au/C2004A00491/2020-07-01/2020-07-01/text/original/word/1",
+      "retrieved": "2026-11-11",
+      "size_bytes": 362201,
+      "sha256": "7828723d14830eda4810a962e3b6513839f82b17c2d062482ad0cfe1b970843d"
+    },
+    {
+      "tool": "family-assistance-admin-act",
+      "title": "A New Tax System (Family Assistance) (Administration) Act 1999",
+      "series_id": "C2004A00491",
+      "register_id": "C2026C00329",
+      "compilation_number": 131,
+      "start_date": "2026-07-01",
+      "selected_as": "in force on 2026-07-01",
+      "volume": 1,
+      "url": "https://www.legislation.gov.au/C2004A00491/2026-07-01/2026-07-01/text/original/word/1",
+      "retrieved": "2026-11-11",
+      "size_bytes": 353358,
+      "sha256": "53d474293e6aa7076aa38b565ed5d0b6681f63f53f1120cdd023dd2cf8aff6e2"
+    }
+  ]
+}

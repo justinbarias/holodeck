@@ -17,9 +17,9 @@ jobs:
   test:
     # Keep the required check name "test (3.11)" (the default would add the runner).
     name: test (${{ matrix.python-version }})
-    # The required 3.11 lane stays on the self-hosted runner. The 3.13 lane runs
-    # on a GitHub-hosted runner so the two lanes no longer queue behind each
-    # other on the single self-hosted machine.
+    # The required 3.11 lane runs on an ephemeral Azure Container Apps runner
+    # (label "aca", 4 vCPU / 8 GiB; see infra/ci-runners). The 3.13 lane runs
+    # on a GitHub-hosted runner.
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -28,11 +28,11 @@ jobs:
       matrix:
         include:
           - python-version: "3.11"
-            runner: self-hosted
+            runner: aca
           - python-version: "3.13"
             runner: ubuntu-latest
     env:
-      PYTEST_XDIST_WORKERS: 8 # Match runner CPU count for optimal performance
+      PYTEST_XDIST_WORKERS: 4 # Match runner CPU count (aca and hosted runners have 4 vCPU)
       UV_PYTHON: ${{ matrix.python-version }} # make uv sync/run use this lane's interpreter
 
     steps:

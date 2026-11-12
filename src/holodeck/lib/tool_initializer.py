@@ -8,7 +8,7 @@ abstractions (connectors, record models) are unaffected.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -29,8 +29,10 @@ if TYPE_CHECKING:
     from holodeck.lib.litellm_support import LiteLLMEmbeddingService
     from holodeck.models.agent import Agent
     from holodeck.models.config import ExecutionConfig
+    from holodeck.models.tool import TemporalMemoryToolConfig
     from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
     from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+    from holodeck.tools.temporal_memory_tool import TemporalMemoryTool
     from holodeck.tools.vectorstore_tool import VectorStoreTool
 
 logger = logging.getLogger(__name__)
@@ -183,11 +185,16 @@ async def initialize_tools(
     execution_config: ExecutionConfig | None = None,
     base_dir: str | None = None,
     context_generator: Any | None = None,
+    initialize_memory: bool = True,
 ) -> dict[str, Any]:
-    """Initialize all vectorstore and hierarchical-doc tools for an agent.
+    """Initialize all vectorstore, hierarchical-doc and temporal memory tools.
 
     Creates embedding service, initializes each tool, returns dict keyed by
     tool config name. This is the main entry point for both backends.
+
+    A ``temporal_memory`` tool is created last, because it wraps its
+    initialized source tools (spec 043, design 6). Its modules are imported
+    only when the agent has one.
 
     Args:
         agent: Agent configuration.
@@ -197,15 +204,20 @@ async def initialize_tools(
             If None, falls back to agent_base_dir context variable.
         context_generator: Optional pre-built ContextGenerator instance.
             When provided, takes highest priority for contextual embeddings.
+        initialize_memory: When False, a ``temporal_memory`` tool is not
+            created. ``open_memory`` builds its own memory from the sources.
 
     Returns:
         Dict mapping tool name to initialized tool instance.
 
     Raises:
         ToolInitializerError: On failure.
+        TemporalMemoryError: The memory tool could not start, for example
+            the graph store is down and ``ingest_on_start`` is true.
     """
     from holodeck.models.tool import (
         HierarchicalDocumentToolConfig,
+        TemporalMemoryToolConfig,
     )
     from holodeck.models.tool import (
         VectorstoreTool as VectorstoreToolConfig,
@@ -266,6 +278,15 @@ async def initialize_tools(
                 execution_config=execution_config,
             )
             instances.update(hd_instances)
+
+        memory_config = next(
+            (t for t in agent.tools if isinstance(t, TemporalMemoryToolConfig)),
+            None,
+        )
+        if initialize_memory and memory_config is not None:
+            instances[memory_config.name] = await _initialize_memory_tool(
+                agent, memory_config, instances, embedding_service
+            )
     except BaseException:
         # The caller never receives these instances, so release them here.
         await close_tools(instances.values())
@@ -274,8 +295,30 @@ async def initialize_tools(
     return instances
 
 
+async def _initialize_memory_tool(
+    agent: Agent,
+    config: TemporalMemoryToolConfig,
+    instances: Mapping[str, object],
+    embedding_service: LiteLLMEmbeddingService,
+) -> TemporalMemoryTool:
+    """Create and start the memory tool over the initialized source tools.
+
+    Errors of the memory layer pass through unwrapped, so a start that fails
+    because the graph store is down still raises
+    ``MemoryBackendUnavailableError`` (design 6, Lifecycle).
+    """
+    from holodeck.tools.temporal_memory_tool import TemporalMemoryTool
+
+    tool = TemporalMemoryTool(
+        agent, config, instances, embedding_service=embedding_service
+    )
+    await tool.initialize()
+    logger.info("Initialized temporal memory tool: %s", config.name)
+    return tool
+
+
 async def close_tools(
-    tools: Iterable[VectorStoreTool | HierarchicalDocumentTool],
+    tools: Iterable[VectorStoreTool | HierarchicalDocumentTool | TemporalMemoryTool],
 ) -> None:
     """Close each tool's vector store client, logging (not raising) failures."""
     for tool in tools:

@@ -66,6 +66,7 @@ google-api-core==2.25.2
 google-auth==2.62.1
 google-cloud-run==0.16.1
 googleapis-common-protos==1.75.0
+graphiti-core==0.31.2
 griffelib==2.4.1
 grpc-google-iam-v1==0.14.4
 grpcio-status==1.71.2
@@ -121,6 +122,7 @@ msgspec==0.22.0
 msrest==0.7.1
 multidict==7.2.1
 narwhals==2.28.0
+neo4j==6.4.1
 nest-asyncio==1.6.0
 nexus-rpc==1.4.0
 nltk==3.10.4

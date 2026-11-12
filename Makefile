@@ -417,9 +417,11 @@ requirements: ## Generate requirements.txt from uv.lock
 
 schema: ## Regenerate schemas/agent.schema.json from the Agent model
 	uv run python scripts/generate_agent_schema.py
+	uv run python scripts/generate_memory_schemas.py
 
 schema-check: ## Verify the committed agent.schema.json matches the model
 	uv run python scripts/generate_agent_schema.py --check
+	uv run python scripts/generate_memory_schemas.py --check
 
 constraints: ## Regenerate src/holodeck/deploy/constraints.txt from uv.lock
 	uv run python scripts/generate_constraints.py

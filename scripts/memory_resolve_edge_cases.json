@@ -1,0 +1,406 @@
+{
+  "cases": [
+    {
+      "old_fact": "A Subclass 117 (Orphan Relative) visa is excluded from the permanent visa category that makes an individual subject to the newly arrived resident's waiting period under section 61AA.",
+      "new_fact": "A Subclass 117 (Orphan Relative) visa is identified by the regulations under the Migration Act 1958 and is an exception to the permanent-visa basis for a newly arrived resident's waiting period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12: restatement with other endpoint entities (2020 vs 2026 compilation, s 61AA); closed in error."
+    },
+    {
+      "old_fact": "Under section 41, the original repayment period for a family tax benefit advance is 182 days unless the Secretary determines a different period for the advance under clause 51.",
+      "new_fact": "The original repayment period for a family tax benefit advance is 182 days unless the Secretary determines a different period under clause 42 or clause 51.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12: the 182-day period is unchanged; only the clause list differs."
+    },
+    {
+      "old_fact": "Income year has the same meaning as in the Income Tax Assessment Act 1997.",
+      "new_fact": "“Income year” has the same meaning as in the Income Tax Assessment Act.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12: same definition reworded; closed in error."
+    },
+    {
+      "old_fact": "Section 3AA applies for the purposes of a reference in section 85CJ to a person receiving affected schooling requirement payments.",
+      "new_fact": "Parental leave pay has the same meaning as in the Paid Parental Leave Act 2010.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12: an unrelated definition from another section closed this rule."
+    },
+    {
+      "old_fact": "From 1 July 2020 the base rate of Carer Payment is 100 dollars per week",
+      "new_fact": "Carer Payment is paid at a base rate of 100 dollars a week",
+      "expected": "not_contradicted",
+      "note": "Derived: same value, other wording, no date on the new fact."
+    },
+    {
+      "old_fact": "Approved care organisation has the same meaning as in the A New Tax System (Family Assistance) (Administration) Act 1999.",
+      "new_fact": "FTB child has the meaning given by Subdivision A of Division 1 of Part 3.",
+      "expected": "not_contradicted",
+      "note": "Derived: definitions of two different terms."
+    },
+    {
+      "old_fact": "From 1 July 2020 the couple rate of Carer Payment is 150 dollars per week",
+      "new_fact": "From 1 July 2022 the base rate of Carer Payment is 120 dollars per week",
+      "expected": "not_contradicted",
+      "note": "Derived from the prompt examples: different categories of one rate."
+    },
+    {
+      "old_fact": "Human Services Secretary means the Secretary of the Department administered by the Minister administering the Human Services (Centrelink) Act 1997.",
+      "new_fact": "Human Services Secretary means the Chief Executive Officer of Services Australia.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12: real change of a defined term's meaning; must still close."
+    },
+    {
+      "old_fact": "From 1 July 2020 the base rate of Carer Payment is 100 dollars per week",
+      "new_fact": "From 1 July 2022 the base rate of Carer Payment is 120 dollars per week",
+      "expected": "contradicted",
+      "note": "Prompt example: same rate, different value."
+    },
+    {
+      "old_fact": "Under clause 38 of Schedule 1, the rent threshold rate for rent assistance is $2,332.35 per year.",
+      "new_fact": "Under clause 38 of Schedule 1, the rent threshold rate for rent assistance is $2,571.20 per year.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12 shape: the old amount is real; the new amount and the wording are placeholders. Replace with the live fact texts."
+    },
+    {
+      "old_fact": "Carer Payment is administered by the Payments Office",
+      "new_fact": "From 1 July 2024 the Care Agency administers Carer Payment",
+      "expected": "contradicted",
+      "note": "Prompt example: one body administers the payment at a time."
+    },
+    {
+      "old_fact": "The hourly rate of ACCS for an individual is defined by subclause 6(1) of Schedule 2, and for an approved provider by subclause 9(1) of Schedule 2.",
+      "new_fact": "Subclause 15(3) of Schedule 2 gives the meaning of extended child wellbeing period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for 'disabled person means a person who is:\n\n(a) receiv'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The hourly session fee for an individual is defined by subclause 2(2) of Schedule 2, and for an approved provider by subclause 9(2) of Schedule 2.",
+      "new_fact": "Subclause 15(3) of Schedule 2 gives the meaning of extended child wellbeing period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for 'disabled person means a person who is:\n\n(a) receiv'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "“Taxable income” has the same meaning in this Act as in the Income Tax Assessment Act.",
+      "new_fact": "“Income year” has the same meaning as in the Income Tax Assessment Act.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for 'Human Services Secretary means the Chief Executive'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Section 3AA applies for the purposes of a reference in section 85CK to a person receiving affected schooling requirement payments.",
+      "new_fact": "For the purposes of section 32AI of the Family Assistance Administration Act, the definition of receiving refers to provisions of the Social Security Act 1991, including subsections 23(1D), 23(2), (4), (4A), and (4AA).",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for 'parental leave pay has the same meaning as in the'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Under section 3AA, the rule treating a person as receiving an affected schooling requirement payment during suspension does not apply when the payment has been suspended for a continuous period of more than 13 weeks.",
+      "new_fact": "The definition of receiving in relation to social security pensions, social security benefits, service pensions, income support supplements, or veteran payments is affected by section 3AA, concerning suspension of payments under Part 3C (schooling requirements) of the Social Security (Administration) Act 1999.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for 'parental leave pay has the same meaning as in the'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "If the Secretary revokes a determination under Section 35Q, Section 35C does not apply under Section 35F.",
+      "new_fact": "If the Secretary revokes a determination under section 35Q, a new determination must be made under section 35A to replace it.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '35Q Secretary may revoke a determination of an ind'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Under section 35Q, the Secretary may revoke an existing determination of an individual’s percentage of care made under section 35B if the specified conditions are met.",
+      "new_fact": "Section 35Q concerns revoking an individual's existing percentage-of-care determination for a child, which was made under section 35A.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '35Q Secretary may revoke a determination of an ind'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "If the Secretary revokes a determination under section 35Q, the Secretary must make a new determination under section 35A to replace it.",
+      "new_fact": "If the Secretary revokes a determination under section 35Q, a new determination must be made under section 35A to replace it.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '35Q Secretary may revoke a determination of an ind'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "If the Secretary revokes a determination under section 35Q, the Secretary must make a new determination under section 35B to replace it.",
+      "new_fact": "If the Secretary revokes a determination under section 35Q, a new determination must be made under section 35A to replace it.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '35Q Secretary may revoke a determination of an ind'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "A notice given by the Foreign Affairs Minister to the Home Affairs Minister under section 57GK in relation to an individual is one condition allowing the Home Affairs Minister to issue a notice under section 57GJ.",
+      "new_fact": "The ASIO Minister may issue a notice under 57GJ if the Foreign Affairs Minister has given the ASIO Minister a notice under section 57GK concerning the individual.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '57GJ Benefit restriction notice from ASIO Minister'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Section 57GJ identifies visa cancellations under sections 116, 128, 134B, 134C(3), and 501 of the Migration Act 1958 as circumstances relevant to issuing a security notice.",
+      "new_fact": "The ASIO Minister may issue a notice under section 57GJ if the individual’s visa was cancelled under section 134B of the Migration Act 1958 on emergency security grounds and the cancellation has not been revoked under subsection 134C(3).",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '57GJ Benefit restriction notice from ASIO Minister'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "A security notice remains in force until it is revoked, as described in 57GN Period.",
+      "new_fact": "Section 57GN concerns the period during which a benefit restriction notice is in force.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '57GN Period benefit restriction notice is in force'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "If a determination in relation to an individual has ceased to be in force under subsection 57GI(2) and the Home Affairs Minister revokes the security notice concerned, the Secretary of the Department must take reasonable steps to notify the individual of the revocation.",
+      "new_fact": "When a determination ceases to be in force because of subsection 57GI(2) and the AFP Minister or ASIO Minister revokes the benefit restriction notice concerned, the Secretary of the Department must cause reasonable steps to be taken to notify the individual of the revocation.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '57GO Revoking a benefit restriction notice'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Under Division 1A of Part 5 of Schedule 1, when an amount of newborn supplement is added in relation to an individual and the individual’s FTB child, section 58AA entitles the individual to a $500 family tax benefit payment in respect of that child.",
+      "new_fact": "Family tax benefit includes any amount under section 58AA.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for 'disabled person means a person who is:\n\n(a) receiv'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Section 61AA uses a visa determined by the Minister for subparagraph 729(2)(f)(v) of the Social Security Act 1991 to identify an individual subject to a newly arrived resident’s waiting period.",
+      "new_fact": "The provision states that an individual receiving farm household allowance under the Farm Household Support Act 2014 is exempt from the newly arrived resident’s waiting-period rule, alongside a separate exemption for individuals receiving a social security pension or benefit.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '(5A) If an individual is subject to a newly arrive'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "A Subclass 117 (Orphan Relative) visa is excluded from the permanent visa category that makes an individual subject to the newly arrived resident’s waiting period under section 61AA.",
+      "new_fact": "A Subclass 117 (Orphan Relative) visa is identified by the regulations under the Migration Act 1958 and is an exception to the permanent-visa basis for a newly arrived resident's waiting period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "A Subclass 837 (Orphan Relative) visa is excluded from the permanent visa category that makes an individual subject to the newly arrived resident’s waiting period under section 61AA.",
+      "new_fact": "A Subclass 117 (Orphan Relative) visa is identified by the regulations under the Migration Act 1958 and is an exception to the permanent-visa basis for a newly arrived resident's waiting period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "A Subclass 115 (Remaining Relative) visa is excluded from the permanent visa category that makes an individual subject to the newly arrived resident’s waiting period under section 61AA.",
+      "new_fact": "A Subclass 115 (Remaining Relative) visa is identified by the regulations under the Migration Act 1958 and is an exception to the permanent-visa basis for a newly arrived resident's waiting period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "A Subclass 835 (Remaining Relative) visa is excluded from the permanent visa category that makes an individual subject to the newly arrived resident’s waiting period under section 61AA.",
+      "new_fact": "A Subclass 115 (Remaining Relative) visa is identified by the regulations under the Migration Act 1958 and is an exception to the permanent-visa basis for a newly arrived resident's waiting period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "For a visa class determined under paragraph 739A(3)(b) of the Social Security Act 1991, section 61AA sets the waiting period to start on the visa application day and end after the individual has been in Australia for 52 weeks, or periods totalling 52 weeks, after that day, unless subsection (4) applies.",
+      "new_fact": "For the applicable waiting-period cases, the waiting period ends when the individual has been in Australia for a period or periods totalling 52 weeks after the relevant starting day; Family Tax Benefit Part A is nil for days within that waiting period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "If the individual previously held one or more visas in a class determined under paragraph 739A(4)(b) of the Social Security Act 1991, the waiting period starts on the application day for the last such visa and ends after 52 weeks, or periods totalling 52 weeks, of the individual being in Australia from that day.",
+      "new_fact": "For the applicable waiting-period cases, the waiting period ends when the individual has been in Australia for a period or periods totalling 52 weeks after the relevant starting day; Family Tax Benefit Part A is nil for days within that waiting period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "For an individual to whom neither subsection (3) nor (4) applies, section 61AA sets the waiting period under subsection (5) to start on the later of the individual’s first entry into Australia or becoming the holder of a permanent visa, and end after 52 weeks, or periods totalling 52 weeks, of being in Australia from that day; the visa class is determined under subsection 739A(6) of the Social Security Act 1991 for the stated exemption.",
+      "new_fact": "For the applicable waiting-period cases, the waiting period ends when the individual has been in Australia for a period or periods totalling 52 weeks after the relevant starting day; Family Tax Benefit Part A is nil for days within that waiting period.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Section 61AA’s nil Part A family tax benefit rate does not apply for a day in the waiting period if the individual is receiving farm household allowance under the Farm Household Support Act 2014 on that day.",
+      "new_fact": "An individual's Family Tax Benefit Part A rate is nil for each day that falls within the individual's newly arrived resident's waiting period, despite Parts 2 to 3A of Schedule 1.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Section 61AA’s nil Part A family tax benefit rate does not apply for a day in the waiting period if parental leave pay or dad and partner pay under the Paid Parental Leave Act 2010 is payable to the individual on that day.",
+      "new_fact": "An individual's Family Tax Benefit Part A rate is nil for each day that falls within the individual's newly arrived resident's waiting period, despite Parts 2 to 3A of Schedule 1.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '61AA Part A rate of family tax benefit is nil for'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Section 85BB specifies the residency requirements referred to in subparagraph 85BA(1)(a)(iv).",
+      "new_fact": "Under section 85BA, the individual or the individual’s partner must meet the residency requirements in section 85BB for the individual to be eligible for CCS for the session of care.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85BA Eligibility for CCS'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "When an approved provider gives a certificate under section 85CB, it must notify an appropriate State or Territory support agency in accordance with section 204K of the Family Assistance Administration Act.",
+      "new_fact": "When an approved provider gives a certificate under section 85CB, it must notify an appropriate State or Territory support agency in accordance with section 204K of the Family Assistance Administration Act.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CB Certification for ACCS (child wellbeing)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "A certificate under section 85CB must specify an effective Monday that falls in a week containing an at-risk day and is no more than 28 days before the certificate is given.",
+      "new_fact": "A certificate under section 85CB must take effect no more than 28 days before it is given, unless the Secretary extends the period.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CB Certification for ACCS (child wellbeing)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared. Relabelled 2026-11-12 after a section diff: 85CB's 'at risk day' became 'wellbeing day'; the 38C couple amount $3,806.95 is gone in 2026."
+    },
+    {
+      "old_fact": "A certificate under section 85CB does not take effect if, in any 12-month period, the provider’s certificates for a particular child and service would be in effect for more than 6 weeks, disregarding days when the provider’s approval or approval for that service is suspended.",
+      "new_fact": "A certificate under section 85CB does not take effect if, in any period of 12 months, certificates from the provider for a particular child and service would be in effect for more than 6 weeks, disregarding days when the provider's approval is suspended.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CB Certification for ACCS (child wellbeing)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The percentage specified in the Secretary’s written determination applies to the first-week cap for a section 85CB certificate on a day when the Secretary determines in writing that it is appropriate to the service’s circumstances.",
+      "new_fact": "A certificate under section 85CB does not take effect if it would cause certificates and determinations under section 85CE in force on any day of its first week to cover more than the percentage of children specified in a determination under subsection 4A.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CB Certification for ACCS (child wellbeing)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared. Relabelled 2026-11-12 after a section diff: 85CB's 'at risk day' became 'wellbeing day'; the 38C couple amount $3,806.95 is gone in 2026."
+    },
+    {
+      "old_fact": "For the first-week percentage cap, certificates under section 85CB are counted together with determinations made on application by the provider under section 85CE.",
+      "new_fact": "A determination under subsection 4A specifies the percentage of children for whom the service is providing care, used to assess the combined coverage of certificates and determinations made under section 85CE.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CB Certification for ACCS (child wellbeing)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared. Relabelled 2026-11-12 after a section diff: 85CB's 'at risk day' became 'wellbeing day'; the 38C couple amount $3,806.95 is gone in 2026."
+    },
+    {
+      "old_fact": "Under section 85CI, the Secretary may by written notice to an individual cancel or vary a determination made under section 85CH if it is in effect for a week and the Secretary considers that a circumstance prescribed for subsection 85CG(2) does not exist for the individual during that week.",
+      "new_fact": "If the Secretary considers that a circumstance prescribed under subsection 85CG(2) does not exist in relation to an individual during a week when a section 85CH determination is in effect, the Secretary may by written notice to the individual cancel or vary the determination so it is not in effect for that week.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CI Revocation of determinations'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Section 85CI notes that persons whose interests are affected by a decision under it must be notified of the decision and their right to have it reviewed under section 27A of the AAT Act.",
+      "new_fact": "The note to 85CI Revocation of determinations states that persons whose interests are affected must be notified of the decision and their right to have it reviewed under section 266 of the ART Act.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CI Revocation of determinations'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Parenting payment is identified as a transition to work payment made under the social security law, which is defined by the Social Security Act 1991.",
+      "new_fact": "85CK(3)(a) identifies parenting payment made under social security law as a transition to work payment.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CK Eligibility for ACCS (transition to work)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Jobseeker payment is identified as a transition to work payment made under the social security law, which is defined by the Social Security Act 1991.",
+      "new_fact": "85CK(3)(a) identifies jobseeker payment made under social security law as a transition to work payment.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CK Eligibility for ACCS (transition to work)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Disability support pension is identified as a transition to work payment made under the social security law, which is defined by the Social Security Act 1991.",
+      "new_fact": "85CK(3)(a) identifies disability support pension made under social security law as a transition to work payment.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CK Eligibility for ACCS (transition to work)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Youth allowance is identified as a transition to work payment made under the social security law, which is defined by the Social Security Act 1991.",
+      "new_fact": "85CK(3)(a) identifies youth allowance made under social security law as a transition to work payment.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '85CK Eligibility for ACCS (transition to work)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "When an individual is eligible for ACCS (transition to work) for at least one session of care provided by an approved child care service to a child in a week, the amount of additional child care subsidy for that individual, for that child and week, is worked out under Part 3 of Schedule 2.",
+      "new_fact": "For an individual eligible for ACCS (transition to work) for at least one session of care in a week, the weekly amount of ACCS (transition to work) is calculated using the method statement in clause 1, with references to CCS read as references to ACCS (transition to work), except in subclause 4(2).",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '7 Amount of ACCS (transition to work)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Clause 20B subclauses (3) and (4), concerning underpayments and arrears, apply only to enforceable maintenance liabilities within the meaning of the Child Support (Registration and Collection) Act 1988.",
+      "new_fact": "Subclauses 20B(3) and 20B(4), concerning underpayments and arrears, apply only to enforceable maintenance liabilities within the meaning of the Child Support (Registration and Collection) Act 1988.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '(5) The notional arrears amount, in respect of a d'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "For an individual who is not a member of a couple and is a relevant shared carer, or has only regular care children and no FTB children, 38C sets the required rent at more than $2,332.35 per year.",
+      "new_fact": "Under 38C Eligibility for rent assistance, rent must exceed $6,186.75 per year for a relevant shared carer, or an individual with only regular care children and no FTB children, who is a member of a couple but is not partnered (partner in gaol), or is in an illness separated, respite care, or temporarily separated couple, subject to the stated categories.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '38C Eligibility for rent assistance'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "For a couple that is not partnered (partner in gaol), an illness separated couple, a respite care couple, or a temporarily separated couple, where the individual is a relevant shared carer or has only regular care children and no FTB children, 38C sets the required rent at more than $3,806.95 per year.",
+      "new_fact": "Under 38C Eligibility for rent assistance, rent must exceed $6,186.75 per year for a relevant shared carer, or an individual with only regular care children and no FTB children, who is a member of a couple but is not partnered (partner in gaol), or is in an illness separated, respite care, or temporarily separated couple, subject to the stated categories.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '38C Eligibility for rent assistance'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared. Relabelled 2026-11-12 after a section diff: 85CB's 'at risk day' became 'wellbeing day'; the 38C couple amount $3,806.95 is gone in 2026."
+    },
+    {
+      "old_fact": "For an individual who is partnered (partner in gaol), or is a member of an illness separated couple or a respite care couple, where the individual is a relevant shared carer or has only regular care children and no FTB children, 38C sets the required rent at more than $2,332.35 per year.",
+      "new_fact": "Under 38C Eligibility for rent assistance, rent must exceed $6,186.75 per year for a relevant shared carer, or an individual with only regular care children and no FTB children, who is a member of a couple but is not partnered (partner in gaol), or is in an illness separated, respite care, or temporarily separated couple, subject to the stated categories.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '38C Eligibility for rent assistance'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "For an individual who is a member of a temporarily separated couple and is a relevant shared carer, or has only regular care children and no FTB children, 38C sets the required rent at more than $2,332.35 per year.",
+      "new_fact": "Under 38C Eligibility for rent assistance, rent must exceed $6,186.75 per year for a relevant shared carer, or an individual with only regular care children and no FTB children, who is a member of a couple but is not partnered (partner in gaol), or is in an illness separated, respite care, or temporarily separated couple, subject to the stated categories.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '38C Eligibility for rent assistance'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "38C refers to section 9 of the A New Tax System (Family Assistance) (Administration) Act 1999, which can prevent an individual from making an effective instalment claim for family tax benefit.",
+      "new_fact": "For a past-period family tax benefit claim, 38C Eligibility for rent assistance requires that the individual not be prevented by section 9 of the A New Tax System (Family Assistance) (Administration) Act 1999 from making an effective instalment claim.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '38C Eligibility for rent assistance'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "38C refers to subsections 32AE(2) and 32AE(5) of the Family Assistance Administration Act in the exception concerning past-period claims for family tax benefit.",
+      "new_fact": "38C Eligibility for rent assistance refers to the A New Tax System (Family Assistance) (Administration) Act 1999 in setting conditions for claims for past-period family tax benefit.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '38C Eligibility for rent assistance'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The applicable percentage for a session of care provided to a child in a CCS fortnight is 85% when the individual's adjusted taxable income is equal to or below the lower income threshold.",
+      "new_fact": "The 90% applicable percentage applies when an individual's adjusted taxable income is equal to or below the $80,000 lower income (base rate) threshold.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '3 Applicable percentage—basic case'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The applicable percentage for a session of care provided to a child in a CCS fortnight is 85% when adjusted taxable income is equal to or below the lower income threshold of $65,710.",
+      "new_fact": "The 90% applicable percentage applies when an individual's adjusted taxable income is equal to or below the $80,000 lower income (base rate) threshold.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '3 Applicable percentage—basic case'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "When adjusted taxable income is above the lower income threshold and below the second income threshold, the applicable percentage is determined using the formula in subclause (2), rounded to 2 decimal places; the second income threshold is the lower income threshold plus $105,000.",
+      "new_fact": "Under “Applicable percentage—other cases,” the applicable percentage is 95% when adjusted taxable income is equal to or below the lower income (other rate) threshold of $72,466; for income above that threshold and below the second income (other rate) threshold, it is the lesser of 95% and the formula result.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '3A Applicable percentage—other cases'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The applicable percentage for a session of care provided to a child in a CCS fortnight is 50% when adjusted taxable income is equal to or above the second income threshold and below the third income threshold.",
+      "new_fact": "Under “Applicable percentage—other cases,” the applicable percentage is 95% when adjusted taxable income is equal to or below the lower income (other rate) threshold of $72,466; for income above that threshold and below the second income (other rate) threshold, it is the lesser of 95% and the formula result.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '3A Applicable percentage—other cases'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "When adjusted taxable income is equal to or above the third income threshold and below the fourth income threshold, the applicable percentage is determined using the formula in subclause (3), rounded to 2 decimal places; the fourth income threshold is the lower income threshold plus $274,290.",
+      "new_fact": "Under “Applicable percentage—other cases,” the applicable percentage is 95% when adjusted taxable income is equal to or below the lower income (other rate) threshold of $72,466; for income above that threshold and below the second income (other rate) threshold, it is the lesser of 95% and the formula result.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '3A Applicable percentage—other cases'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The applicable percentage for a session of care provided to a child in a CCS fortnight is 0% when adjusted taxable income is equal to or above the upper income threshold.",
+      "new_fact": "The applicable percentage is 0% when an individual's adjusted taxable income is equal to or above the upper income (base rate) threshold, which is the $80,000 lower threshold plus $450,000.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '3 Applicable percentage—basic case'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Clause 4A defines the adjusted activity-tested amount of CCS for purposes of step 5 of the method statement in clause 1.",
+      "new_fact": "For the purposes of step 5 of the method statement in clause 1, clause 4A provides how to work out the adjusted subsidy amount of CCS for the sessions of care identified in step 3.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '4A Adjusted subsidy amount of CCS'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "Clause 4A applies when the individual benefits from a payment prescribed by the Minister’s rules for paragraph 2(2A)(c) in respect of a session of care.",
+      "new_fact": "Clause 4A refers to a payment prescribed by the Minister’s rules for the purposes of paragraph 2(2A)(c), which the individual benefits from in respect of a session of care.",
+      "expected": "contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '4A Adjusted subsidy amount of CCS'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "When calculating ACCS (transition to work), the hourly rate of CCS for the individual is worked out using 95%.",
+      "new_fact": "At step 4, the hourly rate of CCS for the individual is worked out using 95% instead of the applicable percentage in clause 3, when clause 3 applies.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '7 Amount of ACCS (transition to work)'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The FTB child rate (A1) and the FTB child rate (A2) are not to be indexed on 1 July 2017 and 1 July 2018.",
+      "new_fact": "FTB child rate (A1) and reduction in FTB child rate (A1) are indexed together on 1 July, using the December reference quarter and the highest December base quarter before the reference quarter, but not earlier than December quarter 1999; rounding is to the nearest $3.65.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '3 CPI Indexation Table'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The FTB child rate (A1), the FTB child rate (A2), the reduction to those rates, the FTB standard rate (B), and the FTB standard ACO rate are not to be indexed on 1 July 2017 and 1 July 2018.",
+      "new_fact": "FTB child rate (A1) and reduction in FTB child rate (A1) are indexed together on 1 July, using the December reference quarter and the highest December base quarter before the reference quarter, but not earlier than December quarter 1999; rounding is to the nearest $3.65.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for '3 CPI Indexation Table'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    },
+    {
+      "old_fact": "The first indexation of the stillborn baby payment income limit under subclause (1) is to take place on 1 July 2017.",
+      "new_fact": "The first indexation of the stillborn baby payment income limit under subclause (1) is to take place on 1 July 2017.",
+      "expected": "not_contradicted",
+      "note": "Live 2026-11-12, closed at 2026-07-01 by the episode for 'No indexation of certain FTB rates and reductions'. Label from comparing the section text of both compilations; new_fact is the closest open fact of that episode by word overlap, not necessarily the fact Graphiti compared."
+    }
+  ]
+}
