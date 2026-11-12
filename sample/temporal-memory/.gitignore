@@ -1,0 +1,4 @@
+# The Act text is not committed: fetch_corpus.py downloads and converts it.
+.cache/
+docs/
+.env

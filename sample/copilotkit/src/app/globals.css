@@ -1,0 +1,867 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #ffffff;
+  --color-foreground: #171717;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background, var(--color-background));
+  color: var(--foreground, var(--color-foreground));
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+
+/* Header styling */
+.holodeck-header {
+  background: #ffffff;
+  border-bottom: 1px solid #e4e4e7;
+  padding: 1rem 1.5rem;
+}
+
+.holodeck-header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #18181b;
+}
+
+.holodeck-header p {
+  font-size: 0.875rem;
+  color: #71717a;
+}
+
+/* File upload preview bar */
+.holodeck-file-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.holodeck-main {
+  background: #f9fafb;
+}
+
+/*
+ * Override CopilotKit v2 theme variables.
+ * CopilotKit bundles its own Tailwind + shadcn/ui theme that sets
+ * --background etc. via @layer theme.  We override at :root level
+ * with !important so the chat widget picks up our palette.
+ */
+:root {
+  --background: #ffffff !important;
+  --foreground: #09090b !important;
+  --card: #ffffff !important;
+  --card-foreground: #09090b !important;
+  --popover: #ffffff !important;
+  --popover-foreground: #09090b !important;
+  --primary: #6366f1 !important;
+  --primary-foreground: #ffffff !important;
+  --secondary: #f4f4f5 !important;
+  --secondary-foreground: #18181b !important;
+  --muted: #f4f4f5 !important;
+  --muted-foreground: #71717a !important;
+  --accent: #f4f4f5 !important;
+  --accent-foreground: #18181b !important;
+  --destructive: #ef4444 !important;
+  --border: #e4e4e7 !important;
+  --input: #e4e4e7 !important;
+  --ring: #6366f1 !important;
+}
+
+/* Dark mode — controlled by next-themes via .dark class on <html> */
+html.dark {
+  --background: #09090b !important;
+  --foreground: #fafafa !important;
+  --card: #09090b !important;
+  --card-foreground: #fafafa !important;
+  --popover: #09090b !important;
+  --popover-foreground: #fafafa !important;
+  --primary: #818cf8 !important;
+  --primary-foreground: #ffffff !important;
+  --secondary: #27272a !important;
+  --secondary-foreground: #fafafa !important;
+  --muted: #27272a !important;
+  --muted-foreground: #a1a1aa !important;
+  --accent: #27272a !important;
+  --accent-foreground: #fafafa !important;
+  --destructive: #dc2626 !important;
+  --border: #27272a !important;
+  --input: #27272a !important;
+  --ring: #818cf8 !important;
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+}
+
+html.dark body {
+  background: #09090b;
+  color: #fafafa;
+}
+
+html.dark .holodeck-header {
+  background: #18181b;
+  border-bottom-color: #27272a;
+}
+
+html.dark .holodeck-header h1 {
+  color: #fafafa;
+}
+
+html.dark .holodeck-header p {
+  color: #a1a1aa;
+}
+
+html.dark .holodeck-file-bar {
+  border-bottom-color: #27272a;
+  background: #18181b;
+}
+
+html.dark .holodeck-main {
+  background: #09090b;
+}
+
+/* Theme toggle button */
+.holodeck-theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #e4e4e7;
+  background: transparent;
+  color: #71717a;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.holodeck-theme-toggle:hover {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+html.dark .holodeck-theme-toggle {
+  border-color: #3f3f46;
+  color: #a1a1aa;
+}
+
+html.dark .holodeck-theme-toggle:hover {
+  background: #27272a;
+  color: #fafafa;
+}
+
+/* Tool call rendering */
+.holodeck-tool-call {
+  margin: 0.2rem 0;
+  padding: 0.3rem;
+  border-radius: 0.2rem;
+  border: 1px solid #e4e4e7;
+  background: #f9fafb;
+  font-size: 0.875rem;
+}
+
+html.dark .holodeck-tool-call {
+  border-color: #3f3f46;
+  background: #18181b;
+}
+
+.holodeck-tool-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  padding: 0.05rem 0.2rem;
+  border-radius: 9999px;
+}
+
+.holodeck-tool-badge--progress {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+html.dark .holodeck-tool-badge--progress {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+.holodeck-tool-badge--complete {
+  background: #dcfce7;
+  color: #166534;
+}
+
+html.dark .holodeck-tool-badge--complete {
+  background: #14532d;
+  color: #86efac;
+}
+
+.holodeck-tool-details {
+  margin-top: 0.2rem;
+  padding: 0.2rem;
+  border-radius: 0.15rem;
+  background: #f4f4f5;
+}
+
+.holodeck-tool-details summary {
+  font-size: 0.75rem;
+  color: #71717a;
+  cursor: pointer;
+}
+
+.holodeck-tool-details pre {
+  font-size: 0.75rem;
+  overflow-x: auto;
+  margin: 0.1rem 0 0;
+  color: #3f3f46;
+}
+
+html.dark .holodeck-tool-details {
+  background: #27272a;
+}
+
+html.dark .holodeck-tool-details summary {
+  color: #a1a1aa;
+}
+
+html.dark .holodeck-tool-details pre {
+  color: #d4d4d8;
+}
+
+/*
+ * Memory timeline (FactTimeline). Colours come from the theme variables
+ * above, so light and dark follow the same palette as the chat.
+ */
+.holodeck-timeline {
+  --tl-ink: var(--foreground);
+  --tl-ink-soft: color-mix(in srgb, var(--foreground) 72%, var(--card));
+  --tl-quiet: var(--muted-foreground);
+  --tl-rule: var(--border);
+  --tl-open-fill: color-mix(in srgb, var(--primary) 16%, var(--card));
+  --tl-open-edge: var(--primary);
+  --tl-closed-fill: var(--muted);
+  --tl-closed-edge: var(--muted-foreground);
+  --tl-faded-edge: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  --tl-marker: var(--foreground);
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.5rem;
+  color: var(--tl-ink);
+  max-width: 100%;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.holodeck-timeline__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.holodeck-timeline__heading {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.holodeck-timeline__eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tl-quiet);
+}
+
+.holodeck-timeline__entity {
+  font-size: 1.0625rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.holodeck-timeline__summary {
+  font-size: 0.8125rem;
+  color: var(--tl-quiet);
+  font-variant-numeric: tabular-nums;
+}
+
+.holodeck-timeline .holodeck-tool-badge {
+  align-self: center;
+}
+
+.holodeck-timeline__badge--failed {
+  border: 1px solid var(--destructive);
+  color: var(--tl-ink);
+  background: transparent;
+}
+
+.holodeck-timeline__status-line {
+  margin: 0.5rem 0 0;
+  min-height: 1.45em;
+  color: var(--tl-quiet);
+}
+
+.holodeck-timeline__error {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-left: 3px solid var(--destructive);
+  background: var(--muted);
+  border-radius: 0.25rem;
+}
+
+.holodeck-timeline__error p {
+  margin: 0;
+}
+
+.holodeck-timeline__code,
+.holodeck-timeline__file {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+
+.holodeck-timeline__code {
+  display: inline-block;
+  margin-top: 0.25rem;
+  color: var(--tl-quiet);
+}
+
+.holodeck-timeline__quiet {
+  color: var(--tl-quiet);
+}
+
+/* As-of read-out */
+.holodeck-timeline__asof {
+  margin-top: 0.75rem;
+}
+
+.holodeck-timeline__asof-line {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.holodeck-timeline__asof-date {
+  font-weight: 650;
+}
+
+.holodeck-timeline__asof-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  font-size: 0.8125rem;
+  color: var(--tl-ink-soft);
+}
+
+/* Chart */
+.holodeck-timeline__scroll {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+}
+
+.holodeck-timeline__plot {
+  position: relative;
+  padding: 0.25rem 1rem 0;
+}
+
+.holodeck-timeline__lanes {
+  position: relative;
+}
+
+.holodeck-timeline__lane-list,
+.holodeck-timeline__lane-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.holodeck-timeline__lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.holodeck-timeline__grid,
+.holodeck-timeline__today-line,
+.holodeck-timeline__marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  pointer-events: none;
+}
+
+.holodeck-timeline__grid {
+  border-left: 1px solid var(--tl-rule);
+}
+
+.holodeck-timeline__today-line {
+  border-left: 1px dotted var(--tl-quiet);
+}
+
+.holodeck-timeline__marker {
+  top: -0.25rem;
+  bottom: -0.6rem;
+  border-left: 2px solid var(--tl-marker);
+  margin-left: -1px;
+  z-index: 2;
+}
+
+.holodeck-timeline__bar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  min-width: 6px;
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+  border-radius: 0.3rem;
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  /* Closed and not holding at the as-of date: quietest. */
+  background: transparent;
+  border: 1px dashed var(--tl-faded-edge);
+  color: var(--tl-quiet);
+  font-weight: 400;
+}
+
+.holodeck-timeline__bar[data-holds="true"] {
+  background: var(--tl-closed-fill);
+  border-color: var(--tl-closed-edge);
+  color: var(--tl-ink-soft);
+}
+
+.holodeck-timeline__bar[data-open="true"] {
+  border: 2px solid var(--tl-faded-edge);
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  font-weight: 600;
+}
+
+.holodeck-timeline__bar[data-open="true"][data-holds="true"] {
+  background: var(--tl-open-fill);
+  border-color: var(--tl-open-edge);
+  color: var(--tl-ink);
+}
+
+.holodeck-timeline__bar:focus-visible,
+.holodeck-timeline__thumb:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.holodeck-timeline__bar-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Axis and as-of slider */
+.holodeck-timeline__track {
+  position: relative;
+  height: 1.75rem;
+  margin-top: 0.6rem;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.holodeck-timeline__baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--tl-closed-edge);
+}
+
+.holodeck-timeline__tick {
+  position: absolute;
+  top: calc(50% - 4px);
+  height: 8px;
+  border-left: 1px solid var(--tl-closed-edge);
+}
+
+.holodeck-timeline__thumb {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  border-radius: 4px;
+  background: var(--tl-marker);
+  border: 2px solid var(--card);
+  box-sizing: border-box;
+  cursor: grab;
+  z-index: 3;
+}
+
+.holodeck-timeline__thumb:active {
+  cursor: grabbing;
+}
+
+.holodeck-timeline__labels {
+  position: relative;
+  height: 1.25rem;
+  font-size: 0.75rem;
+  color: var(--tl-quiet);
+  font-variant-numeric: tabular-nums;
+}
+
+.holodeck-timeline__label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.holodeck-timeline__label--today {
+  transform: translateX(-100%);
+  color: var(--tl-ink-soft);
+  font-weight: 600;
+}
+
+.holodeck-timeline__inspect {
+  margin: 0.4rem 0 0;
+  min-height: 2.9em;
+  font-size: 0.8125rem;
+}
+
+.holodeck-timeline__inspect-text {
+  color: var(--tl-ink);
+}
+
+.holodeck-timeline__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  color: var(--tl-quiet);
+}
+
+.holodeck-timeline__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.holodeck-timeline__swatch {
+  display: inline-block;
+  width: 1.25rem;
+  height: 0.7rem;
+  border-radius: 0.2rem;
+}
+
+.holodeck-timeline__swatch--open {
+  background: var(--tl-open-fill);
+  border: 2px solid var(--tl-open-edge);
+}
+
+.holodeck-timeline__swatch--closed {
+  background: var(--tl-closed-fill);
+  border: 1px dashed var(--tl-closed-edge);
+}
+
+.holodeck-timeline__swatch--marker {
+  width: 0;
+  height: 0.9rem;
+  border-radius: 0;
+  border-left: 2px solid var(--tl-marker);
+}
+
+/* Fact list */
+.holodeck-timeline__facts {
+  margin-top: 0.9rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--tl-rule);
+}
+
+.holodeck-timeline__facts-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.holodeck-timeline__note {
+  margin: 0.15rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.holodeck-timeline__facts ul {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.holodeck-timeline__fact {
+  padding: 0.4rem 0 0.4rem 0.65rem;
+  border-left: 2px solid transparent;
+}
+
+.holodeck-timeline__fact[data-holds="true"] {
+  border-left-color: var(--tl-marker);
+}
+
+.holodeck-timeline__fact p {
+  margin: 0;
+}
+
+.holodeck-timeline__fact-text {
+  font-size: 0.875rem;
+}
+
+.holodeck-timeline__fact-meta,
+.holodeck-timeline__source {
+  font-size: 0.75rem;
+  color: var(--tl-quiet);
+}
+
+.holodeck-timeline__fact-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  margin-top: 0.15rem !important;
+}
+
+.holodeck-timeline__tag {
+  padding: 0 0.35rem;
+  border-radius: 0.2rem;
+  border: 1px dashed var(--tl-closed-edge);
+  color: var(--tl-ink-soft);
+  font-weight: 500;
+}
+
+.holodeck-timeline__tag--open {
+  border: 1px solid var(--tl-open-edge);
+  background: var(--tl-open-fill);
+  color: var(--tl-ink);
+  font-weight: 600;
+}
+
+.holodeck-timeline__source {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .holodeck-timeline__bar,
+  .holodeck-timeline__fact {
+    transition:
+      background-color 120ms ease-out,
+      border-color 120ms ease-out,
+      color 120ms ease-out;
+  }
+}
+
+/*
+ * Memory search and provenance views (AsOfResults, ProvenanceCard). They sit
+ * on the .holodeck-timeline base and reuse its header, status, error and
+ * fact-list classes; only what is new lives here.
+ */
+.holodeck-asof__instants {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--tl-rule);
+  border-left: 3px solid var(--tl-marker);
+  border-radius: 0.25rem;
+  background: var(--muted);
+}
+
+.holodeck-asof__instant {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.holodeck-asof__instant-label {
+  color: var(--tl-quiet);
+}
+
+.holodeck-asof__instant-date {
+  font-weight: 650;
+}
+
+.holodeck-asof__instant-detail {
+  margin: 0.1rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.holodeck-asof__degraded {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px dashed var(--destructive);
+  border-left: 3px solid var(--destructive);
+  border-radius: 0.25rem;
+}
+
+.holodeck-asof__degraded p {
+  margin: 0.1rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--tl-ink-soft);
+}
+
+.holodeck-asof__degraded-label {
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.holodeck-asof__hits {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.holodeck-asof__hit {
+  padding: 0.4rem 0 0.4rem 0.65rem;
+  border-left: 2px solid var(--tl-rule);
+}
+
+.holodeck-asof__hit[data-kind="fact"] {
+  border-left: 2px solid var(--tl-open-edge);
+}
+
+.holodeck-asof__hit[data-kind="chunk"] {
+  border-left: 2px dashed var(--tl-closed-edge);
+}
+
+.holodeck-asof__hit p {
+  margin: 0;
+}
+
+.holodeck-asof__hit .holodeck-timeline__fact-meta {
+  margin-top: 0.15rem;
+}
+
+.holodeck-asof__text {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.holodeck-asof__passage {
+  font-style: italic;
+  color: var(--tl-ink-soft);
+}
+
+.holodeck-asof [data-clamped="true"] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.holodeck-asof__expand {
+  margin: 0.15rem 0 0;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--tl-rule);
+  border-radius: 0.2rem;
+  background: transparent;
+  color: var(--tl-ink-soft);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.holodeck-asof__expand:hover {
+  background: var(--muted);
+  color: var(--tl-ink);
+}
+
+.holodeck-asof__expand:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Link from a superseded fact hit to the fact that replaced it. */
+.holodeck-asof__link {
+  color: var(--tl-ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.holodeck-asof__link:hover {
+  color: var(--tl-ink);
+}
+
+.holodeck-asof__link:focus-visible,
+.holodeck-asof__hit:focus {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.holodeck-asof__fact {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border-left: 3px solid var(--tl-marker);
+  background: var(--muted);
+  border-radius: 0.25rem;
+}
+
+.holodeck-asof__source-file {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.holodeck-asof__quote {
+  margin: 0.3rem 0 0;
+  padding: 0.3rem 0.65rem;
+  border-left: 3px solid var(--tl-closed-edge);
+  color: var(--tl-ink-soft);
+}
+
+.holodeck-asof__quote-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.holodeck-asof__quote .holodeck-asof [data-clamped="true"] {
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .holodeck-asof__expand {
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+  }
+}
+
+/* /memory-demo page */
+.holodeck-demo {
+  min-height: 100vh;
+  background: var(--background);
+  overflow-x: hidden;
+}
+
+.holodeck-demo__main {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.holodeck-demo__section {
+  margin-bottom: 2rem;
+}
+
+.holodeck-demo__section h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.holodeck-demo__section > p {
+  margin: 0.1rem 0 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}

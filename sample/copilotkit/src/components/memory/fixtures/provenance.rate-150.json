@@ -1,0 +1,39 @@
+{
+  "name": "memory_provenance",
+  "args": {
+    "fact_id": "9f87ed20-3484-4d29-910c-38b0b70bed1f"
+  },
+  "result": {
+    "found": true,
+    "fact": {
+      "fact_id": "9f87ed20-3484-4d29-910c-38b0b70bed1f",
+      "text": "From 1 July 2024, the base rate of Family Benefit is 150 dollars per fortnight for each child.",
+      "valid_from": "2024-07-01T00:00:00Z",
+      "valid_to": null,
+      "recorded_at": "2026-11-11T07:31:34.327700Z",
+      "expired_at": null,
+      "sources": [
+        {
+          "episode_id": "f475b3f1-4754-59dd-b877-44ea3324be2b",
+          "source_tool": "benefit_docs",
+          "chunk_id": "docs_rate-2024.md_chunk_1",
+          "source_uri": "docs/rate-2024.md",
+          "reference_time": "2024-07-01T00:00:00Z",
+          "reference_time_source": "front_matter",
+          "text": null
+        }
+      ]
+    },
+    "sources": [
+      {
+        "episode_id": "f475b3f1-4754-59dd-b877-44ea3324be2b",
+        "source_tool": "benefit_docs",
+        "chunk_id": "docs_rate-2024.md_chunk_1",
+        "source_uri": "docs/rate-2024.md",
+        "reference_time": "2024-07-01T00:00:00Z",
+        "reference_time_source": "front_matter",
+        "text": "# Family Benefit base rate\n\nFrom 1 July 2024 the base rate of Family Benefit is 150 dollars per fortnight for each child."
+      }
+    ]
+  }
+}
