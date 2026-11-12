@@ -6,7 +6,30 @@ content-hash uuid the service chose:
 1. Load the episode node by uuid. If it is absent, save it as *pending*.
    If it is *complete*, skip it.
 2. Run ``add_episode`` on that uuid.
-3. Load the node again and save it as *complete*.
+3. Give each of the episode's facts that has no start date the start of the
+   earliest episode that states it (Neo4j). An undated fact would count as
+   true at every instant and could never be closed. A fact whose end is not
+   after that start is left undated: dating it would invert its interval.
+4. Check each fact ``add_episode`` closed against the source text, and
+   reopen it when its section, or its line, did not change, when no edge
+   the episode wrote could replace it, when it comes from another document,
+   or when a later-dated episode states it (Neo4j; see
+   ``graphiti_closure``). Skipped for an episode with no section id.
+5. With ``close_on_text_change``, close each open fact of the older versions
+   of the episode's section whose source line changed and that the new
+   section text no longer states (Neo4j; ``decide_text_closure``). Runs
+   once every other chunk of the new section is complete.
+6. Load the node again and save it as *complete*.
+
+One namespace must be ingested by one writer at a time. Nothing in HoloDeck
+serialises it (the CLI, ``ingest_on_start`` and the Temporal activity each
+call ``TemporalMemory.ingest`` with no lock). The closure check finds the
+facts this episode closed through the episode node's ``entity_edges`` (the
+edges Graphiti resolved or invalidated for it), so a concurrent writer's
+closures are not taken for this episode's. Text closing and the reads of
+older versions still assume no other writer changes the namespace meanwhile.
+
+``backfill_fact_start_dates`` applies step 3 to a graph ingested before it.
 
 The state lives in the node's ``name`` (``hd1:<state>:<json>``), because an
 episode node stores only Graphiti's own nine fields. A crash at any point
@@ -30,13 +53,22 @@ import asyncio
 import importlib
 import json
 import logging
-from collections.abc import Awaitable, Iterable, Sequence
+from collections.abc import Awaitable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar
 from uuid import UUID
 
 from holodeck.lib.extras import MissingExtraError, require_extra
+from holodeck.lib.memory.backends.graphiti_closure import (
+    EdgeShape,
+    SectionKey,
+    could_replace,
+    decide_closure,
+    decide_text_closure,
+    same_section,
+    section_lines,
+)
 from holodeck.lib.memory.backends.graphiti_secrets import credential_values, redact
 from holodeck.lib.memory.entity_match import EntityCandidate, resolve_entities
 from holodeck.lib.memory.errors import (
@@ -58,7 +90,11 @@ from holodeck.lib.memory.types import (
     validate_namespace,
 )
 from holodeck.models.llm import LLMProvider
-from holodeck.models.tool import GraphBackendConfig
+from holodeck.models.tool import (
+    GraphBackendConfig,
+    MemorySchemaHints,
+    ReasoningEffort,
+)
 
 if TYPE_CHECKING:
     from graphiti_core import Graphiti
@@ -113,6 +149,131 @@ SET e.name = $name
 RETURN count(e) AS updated
 """
 
+# A fact with no start date counts as true at every instant (seam 5) and can
+# never be closed (seam 3). Graphiti leaves ``valid_at`` null when the
+# extraction model gives no date, so the backend dates such a fact by the
+# document it came from: the earliest start of the episodes that state it.
+# The episode just written is one of them, so a new fact gets that episode's
+# reference time; ``$reference_time`` is the fallback when no episode node is
+# found. A non-null ``valid_at`` is never changed. A fact whose ``invalid_at``
+# is not after that start stays undated (``inverted``): its interval would
+# end before it began.
+DATE_EPISODE_FACTS_QUERY = """
+MATCH ()-[r:RELATES_TO]->()
+WHERE r.group_id = $group_id AND r.valid_at IS NULL AND $uuid IN r.episodes
+UNWIND r.episodes AS episode_uuid
+OPTIONAL MATCH (ep:Episodic {uuid: episode_uuid})
+WHERE ep.group_id = $group_id
+WITH r, coalesce(min(ep.valid_at), $reference_time) AS first_seen
+WITH r, first_seen, (r.invalid_at IS NULL OR r.invalid_at > first_seen) AS fits
+FOREACH (ignored IN CASE WHEN fits THEN [1] ELSE [] END | SET r.valid_at = first_seen)
+RETURN count(CASE WHEN fits THEN 1 END) AS dated,
+       count(CASE WHEN NOT fits THEN 1 END) AS inverted
+"""
+
+# The same dating for a graph ingested before the rule above existed. Each
+# undated fact gets the earliest start of its episodes in the namespace,
+# under the same interval guard. A second run finds no undated fact it can
+# date and changes nothing.
+BACKFILL_FACT_START_QUERY = """
+MATCH ()-[r:RELATES_TO]->()
+WHERE r.group_id = $group_id AND r.valid_at IS NULL
+UNWIND r.episodes AS episode_uuid
+MATCH (ep:Episodic {uuid: episode_uuid})
+WHERE ep.group_id = $group_id AND ep.valid_at IS NOT NULL
+WITH r, min(ep.valid_at) AS first_seen
+WITH r, first_seen, (r.invalid_at IS NULL OR r.invalid_at > first_seen) AS fits
+FOREACH (ignored IN CASE WHEN fits THEN [1] ELSE [] END | SET r.valid_at = first_seen)
+RETURN count(CASE WHEN fits THEN 1 END) AS dated,
+       count(CASE WHEN NOT fits THEN 1 END) AS inverted
+"""
+
+# A retry of a pending episode: ``add_episode`` replaces the node's
+# ``entity_edges`` with the retry's edges. The earlier attempts' edges are
+# added back, so the closures an attempt made before it failed are checked.
+KEEP_EPISODE_EDGES_QUERY = """
+MATCH (e:Episodic {uuid: $uuid})
+WHERE e.group_id = $group_id
+WITH e, coalesce(e.entity_edges, []) AS current
+SET e.entity_edges = current + [u IN $edges WHERE NOT u IN current]
+RETURN size(e.entity_edges) AS edges
+"""
+
+# The facts ``add_episode`` closed for this episode. Graphiti records no
+# "closed by" link on a fact, but it lists every edge it resolved or
+# invalidated for an episode in the episode node's ``entity_edges``. So a
+# closure counts when the fact is in that list and was stamped at or after
+# ``$since``: the first attempt's start, read with Graphiti's clock (it
+# stamps ``expired_at`` with the same clock). The list excludes a concurrent
+# writer's closures; the window excludes an old closed fact the episode
+# restated.
+CLOSED_SINCE_QUERY = """
+MATCH (e:Episodic {uuid: $uuid})
+WHERE e.group_id = $group_id
+MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity)
+WHERE r.group_id = $group_id AND r.uuid IN coalesce(e.entity_edges, [])
+  AND r.invalid_at IS NOT NULL
+  AND r.expired_at IS NOT NULL AND r.expired_at >= $since
+RETURN r.uuid AS fact_uuid, r.fact AS fact, r.episodes AS episodes,
+       r.name AS name, s.uuid AS source_uuid, t.uuid AS target_uuid
+"""
+
+# The open facts an episode wrote or touched: the facts that could replace
+# one it closed (the replacement guard in ``graphiti_closure``).
+EPISODE_OPEN_FACTS_QUERY = """
+MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity)
+WHERE r.group_id = $group_id AND $uuid IN r.episodes AND r.expired_at IS NULL
+RETURN r.uuid AS fact_uuid, r.name AS name, s.uuid AS source_uuid,
+       t.uuid AS target_uuid
+"""
+
+# Reopen facts the closure check found still stated by their source.
+REOPEN_FACTS_QUERY = """
+MATCH ()-[r:RELATES_TO]->()
+WHERE r.group_id = $group_id AND r.uuid IN $fact_uuids
+SET r.invalid_at = null, r.expired_at = null
+RETURN count(r) AS reopened
+"""
+
+# Text closing (``decide_text_closure``). The older complete episodes of a
+# section: a pre-filter on the name, which holds the section keys as JSON
+# (``encode_episode_name``); ``same_section`` and the document lineage
+# (``_same_lineage``) decide in Python.
+OLD_SECTION_EPISODES_QUERY = """
+MATCH (e:Episodic)
+WHERE e.group_id = $group_id AND e.valid_at < $reference_time
+  AND e.name STARTS WITH $prefix
+  AND (e.name CONTAINS $section_id_key OR e.name CONTAINS $section_number_key)
+RETURN e.uuid AS uuid, e.name AS name
+"""
+
+# The open, dated facts the old episodes state and the new section does not.
+# A fact that any chunk of the new section restated is still true, and so is
+# a fact an episode dated after the new one states: an older version
+# ingested after a newer one does not end what the newer one says.
+TEXT_CLOSURE_CANDIDATES_QUERY = """
+MATCH ()-[r:RELATES_TO]->()
+WHERE r.group_id = $group_id AND r.invalid_at IS NULL AND r.expired_at IS NULL
+  AND r.valid_at IS NOT NULL AND r.valid_at < $reference_time
+  AND any(u IN r.episodes WHERE u IN $old_uuids)
+  AND none(u IN r.episodes WHERE u IN $new_uuids)
+OPTIONAL MATCH (later:Episodic)
+WHERE later.uuid IN r.episodes AND later.group_id = $group_id
+  AND later.valid_at > $reference_time
+WITH r, count(later) AS later_sources
+WHERE later_sources = 0
+RETURN r.uuid AS fact_uuid, r.fact AS fact
+"""
+
+# Close facts whose source line changed. An already-closed fact is not touched.
+CLOSE_FACTS_QUERY = """
+MATCH ()-[r:RELATES_TO]->()
+WHERE r.group_id = $group_id AND r.uuid IN $fact_uuids
+  AND r.invalid_at IS NULL AND r.expired_at IS NULL
+SET r.invalid_at = $reference_time, r.expired_at = $now
+RETURN count(r) AS closed
+"""
+
 # The candidate entities of a timeline: an exact uuid, or a name the reference
 # contains in any case (which covers an equal name). This is a pre-filter
 # only; ``entity_match.resolve_entities`` decides, so "s. 1" is not taken for
@@ -141,23 +302,42 @@ class EmbeddingService(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class EpisodeName:
-    """The HoloDeck fields and the state kept in an episode node's ``name``."""
+    """The HoloDeck fields and the state kept in an episode node's ``name``.
+
+    ``section`` is None for an episode written without a section id,
+    including every episode written before section metadata existed.
+    ``document_key`` is the document's lineage (``EpisodeIn.document_key``),
+    empty when it has none.
+    """
 
     state: EpisodeState
     source_tool: str
     chunk_id: str
     source_uri: str
     reference_time_source: ReferenceTimeSource
+    section: SectionKey | None = None
+    document_key: str = ""
 
 
 def encode_episode_name(state: EpisodeState, episode: EpisodeIn) -> str:
-    """Return ``hd1:<state>:<json>`` for ``episode``."""
-    payload = {
+    """Return ``hd1:<state>:<json>`` for ``episode``.
+
+    The section keys are written only when the episode has a section id,
+    and the document key only when it is set, so the name of an episode
+    without them is what it was before they existed.
+    """
+    payload: dict[str, str | list[str]] = {
         "source_tool": episode.source_tool,
         "chunk_id": episode.chunk_id,
         "source_uri": episode.source_uri,
         "date_source": episode.reference_time_source,
     }
+    if episode.section_id:
+        payload["section_id"] = episode.section_id
+        payload["section_number"] = episode.section_number
+        payload["section_path"] = list(episode.section_path)
+    if episode.document_key:
+        payload["document_key"] = episode.document_key
     body = json.dumps(
         payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )
@@ -207,6 +387,33 @@ def decode_episode_name(name: str) -> EpisodeName | None:
         chunk_id=chunk_id,
         source_uri=source_uri,
         reference_time_source=typed_source,
+        section=_decode_section(payload),
+        document_key=_decode_text(payload, "document_key"),
+    )
+
+
+def _decode_text(payload: dict[str, object], key: str) -> str:
+    """An optional text field of a decoded name; "" when absent or malformed."""
+    value = payload.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _decode_section(payload: dict[str, object]) -> SectionKey | None:
+    """The section keys of a decoded name; None when absent or malformed.
+
+    A malformed section does not make the episode foreign: it only makes
+    its section unknown to the closure check.
+    """
+    section_id = payload.get("section_id")
+    if not isinstance(section_id, str) or not section_id:
+        return None
+    number = payload.get("section_number")
+    path = payload.get("section_path")
+    path_items = path if isinstance(path, list) else []
+    return SectionKey(
+        section_id=section_id,
+        number=number if isinstance(number, str) else "",
+        path=tuple(item for item in path_items if isinstance(item, str)),
     )
 
 
@@ -261,6 +468,18 @@ def _unreachable_error_types() -> tuple[type[BaseException], ...]:
 
 def _is_unreachable(error: BaseException) -> bool:
     return isinstance(error, _unreachable_error_types())
+
+
+def _dates_facts(driver: GraphDriver) -> bool:
+    """True for a store where the fact-dating and closure queries run.
+
+    The queries match ``RELATES_TO`` relationships with a list of episodes,
+    which is Neo4j's layout. Kuzu keeps a fact as a node and Neptune keeps
+    the episodes as one string; FalkorDB is not verified.
+    """
+    from graphiti_core.driver.driver import GraphProvider
+
+    return bool(driver.provider == GraphProvider.NEO4J)
 
 
 def _describe(error: BaseException) -> str:
@@ -409,20 +628,28 @@ class GraphitiBackend:
         config: GraphBackendConfig,
         extraction_model: LLMProvider,
         embedding_service: EmbeddingService,
-        entity_types: Sequence[str] = (),
+        schema_hints: MemorySchemaHints | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        close_on_text_change: bool = False,
     ) -> None:
         self._config = config
         self._extraction_model = extraction_model
         self._embedding_service = embedding_service
-        self._entity_types = tuple(entity_types)
+        self._schema_hints = schema_hints or MemorySchemaHints()
+        self._reasoning_effort = reasoning_effort
+        self._close_on_text_change = close_on_text_change
         self._capabilities = MemoryCapabilities(backend=NAME, supported=SUPPORTED)
         self._graphiti: Graphiti | None = None
         self._llm: CountingLLMClient | None = None
         self._entity_models: dict[str, type[BaseModel]] | None = None
+        self._edge_models: dict[str, type[BaseModel]] | None = None
+        self._edge_type_map: dict[tuple[str, str], list[str]] | None = None
         self._scoped: dict[str, GraphDriver] = {}
         self._indices_built = False
         self._lock = asyncio.Lock()
         self._orphans: set[asyncio.Task[None]] = set()
+        self._undated_warned = False
+        self._unsectioned_logged = False
 
     @property
     def name(self) -> str:
@@ -450,6 +677,7 @@ class GraphitiBackend:
                         self._config,
                         self._extraction_model,
                         self._embedding_service,
+                        self._reasoning_effort,
                     )
                 )
                 try:
@@ -464,9 +692,21 @@ class GraphitiBackend:
                     raise MemoryConfigError(
                         f"the graphiti backend could not be built: {detail}"
                     ) from error
+                hints = self._schema_hints
                 self._entity_models = (
-                    graphiti_clients.entity_type_models(self._entity_types)
-                    if self._entity_types
+                    graphiti_clients.entity_type_models(hints.entity_type_specs)
+                    if hints.entity_types
+                    else None
+                )
+                self._edge_models = (
+                    graphiti_clients.edge_type_models(hints.edge_types)
+                    if hints.edge_types
+                    else None
+                )
+                # Unset: Graphiti allows every edge type between any entities.
+                self._edge_type_map = (
+                    graphiti_clients.edge_type_map(hints.edge_type_map)
+                    if hints.edge_type_map
                     else None
                 )
                 self._graphiti = runtime.graphiti
@@ -610,18 +850,19 @@ class GraphitiBackend:
         graphiti = await self._ready()
         driver = self._driver(graphiti, namespace)
         meter = _Meter.start(self._llm, graphiti)
+        tally = _ClosureTally()
         written: list[UUID] = []
         for episode in episodes:
             outcome = await self._ingest_one(
-                graphiti, driver, namespace, episode, instructions
+                graphiti, driver, namespace, episode, instructions, tally
             )
             if isinstance(outcome, _Failure):
                 return meter.report(
-                    written, failed=episode.episode_id, error=outcome.error
+                    written, tally, failed=episode.episode_id, error=outcome.error
                 )
             if outcome == "written":
                 written.append(episode.episode_id)
-        return meter.report(written)
+        return meter.report(written, tally)
 
     async def _ingest_one(
         self,
@@ -630,8 +871,12 @@ class GraphitiBackend:
         namespace: str,
         episode: EpisodeIn,
         instructions: str,
+        tally: _ClosureTally,
     ) -> Literal["written", "skipped"] | _Failure:
-        """Ingest one episode, or say why it failed."""
+        """Ingest one episode, or say why it failed.
+
+        Closure-check counts are added to ``tally``.
+        """
         from graphiti_core.nodes import EpisodeType, EpisodicNode
         from graphiti_core.utils.datetime_utils import utc_now
 
@@ -655,7 +900,14 @@ class GraphitiBackend:
             )
         description = source_sentence(episode)
         context = await self._context(driver, namespace, episode)
-        if node is None:
+        # The closure check covers every attempt: ``since`` is the first
+        # attempt's start (the pending node's ``created_at``, which Graphiti
+        # keeps), and the edges earlier attempts recorded are kept.
+        earlier_edges: list[str] = []
+        if node is not None:
+            since = _utc(node.created_at)
+            earlier_edges = list(node.entity_edges)
+        else:
             pending = EpisodicNode(
                 uuid=str(episode.episode_id),
                 name=encode_episode_name("pending", episode),
@@ -664,9 +916,11 @@ class GraphitiBackend:
                 source=EpisodeType.text,
                 source_description=description,
                 content=episode.text,
+                # Graphiti's clock: it stamps the facts it closes with it.
                 created_at=utc_now(),
                 valid_at=episode.reference_time,
             )
+            since = pending.created_at
             await self._store("save pending episode", pending.save(driver))
 
         try:
@@ -679,9 +933,29 @@ class GraphitiBackend:
                 group_id=namespace,
                 uuid=str(episode.episode_id),
                 entity_types=self._entity_models,
+                edge_types=self._edge_models,
+                edge_type_map=self._edge_type_map,
                 previous_episode_uuids=context,
                 custom_extraction_instructions=instructions,
             )
+            if earlier_edges and _dates_facts(driver):
+                await driver.execute_query(
+                    KEEP_EPISODE_EDGES_QUERY,
+                    uuid=str(episode.episode_id),
+                    group_id=namespace,
+                    edges=earlier_edges,
+                )
+            # Before the marker: a failure here leaves the episode pending,
+            # so the next run dates its facts again.
+            await self._date_episode_facts(driver, namespace, episode)
+            checked = await self._check_closures(driver, namespace, episode, since)
+            if self._close_on_text_change and _dates_facts(driver):
+                checked.closed_by_text = await self._close_changed_lines(
+                    driver, namespace, episode
+                )
+            if _dates_facts(driver) and episode.section_id:
+                self._log_closures(episode, checked)
+            tally.add(checked)
             result = await driver.execute_query(
                 MARK_COMPLETE_QUERY,
                 uuid=str(episode.episode_id),
@@ -706,6 +980,284 @@ class GraphitiBackend:
             )
             return _Failure(self._redact(str(error) or type(error).__name__))
         return "written"
+
+    async def _date_episode_facts(
+        self, driver: GraphDriver, namespace: str, episode: EpisodeIn
+    ) -> None:
+        """Give the episode's undated facts a start date (one Cypher write).
+
+        Raises like ``add_episode``: the caller reports the failure.
+        """
+        if not _dates_facts(driver):
+            if not self._undated_warned:
+                self._undated_warned = True
+                logger.warning(
+                    "graphiti facts with no start date are left undated on %s; "
+                    "dating is implemented for neo4j only",
+                    driver.provider.value,
+                )
+            return
+        result = await driver.execute_query(
+            DATE_EPISODE_FACTS_QUERY,
+            uuid=str(episode.episode_id),
+            group_id=namespace,
+            reference_time=episode.reference_time,
+        )
+        inverted = _count(result, "inverted")
+        if inverted:
+            logger.warning(
+                "graphiti episode %s: %d facts left undated; their end is not "
+                "after the start their episodes give",
+                episode.episode_id,
+                inverted,
+            )
+
+    async def _check_closures(
+        self,
+        driver: GraphDriver,
+        namespace: str,
+        episode: EpisodeIn,
+        since: datetime,
+    ) -> _ClosureTally:
+        """Reopen the facts ``add_episode`` closed whose source is unchanged.
+
+        Rules in ``graphiti_closure``. Neo4j only, like the dating; an
+        episode with no section id is not checked. Raises like
+        ``add_episode``: the caller reports the failure, and the episode
+        stays pending.
+        """
+        if not _dates_facts(driver):
+            return _ClosureTally()
+        if not episode.section_id:
+            if not self._unsectioned_logged:
+                self._unsectioned_logged = True
+                logger.info(
+                    "graphiti closure check skipped: episodes carry no section "
+                    "id, so closed facts are left as the model closed them"
+                )
+            return _ClosureTally()
+        own = str(episode.episode_id)
+        result = await driver.execute_query(
+            CLOSED_SINCE_QUERY, group_id=namespace, uuid=own, since=since
+        )
+        closed = _closed_facts(result[0] if result else [])
+        if not closed:
+            return _ClosureTally()
+        from graphiti_core.nodes import EpisodicNode
+
+        wanted = [str(i) for i in episode.section_episode_ids if str(i) != own]
+        wanted += [uuid for fact in closed for uuid in fact.episodes if uuid != own]
+        nodes = await EpisodicNode.get_by_uuids(driver, list(dict.fromkeys(wanted)))
+        by_uuid = {node.uuid: node for node in nodes if node.group_id == namespace}
+        new_section = SectionKey(
+            episode.section_id, episode.section_number, episode.section_path
+        )
+        new_texts = _section_texts(episode, by_uuid)
+        written = await driver.execute_query(
+            EPISODE_OPEN_FACTS_QUERY, group_id=namespace, uuid=own
+        )
+        replacements = _edge_shapes(written[0] if written else [])
+        reopen: list[str] = []
+        no_replacement = 0
+        for fact in closed:
+            sources = [
+                by_uuid[uuid]
+                for uuid in dict.fromkeys(fact.episodes)
+                if uuid != own and uuid in by_uuid
+            ]
+            if not sources:
+                # A new fact closed on arrival, or a source outside the
+                # namespace: nothing to compare, so the closure stands.
+                continue
+            origin = min(sources, key=lambda node: (_utc(node.valid_at), node.uuid))
+            origin_name = decode_episode_name(origin.name)
+            old_section = origin_name.section if origin_name else None
+            decision = decide_closure(
+                fact=fact.fact,
+                old_section=old_section,
+                old_texts=_old_texts(origin, origin_name, sources),
+                new_section=new_section,
+                new_texts=new_texts,
+                replaced=any(could_replace(fact.shape, e) for e in replacements),
+                restated_later=any(
+                    _utc(node.valid_at) > _utc(episode.reference_time)
+                    for node in sources
+                ),
+                other_document=(
+                    origin_name is not None and not _same_lineage(origin_name, episode)
+                ),
+            )
+            if decision.reopen:
+                reopen.append(fact.uuid)
+                if decision.reason == "no_replacement":
+                    no_replacement += 1
+        if reopen:
+            await driver.execute_query(
+                REOPEN_FACTS_QUERY, group_id=namespace, fact_uuids=reopen
+            )
+        tally = _ClosureTally(
+            closed=len(closed),
+            reopened=len(reopen),
+            kept=len(closed) - len(reopen),
+            reopened_no_replacement=no_replacement,
+        )
+        return tally
+
+    async def _close_changed_lines(
+        self, driver: GraphDriver, namespace: str, episode: EpisodeIn
+    ) -> int:
+        """Close open facts of the section's older versions whose line changed.
+
+        Rules in ``graphiti_closure.decide_text_closure``. The older versions
+        are every complete episode dated before the episode's, of the same
+        section (``same_section``) and the same document lineage
+        (``_same_lineage``). All earlier dates count, not only the latest:
+        a chunk left unchanged by an intermediate version keeps its first
+        episode and date. A fact from a line that an intermediate version
+        removed was closed then, so taking the union is safe. Runs only when
+        every other chunk of the new section is complete, so a line that
+        moved to a later chunk is not taken for a removed line. Returns how
+        many facts were closed. Raises like ``add_episode``: the caller
+        reports the failure.
+        """
+        from graphiti_core.nodes import EpisodicNode
+        from graphiti_core.utils.datetime_utils import utc_now
+
+        if not episode.section_id:
+            return 0
+        own = str(episode.episode_id)
+        new_ids = list(
+            dict.fromkeys([own, *(str(i) for i in episode.section_episode_ids)])
+        )
+        others = [uuid for uuid in new_ids if uuid != own]
+        siblings = await EpisodicNode.get_by_uuids(driver, others) if others else []
+        by_uuid = {node.uuid: node for node in siblings if node.group_id == namespace}
+        # A pending sibling has not finished; its facts may not be written.
+        if any(
+            uuid not in by_uuid or not is_complete(by_uuid[uuid].name)
+            for uuid in others
+        ):
+            return 0
+        new_section = SectionKey(
+            episode.section_id, episode.section_number, episode.section_path
+        )
+        result = await driver.execute_query(
+            OLD_SECTION_EPISODES_QUERY,
+            group_id=namespace,
+            reference_time=episode.reference_time,
+            prefix=COMPLETE_PREFIX,
+            section_id_key=_name_key("section_id", episode.section_id),
+            section_number_key=(
+                _name_key("section_number", episode.section_number)
+                if episode.section_number
+                else _name_key("section_id", episode.section_id)
+            ),
+        )
+        candidates = [
+            uuid
+            for uuid, name in _named_rows(result[0] if result else [])
+            if uuid not in new_ids
+            and name.section is not None
+            and same_section(name.section, new_section)
+            and _same_lineage(name, episode)
+        ]
+        if not candidates:
+            return 0
+        old_nodes = sorted(
+            (
+                node
+                for node in await EpisodicNode.get_by_uuids(driver, candidates)
+                if node.group_id == namespace
+                and _utc(node.valid_at) < _utc(episode.reference_time)
+            ),
+            key=_chunk_order,
+        )
+        if not old_nodes:
+            return 0
+        found = await driver.execute_query(
+            TEXT_CLOSURE_CANDIDATES_QUERY,
+            group_id=namespace,
+            reference_time=episode.reference_time,
+            old_uuids=[node.uuid for node in old_nodes],
+            new_uuids=new_ids,
+        )
+        facts = _open_facts(found[0] if found else [])
+        if not facts:
+            return 0
+        old_lines = section_lines([node.content for node in old_nodes])
+        new_text = "\n".join(_section_texts(episode, by_uuid))
+        close = [
+            uuid
+            for uuid, fact in facts
+            if decide_text_closure(
+                fact=fact, old_lines=old_lines, new_text=new_text
+            ).close
+        ]
+        if not close:
+            return 0
+        written = await driver.execute_query(
+            CLOSE_FACTS_QUERY,
+            group_id=namespace,
+            fact_uuids=close,
+            reference_time=episode.reference_time,
+            now=utc_now(),
+        )
+        records = written[0] if written else []
+        value = records[0]["closed"] if records else 0
+        return value if isinstance(value, int) else 0
+
+    @staticmethod
+    def _log_closures(episode: EpisodeIn, tally: _ClosureTally) -> None:
+        logger.info(
+            "graphiti closure check, episode %s: %d closed by extraction, "
+            "%d reopened (%d with no replacement), %d kept closed, "
+            "%d closed by text change",
+            episode.episode_id,
+            tally.closed,
+            tally.reopened,
+            tally.reopened_no_replacement,
+            tally.kept,
+            tally.closed_by_text,
+        )
+
+    async def backfill_fact_start_dates(self, namespace: str) -> int:
+        """Date every undated fact in ``namespace``; return how many changed.
+
+        For a graph ingested before ingestion dated its facts. Each fact
+        with a null ``valid_at`` gets the earliest ``valid_at`` of the
+        episodes that state it. Idempotent: a second call returns 0.
+        Not part of the ``MemoryBackend`` port.
+        """
+        validate_namespace(namespace)
+        graphiti = await self._graph()
+        driver = self._driver(graphiti, namespace)
+        if not _dates_facts(driver):
+            raise TemporalMemoryError(
+                f"Memory backend '{NAME}': dating facts is implemented for "
+                f"neo4j only, not {driver.provider.value}"
+            )
+        result = await self._store(
+            "backfill fact start dates",
+            driver.execute_query(BACKFILL_FACT_START_QUERY, group_id=namespace),
+        )
+        records = result[0] if result else []
+        if not records:
+            return 0
+        value = records[0]["dated"]
+        if not isinstance(value, int):
+            raise TemporalMemoryError(
+                f"Memory backend '{NAME}': backfill returned "
+                f"{type(value).__name__}, not int"
+            )
+        inverted = _count(result, "inverted")
+        if inverted:
+            logger.warning(
+                "graphiti backfill in %s: %d facts left undated; their end is "
+                "not after the start their episodes give",
+                namespace,
+                inverted,
+            )
+        return value
 
     async def _context(
         self, driver: GraphDriver, namespace: str, episode: EpisodeIn
@@ -946,6 +1498,193 @@ class GraphitiBackend:
 
 
 @dataclass(frozen=True, slots=True)
+class _ClosedFact:
+    """A fact ``add_episode`` closed, as the window query returns it."""
+
+    uuid: str
+    fact: str
+    episodes: tuple[str, ...]
+    shape: EdgeShape
+
+
+def _edge_shape(record: Mapping[str, object]) -> EdgeShape | None:
+    """The endpoints and name of a row, or None when one is missing."""
+    source = record["source_uuid"]
+    target = record["target_uuid"]
+    name = record["name"]
+    if not (
+        isinstance(source, str) and isinstance(target, str) and isinstance(name, str)
+    ):
+        return None
+    return EdgeShape(source_uuid=source, target_uuid=target, name=name)
+
+
+def _edge_shapes(records: Sequence[Mapping[str, object]]) -> list[EdgeShape]:
+    """Typed rows of ``EPISODE_OPEN_FACTS_QUERY``; a malformed row is left out."""
+    return [shape for record in records if (shape := _edge_shape(record)) is not None]
+
+
+def _closed_facts(records: Sequence[Mapping[str, object]]) -> list[_ClosedFact]:
+    """Typed rows of ``CLOSED_SINCE_QUERY``; a malformed row is left out."""
+    facts: list[_ClosedFact] = []
+    for record in records:
+        uuid = record["fact_uuid"]
+        fact = record["fact"]
+        episodes = record["episodes"]
+        shape = _edge_shape(record)
+        if not (
+            isinstance(uuid, str)
+            and isinstance(fact, str)
+            and isinstance(episodes, list)
+            and shape is not None
+        ):
+            continue
+        facts.append(
+            _ClosedFact(
+                uuid=uuid,
+                fact=fact,
+                episodes=tuple(e for e in episodes if isinstance(e, str)),
+                shape=shape,
+            )
+        )
+    return facts
+
+
+def _section_texts(
+    episode: EpisodeIn, by_uuid: Mapping[str, EpisodicNode]
+) -> list[str]:
+    """The new section's chunk texts in document order.
+
+    The episode's own text comes from the episode; the other chunks from
+    their nodes. A chunk with no node yet (later in the document) is absent.
+    """
+    ids = episode.section_episode_ids or (episode.episode_id,)
+    if episode.episode_id not in ids:
+        ids = (*ids, episode.episode_id)
+    texts: list[str] = []
+    for episode_id in ids:
+        if episode_id == episode.episode_id:
+            texts.append(episode.text)
+        elif (node := by_uuid.get(str(episode_id))) is not None:
+            texts.append(node.content)
+    return texts
+
+
+def _name_key(key: str, value: str) -> str:
+    """``"key":"value"`` as ``encode_episode_name`` writes it."""
+    return f"{json.dumps(key)}:{json.dumps(value, ensure_ascii=False)}"
+
+
+def _named_rows(
+    records: Sequence[Mapping[str, object]],
+) -> list[tuple[str, EpisodeName]]:
+    """Rows of ``OLD_SECTION_EPISODES_QUERY`` with a name that decodes."""
+    rows: list[tuple[str, EpisodeName]] = []
+    for record in records:
+        uuid = record["uuid"]
+        name = record["name"]
+        if not (isinstance(uuid, str) and isinstance(name, str)):
+            continue
+        decoded = decode_episode_name(name)
+        if decoded is not None:
+            rows.append((uuid, decoded))
+    return rows
+
+
+def _open_facts(records: Sequence[Mapping[str, object]]) -> list[tuple[str, str]]:
+    """Rows of ``TEXT_CLOSURE_CANDIDATES_QUERY`` as (uuid, fact)."""
+    return [
+        (uuid, fact)
+        for record in records
+        if isinstance(uuid := record["fact_uuid"], str)
+        and isinstance(fact := record["fact"], str)
+    ]
+
+
+def _chunk_order(node: EpisodicNode) -> tuple[datetime, str, str]:
+    """A stable order for old chunks: by date, then chunk id.
+
+    The decision does not depend on it.
+    """
+    name = decode_episode_name(node.name)
+    return (_utc(node.valid_at), name.chunk_id if name is not None else "", node.uuid)
+
+
+def _same_lineage(old: EpisodeName, new: EpisodeIn) -> bool:
+    """True when ``old`` may be an earlier version of ``new``'s document.
+
+    When both documents have a ``series_id`` (``document_key``), the keys
+    decide. Otherwise the two must come from the same source tool. Two
+    documents in one tool with no ``series_id`` cannot be told apart, so a
+    heading they share counts as one section: give them a ``series_id``.
+    """
+    if old.document_key and new.document_key:
+        return old.document_key == new.document_key
+    return old.source_tool == new.source_tool
+
+
+def _count(result: Sequence[object] | None, key: str) -> int:
+    """An integer column of a one-row aggregate result; 0 when absent."""
+    if not result:
+        return 0
+    records = result[0]
+    if not isinstance(records, Sequence) or not records:
+        return 0
+    record = records[0]
+    if not isinstance(record, Mapping):
+        return 0
+    value = record.get(key)
+    return value if isinstance(value, int) else 0
+
+
+def _old_texts(
+    origin: EpisodicNode,
+    origin_name: EpisodeName | None,
+    sources: Sequence[EpisodicNode],
+) -> list[str]:
+    """The origin's text, then the fact's other sources in its section.
+
+    Another source counts when it is in the same document and the same
+    section as the origin (``same_section``, so the chunks of a section
+    split under positional ids count); with an unknown section, the origin
+    stands alone.
+    """
+    texts = [origin.content]
+    if origin_name is None or origin_name.section is None:
+        return texts
+    for node in sources:
+        if node is origin:
+            continue
+        name = decode_episode_name(node.name)
+        if (
+            name is not None
+            and name.section is not None
+            and name.source_uri == origin_name.source_uri
+            and same_section(name.section, origin_name.section)
+        ):
+            texts.append(node.content)
+    return texts
+
+
+@dataclass(slots=True)
+class _ClosureTally:
+    """Closure-check counts over one ``ingest`` call."""
+
+    closed: int = 0
+    reopened: int = 0
+    kept: int = 0
+    reopened_no_replacement: int = 0
+    closed_by_text: int = 0
+
+    def add(self, other: _ClosureTally) -> None:
+        self.closed += other.closed
+        self.reopened += other.reopened
+        self.kept += other.kept
+        self.reopened_no_replacement += other.reopened_no_replacement
+        self.closed_by_text += other.closed_by_text
+
+
+@dataclass(frozen=True, slots=True)
 class _Failure:
     """Why one episode failed. Reported in ``IngestReport``, not raised."""
 
@@ -992,6 +1731,7 @@ class _Meter:
     def report(
         self,
         written: list[UUID],
+        tally: _ClosureTally,
         *,
         failed: UUID | None = None,
         error: str | None = None,
@@ -1011,4 +1751,9 @@ class _Meter:
             llm_calls=calls,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            facts_closed=tally.closed,
+            facts_reopened=tally.reopened,
+            facts_kept_closed=tally.kept,
+            facts_reopened_no_replacement=tally.reopened_no_replacement,
+            facts_closed_by_text=tally.closed_by_text,
         )

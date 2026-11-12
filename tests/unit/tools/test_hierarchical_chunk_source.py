@@ -21,7 +21,10 @@ from holodeck.lib.memory.chunk_source import (
 )
 from holodeck.lib.structured_chunker import ChunkType, DocumentChunk
 from holodeck.models.tool import HierarchicalDocumentToolConfig, SearchMode
-from holodeck.tools.hierarchical_chunk_source import HierarchicalChunkSource
+from holodeck.tools.hierarchical_chunk_source import (
+    HierarchicalChunkSource,
+    section_number,
+)
 from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
@@ -205,6 +208,95 @@ async def test_heading_only_chunk_left_out(tmp_path: Path) -> None:
     refs = await source.chunks(SourceDocument("acts", key, Path(key), True))
 
     assert [ref.chunk_id for ref in refs] == ["c"]
+
+
+@pytest.mark.parametrize(
+    ("heading", "number"),
+    [
+        ("57GJ Benefit restriction notice from ASIO Minister", "57GJ"),
+        ("3A Applicable percentage\u2014other cases", "3A"),
+        ("3AA Paid parental leave", "3AA"),
+        ("3 Definitions", "3"),
+        ("1.2 Scope", "1.2"),
+        ("Part 2\u2014Interpretation", ""),
+        ("Definitions", ""),
+        ("", ""),
+    ],
+)
+async def test_section_number_is_the_leading_number_of_the_heading(
+    heading: str, number: str
+) -> None:
+    assert section_number(heading) == number
+
+
+async def test_chunks_carry_their_section_number_and_path(tmp_path: Path) -> None:
+    tool = _tool(tmp_path / "unused.md")
+    tool._initialized = True
+    source = HierarchicalChunkSource(tool)
+    key = str(tmp_path / "doc.md")
+    interpretation = ["Part 2\u2014Interpretation", "Division 1\u2014Definitions"]
+    source._stored = {
+        key: [
+            DocumentChunk("p", key, 0, "Preamble text.", section_id="chunk_0"),
+            DocumentChunk(
+                "a1",
+                key,
+                1,
+                "#### 3A Applicable percentage\u2014other cases\n(1) First part.",
+                parent_chain=interpretation,
+                section_id="h4_3a",
+            ),
+            # The second chunk of a split section has no heading line.
+            DocumentChunk(
+                "a2", key, 2, "(2) Second part.", interpretation, section_id="h4_3a"
+            ),
+            # A body split from its heading (subsection patterns): the chain
+            # ends with its own heading.
+            DocumentChunk(
+                "b",
+                key,
+                3,
+                "(1) The notice must be in writing.",
+                parent_chain=["Part 8", "57GJ Security notice"],
+                section_id="chunk_3",
+            ),
+        ]
+    }
+
+    refs = await source.chunks(SourceDocument("acts", key, Path(key), True))
+
+    assert [(r.chunk_id, r.section_number, r.section_path) for r in refs] == [
+        ("p", "", ()),
+        ("a1", "3A", tuple(interpretation)),
+        ("a2", "3A", tuple(interpretation)),
+        ("b", "57GJ", ("Part 8",)),
+    ]
+
+
+async def test_split_body_chunks_have_positional_ids_and_one_number_and_path(
+    tmp_path: Path,
+) -> None:
+    # Subsection patterns split a long body from its heading into chunks
+    # with positional ids (``chunk_<n>``), one per chunk. They share the
+    # number and path the memory groups them by.
+    tool = _tool(tmp_path / "unused.md")
+    tool._initialized = True
+    source = HierarchicalChunkSource(tool)
+    key = str(tmp_path / "doc.md")
+    chain = ["Part 8", "57GJ Security notice"]
+    source._stored = {
+        key: [
+            DocumentChunk("b1", key, 3, "(1) First.", chain, section_id="chunk_3"),
+            DocumentChunk("b2", key, 4, "(2) Second.", chain, section_id="chunk_4"),
+        ]
+    }
+
+    refs = await source.chunks(SourceDocument("acts", key, Path(key), True))
+
+    assert [(r.section_id, r.section_number, r.section_path) for r in refs] == [
+        ("chunk_3", "57GJ", ("Part 8",)),
+        ("chunk_4", "57GJ", ("Part 8",)),
+    ]
 
 
 async def test_remote_source_mtime_unreliable(tmp_path: Path) -> None:

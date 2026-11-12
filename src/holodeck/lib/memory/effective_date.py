@@ -97,6 +97,26 @@ def _read_front_matter(path: Path) -> dict[object, object] | None:
     return None if split is None else split[0]
 
 
+def document_series(document: SourceDocument, key: str) -> str:
+    """Return the front-matter value of ``key`` as text, or "" when absent.
+
+    The memory reads ``series_id`` here: documents with the same series are
+    versions of one document. A string or an integer is accepted. This
+    function reads the file and blocks.
+
+    Raises:
+        MemoryValueError: If the value is another type, or the front matter
+            is not valid YAML.
+    """
+    front_matter = _read_front_matter(document.path)
+    if front_matter is None or key not in front_matter:
+        return ""
+    value = front_matter[key]
+    if isinstance(value, bool) or not isinstance(value, str | int):
+        raise MemoryValueError(f"{key} is not a string: {value!r}")
+    return str(value).strip()
+
+
 def effective_date(
     document: SourceDocument, key: str, now: datetime
 ) -> tuple[datetime, ReferenceTimeSource]:

@@ -172,11 +172,29 @@ async def test_service_settings_come_from_the_tool_config(wiring: _Wiring) -> No
     assert wiring.service_kwargs["weight_chunks"] == 0.25
     assert wiring.service_kwargs["weight_graph"] == 2.0
     assert wiring.service_kwargs["instructions"] == "Extract rates."
-    config, model, embedding, entity_types = wiring.backend_args
+    config, model, embedding, hints, effort, close_on_text = wiring.backend_args
     assert config.driver == "kuzu"
     assert model is agent.model
     assert embedding == "emb"
-    assert list(entity_types) == ["Payment", "Person"]
+    assert hints.entity_types == ["Payment", "Person"]
+    assert effort is None
+    assert close_on_text is False
+
+
+async def test_extraction_reasoning_effort_reaches_the_backend(
+    wiring: _Wiring,
+) -> None:
+    async with open_memory(_agent(extraction_reasoning_effort="medium")):
+        pass
+
+    assert wiring.backend_args[4] == "medium"
+
+
+async def test_close_on_text_change_reaches_the_backend(wiring: _Wiring) -> None:
+    async with open_memory(_agent(close_on_text_change=True)):
+        pass
+
+    assert wiring.backend_args[5] is True
 
 
 async def test_extraction_model_overrides_the_agent_model(wiring: _Wiring) -> None:

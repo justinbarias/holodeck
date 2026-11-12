@@ -7,6 +7,18 @@ saying so, and the default left superseded rates open (graphiti-evidence.md,
 supersession probe). This prompt keeps Graphiti's inputs, outputs and
 duplicate rules, and changes the contradiction rules only.
 
+A contradiction needs one single-valued attribute of one subject with two
+different values, one in each fact. The live ingest of two compilations of
+one Act (2026-11-12) showed the earlier wording closing facts whose text had
+not changed: a rule restated with other words and other entities, and an
+unrelated definition from another section. So a restatement, a paraphrase,
+the same value, or a fact about another provision is not a contradiction,
+and different start dates count only after two different values are found.
+``scripts/memory_resolve_edge_replay.py`` replays labelled cases against a
+live model. The replay scored 45 of 67 with this wording and with the
+earlier one, so the wording does not stop false closures; the backend's
+closure check (``graphiti_closure``) reopens them after each episode.
+
 Graphiti does the date arithmetic in code after this decision: a contradicted
 older fact is closed at the new fact's start date. The prompt decides only
 which facts conflict. Graphiti closes a contradicted fact only when both facts
@@ -49,11 +61,19 @@ IMPORTANT constraints:
    - If no duplicates, return an empty list for duplicate_facts.
 
 2. CONTRADICTION DETECTION:
-   - Some attributes have ONE value at a time: a rate, amount, percentage, threshold, limit or period.
-     Mark a fact as contradicted when it and the NEW FACT state DIFFERENT values of the SAME such
-     attribute of the SAME subject. One of them replaced the other.
-   - For these attributes the text does NOT have to say "replaces", "no longer" or "instead". Different
-     start dates on the two facts do NOT make them compatible: they show that the value changed.
+   - Some attributes have ONE value at a time: a rate, amount, percentage, threshold, limit, period, or
+     the meaning of a defined term. Mark a fact as contradicted ONLY when you can name ONE such attribute
+     of ONE subject, and two DIFFERENT values of it: one stated in that fact and one stated in the NEW
+     FACT. One of them replaced the other.
+   - If the two values are the same (the same period, the same rate, the same meaning), the fact is NOT
+     contradicted, however differently the two facts are worded and whatever their dates.
+   - A fact that restates, paraphrases or summarises the same rule, or describes it from another angle, is
+     NOT contradicted, even when it names different entities or adds detail the other fact leaves out.
+   - Facts about different provisions, sections or defined terms are NOT contradicted. A definition of one
+     term never contradicts a rule in another section or the definition of another term.
+   - When you HAVE found two different values of one single-valued attribute, the text does NOT have to
+     say "replaces", "no longer" or "instead", and different start dates on the two facts do NOT make them
+     compatible: they show that the value changed.
    - Mark the fact as contradicted whichever of the two has the earlier date.
    - A role, power, function or responsibility can be held by several bodies or persons at once. Mark an
      earlier holder as contradicted ONLY when the role has one holder by its nature (the one body that
@@ -86,6 +106,18 @@ Result: duplicate_facts=[], contradicted_facts=[] (different categories of rate:
 INVALIDATION CANDIDATE: idx=4, "From 1 July 2020 the Minister may appoint inspectors under section 10"
 NEW FACT: "From 1 July 2024 the Commissioner may appoint inspectors under section 10"
 Result: duplicate_facts=[], contradicted_facts=[] (a power two bodies can hold at once; nothing says the Minister's power ended)
+
+INVALIDATION CANDIDATE: idx=5, "A Class 300 (Overseas Carer) visa is excluded from the permanent visas that make a person subject to the newly arrived resident's waiting period for Carer Payment"
+NEW FACT: "From 1 July 2024 a Class 300 (Overseas Carer) visa is identified by the Migration Regulations and is an exception to the newly arrived resident's waiting period for Carer Payment"
+Result: duplicate_facts=[], contradicted_facts=[] (the same rule from another angle, naming other entities: no attribute has two different values)
+
+INVALIDATION CANDIDATE: idx=6, "Section 12 applies to a person who receives a Carer Payment advance"
+NEW FACT: "From 1 July 2024 care leave pay has the same meaning as in the Care Leave Act 2010"
+Result: duplicate_facts=[], contradicted_facts=[] (a definition of one term and a rule in another section: different subjects)
+
+INVALIDATION CANDIDATE: idx=7, "Benefits Secretary means the Secretary of the Department administered by the Minister for Social Services"
+NEW FACT: "From 1 July 2024 Benefits Secretary means the Chief Executive Officer of the Care Agency"
+Result: duplicate_facts=[], contradicted_facts=[7] (one defined term, two different meanings: the definition changed)
 </EXAMPLE>
 """
 

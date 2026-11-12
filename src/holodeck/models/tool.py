@@ -1086,21 +1086,209 @@ class FusionWeights(BaseModel):
         return self
 
 
+MemoryTypeName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_]*$")]
+"""An entity or edge type name. It becomes a Pydantic model's class name."""
+
+MEMORY_WILDCARD_ENTITY = "Entity"
+"""In ``edge_type_map``, any entity type (Graphiti's base entity label)."""
+
+MEMORY_RESERVED_EDGE_FIELDS = frozenset(
+    {
+        "attributes",
+        "created_at",
+        "episodes",
+        "expired_at",
+        "fact",
+        "fact_embedding",
+        "group_id",
+        "invalid_at",
+        "name",
+        "reference_time",
+        "source_node_uuid",
+        "target_node_uuid",
+        "uuid",
+        "valid_at",
+    }
+)
+"""The fields of Graphiti's ``EntityEdge``. An edge attribute cannot reuse
+one: Graphiti stores attributes beside these fields. A unit test keeps this
+set equal to ``EntityEdge.model_fields``."""
+
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+"""Reasoning effort of an OpenAI or Azure OpenAI extraction model."""
+
+
+class MemoryEntityType(BaseModel):
+    """An entity type with a description for the extraction model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: MemoryTypeName = Field(..., description="Entity type name")
+    description: str | None = Field(
+        default=None, description="What an entity of this type is"
+    )
+
+
+class MemoryEdgeAttribute(BaseModel):
+    """One attribute the extraction model fills on an edge of a type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_]*$")] = Field(
+        ..., description="Attribute name"
+    )
+    type: Literal["string", "number", "date", "boolean"] = Field(
+        ..., description="Value type. A date is an ISO 8601 string."
+    )
+    description: str | None = Field(
+        default=None, description="What the attribute holds"
+    )
+
+    @model_validator(mode="after")
+    def check_name(self) -> "MemoryEdgeAttribute":
+        """Reject names Graphiti or Pydantic already use."""
+        if self.name in MEMORY_RESERVED_EDGE_FIELDS:
+            raise ValueError(
+                f"edge attribute '{self.name}' is a Graphiti edge field; "
+                f"reserved names: {', '.join(sorted(MEMORY_RESERVED_EDGE_FIELDS))}"
+            )
+        if self.name.startswith("model_") or self.name in dir(BaseModel):
+            raise ValueError(
+                f"edge attribute '{self.name}' is a Pydantic model attribute; "
+                "choose another name"
+            )
+        return self
+
+
+class MemoryEdgeType(BaseModel):
+    """A relation type the extraction model should use for facts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: MemoryTypeName = Field(..., description="Edge type (relation) name")
+    description: str = Field(
+        ...,
+        min_length=1,
+        description="What the relation means. The extraction model reads it.",
+    )
+    attributes: list[MemoryEdgeAttribute] = Field(
+        default_factory=list, description="Attributes of an edge of this type"
+    )
+    single_valued: bool = Field(
+        default=False,
+        description=(
+            "One value at a time per (source entity, edge type, key attribute "
+            "values): a new edge of this type replaces the old one."
+        ),
+    )
+    key_attributes: list[str] = Field(
+        default_factory=list,
+        description="Attributes that, with the source entity, identify one value",
+    )
+
+    @model_validator(mode="after")
+    def check_attributes(self) -> "MemoryEdgeType":
+        """Attribute names are unique; key attributes name attributes."""
+        prefix = f"edge type '{self.name}':"
+        names = [attribute.name for attribute in self.attributes]
+        repeated = sorted({name for name in names if names.count(name) > 1})
+        if repeated:
+            raise ValueError(f"{prefix} attributes repeat {', '.join(repeated)}")
+        unknown = [key for key in self.key_attributes if key not in names]
+        if unknown:
+            raise ValueError(
+                f"{prefix} key_attributes {', '.join(unknown)} are not attributes"
+            )
+        if self.key_attributes and not self.single_valued:
+            raise ValueError(f"{prefix} key_attributes needs single_valued: true")
+        return self
+
+
+class MemoryEdgeTypeMapEntry(BaseModel):
+    """The edge types allowed from one entity type to another."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: MemoryTypeName = Field(
+        ..., description='Source entity type, or "Entity" for any'
+    )
+    target: MemoryTypeName = Field(
+        ..., description='Target entity type, or "Entity" for any'
+    )
+    edges: list[MemoryTypeName] = Field(
+        ..., min_length=1, description="Edge type names allowed for this pair"
+    )
+
+
 class MemorySchemaHints(BaseModel):
     """Optional guidance for extraction."""
 
     model_config = ConfigDict(extra="forbid")
 
-    entity_types: list[
-        Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_]*$")]
-    ] = Field(
+    entity_types: list[MemoryTypeName | MemoryEntityType] = Field(
         default_factory=list,
-        description="Entity type names the extraction model should prefer",
+        description=(
+            "Entity types the extraction model should prefer: names, or "
+            "objects with a name and a description"
+        ),
+    )
+    edge_types: list[MemoryEdgeType] = Field(
+        default_factory=list,
+        description="Edge (relation) types the extraction model should use",
+    )
+    edge_type_map: list[MemoryEdgeTypeMapEntry] = Field(
+        default_factory=list,
+        description=(
+            "Which edge types may join which entity types. Unset allows every "
+            "edge type between any two entities."
+        ),
     )
     single_valued_predicates: list[str] = Field(
         default_factory=list,
         description="Not supported by the graphiti backend; loading fails if set.",
     )
+
+    @property
+    def entity_type_specs(self) -> list[MemoryEntityType]:
+        """Every entity type as an object; a bare name has no description."""
+        return [
+            item if isinstance(item, MemoryEntityType) else MemoryEntityType(name=item)
+            for item in self.entity_types
+        ]
+
+    @model_validator(mode="after")
+    def check_names(self) -> "MemorySchemaHints":
+        """Names are unique, and the map names declared types only."""
+        entity_names = [spec.name for spec in self.entity_type_specs]
+        edge_names = [edge.name for edge in self.edge_types]
+        for label, names in (
+            ("entity_types", entity_names),
+            ("edge_types", edge_names),
+        ):
+            repeated = sorted({name for name in names if names.count(name) > 1})
+            if repeated:
+                raise ValueError(f"schema_hints.{label} repeats {', '.join(repeated)}")
+        known_entities = {*entity_names, MEMORY_WILDCARD_ENTITY}
+        known_edges = set(edge_names)
+        for entry in self.edge_type_map:
+            for end in (entry.source, entry.target):
+                if end not in known_entities:
+                    raise ValueError(
+                        f"schema_hints.edge_type_map names entity type '{end}', "
+                        'which is not in entity_types (use "Entity" for any)'
+                    )
+            unknown = [name for name in entry.edges if name not in known_edges]
+            if unknown:
+                raise ValueError(
+                    "schema_hints.edge_type_map names edge types "
+                    f"{', '.join(unknown)}, which are not in edge_types"
+                )
+        pairs = [(entry.source, entry.target) for entry in self.edge_type_map]
+        repeated_pairs = sorted({p for p in pairs if pairs.count(p) > 1})
+        if repeated_pairs:
+            listed = ", ".join(f"{s} -> {t}" for s, t in repeated_pairs)
+            raise ValueError(f"schema_hints.edge_type_map repeats {listed}")
+        return self
 
 
 MEMORY_FUNCTION_NAMES = ("memory_search", "memory_timeline", "memory_provenance")
@@ -1166,6 +1354,22 @@ class TemporalMemoryToolConfig(BaseModel):
     extraction_model: LLMProvider | None = Field(
         default=None,
         description="Model that extracts facts. Defaults to the agent model.",
+    )
+    extraction_reasoning_effort: ReasoningEffort | None = Field(
+        default=None,
+        description=(
+            "Reasoning effort of an OpenAI or Azure OpenAI extraction model. "
+            "Unset keeps Graphiti's default ('auto', which is 'none' for "
+            "GPT-5.1 and later). Ignored, with a warning, for other providers."
+        ),
+    )
+    close_on_text_change: bool = Field(
+        default=False,
+        description=(
+            "Close an open fact when a newer version of its section no longer "
+            "states it: its source line changed and the new text matches it "
+            "clearly worse (lexical match). Graphiti backend on Neo4j only."
+        ),
     )
     extraction_instructions: str | None = Field(
         default=None,

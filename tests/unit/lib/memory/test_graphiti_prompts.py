@@ -55,9 +55,34 @@ def test_prompt_carries_the_three_inputs_graphiti_gives() -> None:
 def test_prompt_treats_a_new_value_as_a_replacement() -> None:
     user = resolve_edge(CONTEXT).user.content
 
-    assert "DIFFERENT values of the SAME such" in user
-    assert 'does NOT have to say "replaces"' in user
+    assert "two DIFFERENT values of it" in user
+    assert 'does NOT have to\n     say "replaces"' in user
     assert "Do NOT infer contradiction from recency" not in user
+    assert "contradicted_facts=[1] (same subject and attribute" in user
+    assert "contradicted_facts=[2] (one body administers" in user
+
+
+def test_prompt_needs_two_different_values_before_dates_count() -> None:
+    user = resolve_edge(CONTEXT).user.content
+
+    assert "ONLY when you can name ONE such attribute" in user
+    assert "If the two values are the same" in user
+    # The dates line applies only after two different values were found.
+    values = user.index("When you HAVE found two different values")
+    dates = user.index("different start dates on the two facts do NOT make them")
+    assert values < dates
+    assert "Different\n     start dates" not in user
+
+
+def test_prompt_keeps_restatements_and_other_provisions_open() -> None:
+    user = resolve_edge(CONTEXT).user.content
+
+    assert "restates, paraphrases or summarises the same rule" in user
+    assert "even when it names different entities" in user
+    assert "A definition of one\n     term never contradicts a rule" in user
+    assert "contradicted_facts=[] (the same rule from another angle" in user
+    assert "contradicted_facts=[] (a definition of one term and a rule" in user
+    assert "contradicted_facts=[7] (one defined term, two different meanings" in user
 
 
 def test_prompt_keeps_a_power_that_two_bodies_can_hold() -> None:

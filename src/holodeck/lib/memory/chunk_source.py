@@ -8,12 +8,29 @@ the tools they wrap.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 UNKNOWN_ORDINAL = -1
+
+# The id the structured chunker gives a chunk with no heading of its own:
+# ``chunk_<index>`` (``StructuredChunker._generate_section_id``). The
+# subsection-pattern path gives one to every body it splits from its heading.
+# It names a position in one document, not a section.
+_POSITIONAL_SECTION_ID = re.compile(r"chunk_\d+")
+
+
+def is_positional_section_id(section_id: str) -> bool:
+    """True for a section id that is only a chunk position (``chunk_<n>``).
+
+    Two equal positional ids in two documents, or in two versions of one
+    document, say nothing about the section: the memory treats such an id
+    as no section id and compares the section number and path instead.
+    """
+    return _POSITIONAL_SECTION_ID.fullmatch(section_id) is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +60,11 @@ class ChunkRef:
     search hit, where the tool does not report it."""
     text: str
     """Raw chunk content with front matter removed."""
+    section_number: str = ""
+    """Leading number of the section's own heading ("57GJ", "3A"); empty when
+    the heading has none or the tool does not report it."""
+    section_path: tuple[str, ...] = ()
+    """Headings above the section, outermost first; empty when unknown."""
 
 
 @dataclass(frozen=True, slots=True)

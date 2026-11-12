@@ -309,7 +309,7 @@ async def test_ret_03_expansion_with_no_seed_respects_the_time_filter(
     assert ids(in_2020) == {data.fact_reviews, data.fact_c_old}
 
 
-async def test_ret_03_a_fact_with_no_valid_at_from_a_real_ingest_is_returned(
+async def test_ret_03_an_undated_fact_from_a_real_ingest_gets_the_episode_date(
     backend: GraphitiBackend,
     new_namespace: NamespaceFactory,
     stub_llm: StubLLMClient,
@@ -330,15 +330,16 @@ async def test_ret_03_a_fact_with_no_valid_at_from_a_real_ingest_is_returned(
             "RETURN e.uuid AS uuid, e.valid_at AS valid_at",
             g=ns,
         ).records
-    # The stub model gives no date, and Graphiti stores none.
-    assert [row["valid_at"] for row in rows] == [None]
+    # The stub model gives no date. Graphiti stores none, and the backend
+    # then dates the fact with its episode's effective date (Fix A).
+    assert [row["valid_at"].to_native() for row in rows] == [A_TO]
 
     hits = await backend.search(
         ns, MemoryQuery(text="administered", valid_at=V_2021, known_at=now())
     )
 
     assert [hit.text for hit in hits] == [EDGE_FACT]
-    assert hits[0].valid_from is None
+    assert hits[0].valid_from == A_TO
     assert hits[0].fact_id == rows[0]["uuid"]
     assert [s.episode_id for s in hits[0].sources] == [episode.episode_id]
 

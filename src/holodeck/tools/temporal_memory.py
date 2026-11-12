@@ -172,7 +172,6 @@ async def compose_memory(
         MemoryConfigError: The backend is not supported.
         MemoryValueError: A service setting is out of range.
     """
-    entity_types = config.schema_hints.entity_types if config.schema_hints else []
     backend = create_backend(
         config.backend,
         config.extraction_model or agent.model,
@@ -181,7 +180,9 @@ async def compose_memory(
             if embedding_service is None
             else embedding_service
         ),
-        entity_types,
+        config.schema_hints,
+        config.extraction_reasoning_effort,
+        config.close_on_text_change,
     )
     if wrap_backend is not None:
         backend = wrap_backend(backend)

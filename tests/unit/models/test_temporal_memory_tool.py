@@ -338,3 +338,203 @@ def test_hst_01_a_tool_that_takes_a_memory_function_name_fails(
         ),
     ):
         _agent([_doc_tool("family_law"), tool, _memory()])
+
+
+# --- extraction reasoning effort and edge types ------------------------------
+
+RATE_EDGE: dict[str, Any] = {
+    "name": "HAS_RATE",
+    "description": "The rate of a payment.",
+    "attributes": [
+        {"name": "amount", "type": "number"},
+        {"name": "period", "type": "string", "description": "per day or year"},
+    ],
+    "single_valued": True,
+    "key_attributes": ["period"],
+}
+
+
+@pytest.mark.parametrize(
+    "effort", ["none", "minimal", "low", "medium", "high", "xhigh"]
+)
+def test_extraction_reasoning_effort_accepts_the_known_values(effort: str) -> None:
+    tool = TemporalMemoryToolConfig.model_validate(
+        _memory(extraction_reasoning_effort=effort)
+    )
+
+    assert tool.extraction_reasoning_effort == effort
+
+
+def test_extraction_reasoning_effort_defaults_to_unset_and_rejects_others() -> None:
+    assert (
+        TemporalMemoryToolConfig.model_validate(_memory()).extraction_reasoning_effort
+        is None
+    )
+    with pytest.raises(ValidationError):
+        TemporalMemoryToolConfig.model_validate(
+            _memory(extraction_reasoning_effort="max")
+        )
+
+
+def test_close_on_text_change_defaults_off_and_accepts_true() -> None:
+    assert (
+        TemporalMemoryToolConfig.model_validate(_memory()).close_on_text_change is False
+    )
+    tool = TemporalMemoryToolConfig.model_validate(_memory(close_on_text_change=True))
+
+    assert tool.close_on_text_change is True
+
+
+def test_schema_hints_accept_edge_types_and_a_type_map() -> None:
+    tool = TemporalMemoryToolConfig.model_validate(
+        _memory(
+            schema_hints={
+                "entity_types": [
+                    "Act",
+                    {"name": "Payment", "description": "A benefit paid"},
+                ],
+                "edge_types": [RATE_EDGE, {"name": "AMENDS", "description": "x"}],
+                "edge_type_map": [
+                    {"source": "Payment", "target": "Entity", "edges": ["HAS_RATE"]},
+                    {"source": "Act", "target": "Act", "edges": ["AMENDS"]},
+                ],
+            }
+        )
+    )
+
+    hints = tool.schema_hints
+    assert hints is not None
+    assert [(t.name, t.description) for t in hints.entity_type_specs] == [
+        ("Act", None),
+        ("Payment", "A benefit paid"),
+    ]
+    rate = hints.edge_types[0]
+    assert rate.single_valued is True
+    assert rate.key_attributes == ["period"]
+    assert [a.type for a in rate.attributes] == ["number", "string"]
+    assert hints.edge_type_map[0].edges == ["HAS_RATE"]
+
+
+@pytest.mark.parametrize(
+    ("hints", "message"),
+    [
+        (
+            {
+                "edge_types": [
+                    {
+                        **RATE_EDGE,
+                        "attributes": [{"name": "fact", "type": "string"}],
+                        "key_attributes": [],
+                    }
+                ]
+            },
+            "edge attribute 'fact' is a Graphiti edge field",
+        ),
+        (
+            {
+                "edge_types": [
+                    {
+                        **RATE_EDGE,
+                        "attributes": [{"name": "valid_at", "type": "date"}],
+                        "key_attributes": [],
+                    }
+                ]
+            },
+            "edge attribute 'valid_at' is a Graphiti edge field",
+        ),
+        (
+            {
+                "edge_types": [
+                    {
+                        **RATE_EDGE,
+                        "attributes": [{"name": "schema", "type": "string"}],
+                        "key_attributes": [],
+                    }
+                ]
+            },
+            "edge attribute 'schema' is a Pydantic model attribute",
+        ),
+        (
+            {"edge_types": [{**RATE_EDGE, "key_attributes": ["missing"]}]},
+            "key_attributes missing are not attributes",
+        ),
+        (
+            {"edge_types": [{**RATE_EDGE, "single_valued": False}]},
+            "key_attributes needs single_valued: true",
+        ),
+        (
+            {
+                "edge_types": [
+                    {
+                        **RATE_EDGE,
+                        "attributes": [
+                            {"name": "amount", "type": "number"},
+                            {"name": "amount", "type": "string"},
+                        ],
+                        "key_attributes": [],
+                    }
+                ]
+            },
+            "attributes repeat amount",
+        ),
+        (
+            {"edge_types": [RATE_EDGE, RATE_EDGE]},
+            "schema_hints.edge_types repeats HAS_RATE",
+        ),
+        (
+            {"entity_types": ["Act", {"name": "Act"}]},
+            "schema_hints.entity_types repeats Act",
+        ),
+        (
+            {
+                "edge_types": [RATE_EDGE],
+                "edge_type_map": [
+                    {"source": "Payment", "target": "Entity", "edges": ["HAS_RATE"]}
+                ],
+            },
+            "edge_type_map names entity type 'Payment'",
+        ),
+        (
+            {
+                "entity_types": ["Payment"],
+                "edge_types": [RATE_EDGE],
+                "edge_type_map": [
+                    {"source": "Payment", "target": "Entity", "edges": ["HAS_RATES"]}
+                ],
+            },
+            "edge_type_map names edge types HAS_RATES",
+        ),
+        (
+            {
+                "entity_types": ["Payment"],
+                "edge_types": [RATE_EDGE],
+                "edge_type_map": [
+                    {"source": "Payment", "target": "Entity", "edges": ["HAS_RATE"]},
+                    {"source": "Payment", "target": "Entity", "edges": ["HAS_RATE"]},
+                ],
+            },
+            "edge_type_map repeats Payment -> Entity",
+        ),
+    ],
+)
+def test_schema_hints_reject_bad_edge_types(
+    hints: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        TemporalMemoryToolConfig.model_validate(_memory(schema_hints=hints))
+
+
+@pytest.mark.parametrize(
+    "edge",
+    [
+        {"name": "NO_DESCRIPTION"},
+        {"name": "Has Space", "description": "x"},
+        {"name": "X", "description": "x", "attributes": [{"name": "a", "type": "int"}]},
+        {"name": "X", "description": "x", "extra": 1},
+    ],
+)
+def test_schema_hints_reject_malformed_edge_types(edge: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        TemporalMemoryToolConfig.model_validate(
+            _memory(schema_hints={"edge_types": [edge]})
+        )

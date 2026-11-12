@@ -38,6 +38,7 @@ from graphiti_core.prompts.models import Message
 from graphiti_core.tracer import Tracer
 from openai import AsyncOpenAI
 from pydantic import BaseModel, SecretStr, create_model
+from pydantic.fields import FieldInfo
 
 from holodeck.lib.backends.validators import validate_credentials
 from holodeck.lib.errors import ConfigError
@@ -53,7 +54,15 @@ from holodeck.lib.memory.backends.graphiti_secrets import (
 from holodeck.lib.memory.errors import MemoryConfigError, TemporalMemoryError
 from holodeck.models.claude_config import AuthProvider
 from holodeck.models.llm import LLMProvider, ProviderEnum
-from holodeck.models.tool import GraphBackendConfig, memory_extraction_model_error
+from holodeck.models.tool import (
+    GraphBackendConfig,
+    MemoryEdgeAttribute,
+    MemoryEdgeType,
+    MemoryEdgeTypeMapEntry,
+    MemoryEntityType,
+    ReasoningEffort,
+    memory_extraction_model_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +208,9 @@ def _key_or_env(model: LLMProvider, env_var: str) -> str:
     return key
 
 
-def _openai_client(model: LLMProvider) -> LLMClient:
+def _openai_client(
+    model: LLMProvider, reasoning_effort: ReasoningEffort | None = None
+) -> LLMClient:
     # The endpoint is always given. With none, the OpenAI SDK reads
     # OPENAI_BASE_URL, and extraction would go to a host the YAML does not name.
     config = _llm_config(
@@ -207,10 +218,19 @@ def _openai_client(model: LLMProvider) -> LLMClient:
         api_key=_key_or_env(model, "OPENAI_API_KEY"),
         base_url=model.endpoint or OPENAI_DEFAULT_BASE_URL,
     )
-    return OpenAIClient(config=config, cache=False, max_tokens=config.max_tokens)
+    if reasoning_effort is None:
+        return OpenAIClient(config=config, cache=False, max_tokens=config.max_tokens)
+    return OpenAIClient(
+        config=config,
+        cache=False,
+        max_tokens=config.max_tokens,
+        reasoning=reasoning_effort,
+    )
 
 
-def _azure_openai_client(model: LLMProvider) -> LLMClient:
+def _azure_openai_client(
+    model: LLMProvider, reasoning_effort: ReasoningEffort | None = None
+) -> LLMClient:
     api_key = _key_or_env(model, "AZURE_OPENAI_API_KEY")
     base_url = _azure_v1_base_url(model.endpoint or "")
     config = _llm_config(model, api_key=api_key, base_url=base_url)
@@ -218,8 +238,15 @@ def _azure_openai_client(model: LLMProvider) -> LLMClient:
     azure_client = AsyncOpenAI(
         api_key=api_key, base_url=base_url, default_query=default_query
     )
+    if reasoning_effort is None:
+        return AzureOpenAILLMClient(
+            azure_client=azure_client, config=config, max_tokens=config.max_tokens
+        )
     return AzureOpenAILLMClient(
-        azure_client=azure_client, config=config, max_tokens=config.max_tokens
+        azure_client=azure_client,
+        config=config,
+        max_tokens=config.max_tokens,
+        reasoning=reasoning_effort,
     )
 
 
@@ -285,14 +312,31 @@ def agent_sdk_llm_client(model: LLMProvider) -> LLMClient:
     return AgentSdkLLMClient(model.name)
 
 
+_REASONING_PROVIDERS = frozenset({ProviderEnum.OPENAI, ProviderEnum.AZURE_OPENAI})
+
+
 def build_llm_client(
-    model: LLMProvider, *, tool_name: str = DEFAULT_TOOL_NAME
+    model: LLMProvider,
+    *,
+    tool_name: str = DEFAULT_TOOL_NAME,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> LLMClient:
-    """Return Graphiti's LLM client for ``model`` (design seam 4 selection table)."""
+    """Return Graphiti's LLM client for ``model`` (design seam 4 selection table).
+
+    ``reasoning_effort`` reaches the OpenAI and Azure OpenAI clients only;
+    unset, they keep Graphiti's default. Other providers log a warning.
+    """
+    if reasoning_effort is not None and model.provider not in _REASONING_PROVIDERS:
+        logger.warning(
+            "extraction_reasoning_effort '%s' is not applied: the %s "
+            "extraction client has no reasoning effort setting.",
+            reasoning_effort,
+            model.provider.value,
+        )
     if model.provider == ProviderEnum.OPENAI:
-        return _openai_client(model)
+        return _openai_client(model, reasoning_effort)
     if model.provider == ProviderEnum.AZURE_OPENAI:
-        return _azure_openai_client(model)
+        return _azure_openai_client(model, reasoning_effort)
     if model.provider == ProviderEnum.OLLAMA:
         return _ollama_client(model)
     auth = model.auth_provider
@@ -377,10 +421,13 @@ def build_clients(
     embedding_service: EmbeddingService,
     *,
     tool_name: str = DEFAULT_TOOL_NAME,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> GraphitiClientSet:
     """Build Graphiti's LLM client, embedder and cross-encoder (design seam 4)."""
     disable_telemetry()
-    llm = build_llm_client(extraction_model, tool_name=tool_name)
+    llm = build_llm_client(
+        extraction_model, tool_name=tool_name, reasoning_effort=reasoning_effort
+    )
     return GraphitiClientSet(
         llm=CountingLLMClient(llm),
         embedder=LiteLLMEmbedder(embedding_service),
@@ -487,9 +534,78 @@ def build_driver(config: GraphBackendConfig) -> GraphDriver:
 # --- Graphiti -------------------------------------------------------------
 
 
-def entity_type_models(names: Sequence[str]) -> dict[str, type[BaseModel]]:
-    """One field-less Pydantic model per entity type name."""
-    return {name: create_model(name, __base__=BaseModel) for name in names}
+def entity_type_models(
+    types: Sequence[MemoryEntityType],
+) -> dict[str, type[BaseModel]]:
+    """One field-less Pydantic model per entity type.
+
+    The description, when given, is the model docstring: Graphiti shows it
+    to the extraction model.
+    """
+    return {
+        spec.name: create_model(spec.name, __base__=BaseModel, __doc__=spec.description)
+        for spec in types
+    }
+
+
+_ATTRIBUTE_TYPES: dict[str, type[str] | type[float] | type[bool]] = {
+    "string": str,
+    "number": float,
+    "date": str,
+    "boolean": bool,
+}
+
+
+def _attribute_field(attribute: MemoryEdgeAttribute) -> tuple[object, FieldInfo]:
+    """An optional field: the model may not find every attribute in the text."""
+    description = attribute.description or ""
+    if attribute.type == "date":
+        description = f"{description} (ISO 8601 date, YYYY-MM-DD)".strip()
+    value_type = _ATTRIBUTE_TYPES[attribute.type]
+    return (
+        value_type | None,
+        FieldInfo.from_field(None, description=description or None),
+    )
+
+
+def _edge_doc(edge: MemoryEdgeType) -> str:
+    """The edge model's docstring: the description and the value rule."""
+    if not edge.single_valued:
+        return edge.description
+    key = "".join(f", {name}" for name in edge.key_attributes)
+    return (
+        f"{edge.description}\n\nSingle-valued: one value at a time per "
+        f"(source entity{key}). A new {edge.name} fact replaces the previous one."
+    )
+
+
+def edge_type_models(
+    edge_types: Sequence[MemoryEdgeType],
+) -> dict[str, type[BaseModel]]:
+    """One Pydantic model per edge type; its fields are the edge attributes.
+
+    The docstring is the description Graphiti shows the extraction model.
+    Attribute names were checked against Graphiti's edge fields when the
+    config loaded.
+    """
+    models: dict[str, type[BaseModel]] = {}
+    for edge in edge_types:
+        fields = {attr.name: _attribute_field(attr) for attr in edge.attributes}
+        models[edge.name] = create_model(
+            edge.name,
+            __base__=BaseModel,
+            __doc__=_edge_doc(edge),
+            # mypy matches ``**fields`` against the dunder keywords too.
+            **fields,  # type: ignore[call-overload]
+        )
+    return models
+
+
+def edge_type_map(
+    entries: Sequence[MemoryEdgeTypeMapEntry],
+) -> dict[tuple[str, str], list[str]]:
+    """Graphiti's ``edge_type_map``: (source type, target type) to edge names."""
+    return {(entry.source, entry.target): list(entry.edges) for entry in entries}
 
 
 @dataclass(frozen=True, slots=True)
@@ -526,10 +642,13 @@ def build_graphiti(
     config: GraphBackendConfig,
     extraction_model: LLMProvider,
     embedding_service: EmbeddingService,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> GraphitiRuntime:
     """Build Graphiti with HoloDeck's clients and driver. Never with a None client."""
     disable_telemetry()
-    clients = build_clients(extraction_model, embedding_service)
+    clients = build_clients(
+        extraction_model, embedding_service, reasoning_effort=reasoning_effort
+    )
     driver = build_driver(config)
     graphiti = Graphiti(
         graph_driver=driver,
