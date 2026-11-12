@@ -30,6 +30,7 @@ def harness(tmp_path: Path) -> Path:
         "src/holodeck/deploy/manifest.py",
         "docs/guides/vector-stores.md",
         "docs/guides/temporal.md",
+        "docs/guides/temporal-memory.md",
     ):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -10,7 +10,7 @@
 
 Give a HoloDeck agent a memory that answers "what was true, when, and according to which document" across a corpus whose documents amend and contradict each other. The `hierarchical_document` tool finds relevant passages. It cannot say which of two conflicting passages is current, or link one entity across many documents. This feature adds that layer beside the retriever and does not replace it.
 
-The MVP runs on Graphiti. Graphiti does extraction, entity resolution and edge invalidation with its own pipeline. HoloDeck owns the configuration, the port, ingestion control, fusion with chunk retrieval, the agent tools and the evaluation.
+The MVP runs on Graphiti. Graphiti does extraction, entity resolution and edge invalidation with its own pipeline. HoloDeck owns the configuration, the port, ingestion control, fusion with chunk retrieval and the agent tools. Evaluation is domain-specific and ships with a domain playbook.
 
 Users:
 
@@ -54,7 +54,7 @@ Out of scope: the .NET host, conversation turns as episodes, the context provide
 | D6 | Model | One optional `extraction_model`, default the agent's model. |
 | D7 | Predicates | Free text, with optional `schema_hints`. |
 | D8 | Review queue | CLI list and resolve. Phase 2, because Graphiti has no queue. |
-| D9 | Golden corpus | Real legislation: *A New Tax System (Family Assistance) Act 1999* and *A New Tax System (Family Assistance) (Administration) Act 1999*, volumes 1 and 2. |
+| D9 | Sample corpus | Real legislation, used by `sample/temporal-memory`: *A New Tax System (Family Assistance) Act 1999* and *A New Tax System (Family Assistance) (Administration) Act 1999*, volumes 1 and 2. |
 | D10 | Memory scope | Documents only. |
 | D11 | Context provider | Deferred. |
 | D12 | Migrations | Plain SQL and a version table. Phase 2. |
@@ -62,13 +62,13 @@ Out of scope: the .NET host, conversation turns as episodes, the context provide
 | D14 | Graphiti depth | Graphiti's own pipeline (`add_episode`), not storage only. |
 | D15 | Swappable seam | A `MemoryBackend` port. Graphiti is the MVP implementation; the native backend is deferred. |
 | D16 | Graphiti gaps | Emulate what is cheap; raise a named not-supported error for the rest. |
-| D17 | Graphiti tests | Contract tests per commit, live golden-corpus eval nightly, no score gate in v1. |
+| D17 | Graphiti tests | Contract tests per commit and a nightly Neo4j integration suite. A golden-corpus eval is not part of this spec: evals are domain-specific and ship with a domain playbook (decided 2026-11-12). |
 | D18 | MVP cut | Migrations, in-memory `GraphStore`, review CLI and supersession audit all move to Phase 2. |
 | D19 | Episode size | One chunk per episode. |
 | D20 | Spec home | This directory, plus an HTML artifact. |
 | D21 | Episode identity on Graphiti | Pre-save the episode node under the content-hash uuid, run `add_episode` on it, then mark it complete. Skip only complete episodes. Decided after the T1 evidence run. |
 | D22 | Extraction instructions | Optional `extraction_instructions` field, with a built-in default that asks for amounts, rates, dates and thresholds as entities. |
-| D23 | Expansion direction | Accept Graphiti's outgoing-only traversal in the MVP. Seed from every entity the hit chunks mention, and measure recall in the eval. |
+| D23 | Expansion direction | Accept Graphiti's outgoing-only traversal in the MVP. Seed from every entity the hit chunks mention, and measure recall in a domain eval. |
 | D24 | Anthropic extraction | By `auth_provider` on `extraction_model`: `api_key` (the default) uses Graphiti's `AnthropicClient`; `oauth_token` uses a HoloDeck client on the Claude Agent SDK. `bedrock`, `vertex`, `foundry` and `custom` are refused at load in the MVP. No environment variable selects the client. |
 
 ### Working assumptions
@@ -269,7 +269,7 @@ Results are JSON with ISO 8601 UTC timestamps. A date argument with no time mean
 | CLI-01 | Event-driven | When `holodeck memory ingest <agent.yaml>` runs, it shall ingest and print an `IngestReport`: sources, episodes new and skipped, tokens, duration. | — |
 | CLI-02 | Event-driven | When `holodeck memory status <agent.yaml>` runs, it shall print the backend, namespace, episode count and declared capabilities. | — |
 | CLI-03 | Unwanted | If `holodeck memory purge` runs without `--yes`, then it shall ask for confirmation and name the namespace. | MOD-05 |
-| EVAL-01 | Ubiquitous | The golden-corpus eval shall report point-in-time accuracy, the cross-document delta against chunk-only retrieval, supersession precision and recall, provenance correctness, and search latency. | — |
+| ~~EVAL-01~~ | — | Moved out of this spec on 2026-11-12. A domain playbook (for example, legislation) ships its own eval set and measures. | — |
 
 ## 6. Commands
 
@@ -281,8 +281,6 @@ uv run holodeck memory ingest sample/temporal-memory/agent.yaml
 uv run holodeck memory status sample/temporal-memory/agent.yaml
 uv run pytest tests/unit/lib/memory -n auto -q
 uv run pytest tests/integration/memory -n auto -q -m graphiti
-uv run python scripts/fetch_golden_corpus.py --out tests/golden/family-assistance/corpus
-uv run python -m holodeck.lib.memory.eval --corpus tests/golden/family-assistance --report out/memory-eval.json
 make schema && make schema-check
 make harness-check
 ```
@@ -296,16 +294,13 @@ src/holodeck/lib/memory/
   errors.py           typed errors
   service.py          TemporalMemory: hashing, effective date, ordering, fusion, degradation
   registry.py         backend selection by provider name
-  eval.py             golden-corpus eval
   backends/fake.py    deterministic backend for unit tests
   backends/graphiti.py
 src/holodeck/tools/temporal_memory_tool.py
 src/holodeck/models/tool.py                 TemporalMemoryToolConfig
 src/holodeck/cli/commands/memory.py
 schemas/memory/                             host-neutral tool argument and result schemas
-scripts/fetch_golden_corpus.py
 tests/unit/lib/memory/  tests/integration/memory/
-tests/golden/family-assistance/             manifest.yaml (pinned compilations, hashes), questions.yaml
 sample/temporal-memory/
 docs/guides/temporal-memory.md
 ```
@@ -340,18 +335,17 @@ Every public operation emits a span named `holodeck.memory.<operation>`.
 | Property-based | Re-ingest is a no-op; a changed chunk yields exactly one new episode; fusion is stable under equal ranks | Generated (Hypothesis) | Every commit |
 | Contract | Tool names, argument and result schemas on both backends; `MemoryNotSupportedError` for each row marked not supported; no telemetry, no cross-encoder | Graphiti mocked | Every commit |
 | Integration | Graphiti backend against Neo4j with a stub LLM client: ingest, skip, filters, timeline, provenance, purge | Docker, small fixture | Nightly, marker `graphiti` |
-| Golden-corpus eval | Live models on the legislation corpus | `tests/golden/family-assistance/` | Nightly and before release |
 | Live validation loop | `holodeck test run`, `holodeck serve` with raw AG-UI requests, CopilotKit flow | `sample/temporal-memory` | Before closing |
 
-Every requirement ID appears in at least one test name. A CI check fails if an ID in section 5 has no test.
+Requirement IDs are cited in test names where a test proves them. No CI check enforces this (decided 2026-11-12).
 
 ### Golden corpus
 
-A fetch script downloads four to six pinned historical compilations of each Act from the Federal Register of Legislation, checks SHA-256 hashes, converts them to markdown, and writes `effective_date` front matter from each compilation's start date. The repository holds only the manifest, the labelled questions and the expected answers. The questions cover: a provision amended at least twice, a rate or threshold that changed between compilations, one entity named differently across the two Acts, a cross-Act reference, and a full re-run with no change.
+Moved out of this spec on 2026-11-12. The fetch-and-convert part lives in `sample/temporal-memory/fetch_corpus.py`; labelled questions and an eval set ship with a domain playbook.
 
 ## 10. Boundaries
 
-**Always:** cite a requirement ID in every PR; keep `schemas/memory/` host-neutral; use UTC everywhere; run `--dry-run` and record its episode count before a live ingest of the golden corpus.
+**Always:** cite a requirement ID in every PR; keep `schemas/memory/` host-neutral; use UTC everywhere; run `--dry-run` and record its episode count before a live ingest of a large corpus.
 
 **Ask first:** adding the `graphiti-core` dependency and its pin; the accessor that lets the memory read chunks from `HierarchicalDocumentTool` (an interface extension); any change to how the chunker treats front matter; adding a port operation; changing the default `hops`, `top_k` or fusion weights; a live golden-corpus run, because it costs LLM spend; starting the native backend.
 
@@ -367,8 +361,8 @@ A fetch script downloads four to six pinned historical compilations of each Act 
 6. A query with `valid_at` between two compilations returns the earlier fact and not the later one, on the integration fixture.
 7. Each not-supported row in the capability table raises `MemoryNotSupportedError` with the operation name.
 8. With the graph database stopped, `memory_search` returns chunk hits with `degraded: true`.
-9. The golden-corpus eval produces a report with the five measures in EVAL-01. Proposed targets, reported and not gated in v1: point-in-time accuracy at least 90%, cross-document gain at least 15 points over chunk-only, supersession precision at least 0.9 and recall at least 0.8.
-10. Every requirement ID is covered by at least one test (CI-enforced).
+9. Moved out of this spec on 2026-11-12: the golden-corpus eval report belongs to a domain playbook.
+10. Dropped on 2026-11-12: no CI check for requirement-ID coverage.
 11. The live validation loop in `AGENTS.md` is recorded in the execution plan.
 12. With two source tools on different vector stores, one ingest builds one graph, and a `memory_search` hit from each tool carries its `source_tool`.
 13. On the integration fixture with the default extraction instruction, a rate that changes between two dated documents yields two facts, and the earlier one is closed at the later document's effective date.
@@ -382,7 +376,7 @@ A stacked PR set, one per phase, bottom first. Each layer passes its own gates. 
 | 1. Contracts | Tool config model, schema, port, types, errors, `FakeBackend`, `schemas/memory/` | MB, CFG |
 | 2. Ingestion | Service ingest path, Graphiti backend ingest, `holodeck memory` CLI | ING, GPH, CLI |
 | 3. Retrieval and tools | Search, timeline, provenance, fusion, tool binding on both backends | RET, HST |
-| 4. Eval and docs | Fetch script, golden questions, eval, sample, guide | EVAL |
+| 4. Docs | Sample, guide and the documents that list tools, stores and quality | — |
 
 ## 13. Trade-offs and what to revisit
 
@@ -392,16 +386,16 @@ A stacked PR set, one per phase, bottom first. Each layer passes its own gates. 
 | Graphiti's own pipeline | Least code; Graphiti's invalidation logic | Several LLM calls per chunk; behaviour cannot be fixture-tested | Ingest cost per compilation is too high |
 | One chunk per episode | Fact-to-chunk provenance; unchanged chunks skip | More episodes and less context per extraction | Cross-chunk facts are missed in the eval |
 | Content-hash episode ids | Stable across chunk renumbering; duplicates across collections extract once | Facts cite the first compilation or collection with that text | Users need "last confirmed in" as well |
-| No score gate for Graphiti in v1 | The feature ships before targets are proven | No quality floor | The first eval report exists |
+| No score gate for Graphiti in v1 | The feature ships before targets are proven | No quality floor | A domain playbook's first eval report exists |
 | Outgoing-only expansion (D23) | No dependency on Graphiti's storage schema | A seed that is only an edge target finds nothing upstream | The eval shows cross-document recall below target |
 | Agent SDK client for OAuth-only users (D24) | Works with the credential HoloDeck's Claude users already have | About 3.4 seconds per LLM call | Ingest time for a real corpus is unacceptable |
 | Real legislation as the corpus | Realistic amendments and cross-references | Hand labelling; a fetch step; LLM spend | Labelling takes longer than the build |
 
 ## 14. Open questions
 
-1. Licence: confirm that Federal Register of Legislation text may be fetched and used for evaluation, and whether the labelled questions can quote it.
-2. Which compilations of each Act, and who labels the questions?
-3. What is the dry-run episode count for the full corpus, and is the resulting LLM spend acceptable?
+1. Answered 2026-11-11: Federal Register of Legislation content is CC BY 4.0 with attribution.
+2. Moved to the domain playbook on 2026-11-12, with the eval set.
+3. Answered 2026-11-12 for the sample: both Acts at two compilations are 851 episodes, ingested in about 8.5 hours with the sample's settings. Spend for a larger eval corpus moves to the playbook.
 4. Answered by T1: the hop limit can be set to 1 or 2; traversal is outgoing only (D23).
 5. Partly answered by T1: one retroactive episode was closed correctly. Ingestion still submits in date order (ING-04); out-of-order safety is not proven.
 6. Should the hierarchical tool strip front matter from chunk text? Today it does not.
