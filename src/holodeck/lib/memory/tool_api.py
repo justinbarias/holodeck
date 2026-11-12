@@ -7,16 +7,27 @@ JSON Schemas under ``schemas/memory`` are generated from them by
 
 Dates in arguments stay text, because models send dates as text. Dates in
 results are ISO 8601 UTC text with a ``Z`` suffix.
+
+``MemoryToolHandlers`` is the handler layer: one async method per function,
+plus ``call(name, arguments)``, which validates the arguments, runs the
+handler and returns the result as JSON text. A cause the model can correct
+comes back as a ``MemoryToolError`` result, never as an exception. Bindings
+register the three names and pass calls through; they add nothing.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from holodeck.lib.memory.errors import (
+    MemoryBackendUnavailableError,
+    MemoryNotSupportedError,
+    MemoryValueError,
+)
 from holodeck.lib.memory.instants import format_instant, parse_instant
 from holodeck.lib.memory.types import (
     MAX_HOPS,
@@ -28,6 +39,9 @@ from holodeck.lib.memory.types import (
     ReferenceTimeSource,
     TimelineEntry,
 )
+
+if TYPE_CHECKING:
+    from holodeck.lib.memory.service import TemporalMemory
 
 MEMORY_SEARCH = "memory_search"
 MEMORY_TIMELINE = "memory_timeline"
@@ -105,7 +119,11 @@ class MemoryTimelineArgs(_Model):
     entity: str = Field(
         min_length=1,
         pattern=_NOT_BLANK,
-        description="The entity whose facts to list.",
+        description=(
+            "The name of the entity whose facts to list, as facts state it: a "
+            "payment, body, person or provision, for example 'Family Benefit'. "
+            "Not a question and not a description."
+        ),
     )
 
 
@@ -279,3 +297,242 @@ MEMORY_TOOL_MODELS: dict[str, tuple[type[_Model], type[_Model]]] = {
     MEMORY_PROVENANCE: (MemoryProvenanceArgs, MemoryProvenanceResult),
 }
 """Each function name with its ``(args model, result model)`` pair."""
+
+
+# --- What the agent is told -------------------------------------------------
+
+MEMORY_FUNCTION_DESCRIPTIONS: dict[str, str] = {
+    MEMORY_SEARCH: (
+        "Search the knowledge base for facts and passages. Pass `valid_at` (a "
+        "date) to ask what was true on that date; it defaults to today. A hit "
+        "of kind `fact` has `valid_from` and `valid_to` and was true on "
+        "`valid_at`. A hit of kind `chunk` is a source passage with a start "
+        "date only, and it may come from a superseded version; prefer facts "
+        "when they disagree. Use `memory_timeline` for the history of one "
+        "entity and `memory_provenance` for the source of a fact."
+    ),
+    MEMORY_TIMELINE: (
+        "List every fact about one entity, ordered by `valid_from`, including "
+        "facts that no longer hold. `valid_from` and `valid_to` say when a fact "
+        "was true; `recorded_at` and `expired_at` say when the memory believed "
+        "it. Use `memory_provenance` with a `fact_id` to read its source."
+    ),
+    MEMORY_PROVENANCE: (
+        "Return a fact and the source passages that support it, each with its "
+        "source tool, chunk id, document and effective date. Pass a `fact_id` "
+        "from `memory_search` or `memory_timeline`. `found` is false when the "
+        "`fact_id` is unknown."
+    ),
+}
+"""The built-in text of each function (design 6, "What the agent is told")."""
+
+
+def function_description(name: str, tool_description: str = "") -> str:
+    """Return what the agent is told about function ``name``.
+
+    The YAML ``description`` of the memory tool goes in front of the built-in
+    text. It does not replace it: the built-in text states rules the agent
+    needs.
+
+    Raises:
+        KeyError: ``name`` is not one of ``MEMORY_FUNCTION_NAMES``.
+    """
+    built_in = MEMORY_FUNCTION_DESCRIPTIONS[name]
+    prefix = tool_description.strip()
+    return f"{prefix}\n\n{built_in}" if prefix else built_in
+
+
+# --- Handlers ---------------------------------------------------------------
+
+ErrorCode = Literal["invalid_argument", "not_supported", "backend_unavailable"]
+
+_ArgsT = TypeVar("_ArgsT", bound=_Model)
+
+
+def tool_error(code: ErrorCode, message: str) -> MemoryToolError:
+    """Return the error result for ``code``."""
+    return MemoryToolError(error=MemoryToolErrorBody(code=code, message=message))
+
+
+def _not_supported(error: MemoryNotSupportedError) -> MemoryToolError:
+    # Built from the fields, not str(error): the hint is backend text.
+    return tool_error(
+        "not_supported",
+        f"memory backend '{error.backend}' does not support {error.operation}",
+    )
+
+
+def _unavailable(error: MemoryBackendUnavailableError) -> MemoryToolError:
+    # The detail is left out: it can name a host or quote a driver message.
+    return tool_error(
+        "backend_unavailable",
+        f"memory backend '{error.backend}' is unavailable; try again later",
+    )
+
+
+_DATE_EXPECTED = (
+    "an ISO 8601 date or datetime, for example 2022-07-01 or 2022-07-01T09:30:00Z"
+)
+_NON_EMPTY = "a non-empty string"
+_EXPECTED: dict[str, str] = {
+    "query": _NON_EMPTY,
+    "entity": _NON_EMPTY,
+    "fact_id": _NON_EMPTY,
+    "valid_at": _DATE_EXPECTED,
+    "known_at": _DATE_EXPECTED,
+    "hops": f"{MIN_HOPS} or {MAX_HOPS}",
+}
+"""What each argument must be. Fixed text: an error message never repeats
+what the model sent."""
+
+
+def _validation_message(model: type[_Model], error: ValidationError) -> str:
+    """One fixed phrase per failed field.
+
+    The message holds the name of a field of ``model`` and a fixed description
+    of what it must be. It never holds text the model sent: not a value, and
+    not the name of a field the model made up.
+    """
+    parts: list[str] = []
+    for item in error.errors(include_url=False, include_input=False):
+        loc = item["loc"]
+        field = str(loc[0]) if loc else ""
+        if field not in model.model_fields:
+            part = "an unknown field"
+        else:
+            part = f"{field} must be {_EXPECTED.get(field, 'valid')}"
+        if part not in parts:
+            parts.append(part)
+    return "; ".join(parts) or "the arguments are not valid"
+
+
+def parse_arguments(
+    model: type[_ArgsT], arguments: Mapping[str, object]
+) -> _ArgsT | MemoryToolError:
+    """Validate ``arguments`` with ``model``; an invalid one is an error result."""
+    try:
+        return model.model_validate(dict(arguments))
+    except ValidationError as error:
+        return tool_error("invalid_argument", _validation_message(model, error))
+
+
+class MemoryToolHandlers:
+    """The three memory functions over one ``TemporalMemory``. Host-neutral.
+
+    Each handler takes the validated argument model and returns the result
+    model, or a ``MemoryToolError`` for a cause the model can correct:
+
+    * ``invalid_argument``: an argument fails validation.
+    * ``not_supported``: the backend lacks the operation (named).
+    * ``backend_unavailable``: the backend is down, for ``memory_timeline``
+      and ``memory_provenance``. ``memory_search`` then returns chunk hits
+      with ``degraded: true`` instead.
+
+    Any other exception propagates: it is a host fault.
+    """
+
+    def __init__(self, memory: TemporalMemory) -> None:
+        self._memory = memory
+
+    async def memory_search(
+        self, args: MemorySearchArgs
+    ) -> MemorySearchResult | MemoryToolError:
+        """Run ``memory_search``. Unset instants default to the service clock."""
+        try:
+            valid_at = (
+                None
+                if args.valid_at is None
+                else parse_instant(args.valid_at, "valid_at")
+            )
+            known_at = (
+                None
+                if args.known_at is None
+                else parse_instant(args.known_at, "known_at")
+            )
+            outcome = await self._memory.search(
+                args.query, valid_at=valid_at, known_at=known_at, hops=args.hops
+            )
+        except MemoryValueError:
+            # Fixed text: the error can quote a date or a backend detail.
+            return tool_error(
+                "invalid_argument",
+                "valid_at, known_at or hops was rejected; check each "
+                "against its format",
+            )
+        except MemoryNotSupportedError as error:
+            return _not_supported(error)
+        except MemoryBackendUnavailableError as error:
+            # The service degrades on the backend search itself; this is any
+            # other store call that could not be reached.
+            return _unavailable(error)
+        return MemorySearchResult.build(
+            outcome.hits,
+            outcome.valid_at,
+            outcome.known_at,
+            degraded=outcome.degraded,
+        )
+
+    async def memory_timeline(
+        self, args: MemoryTimelineArgs
+    ) -> MemoryTimelineResult | MemoryToolError:
+        """Run ``memory_timeline``."""
+        try:
+            entries = await self._memory.timeline(args.entity)
+        except MemoryNotSupportedError as error:
+            return _not_supported(error)
+        except MemoryBackendUnavailableError as error:
+            return _unavailable(error)
+        return MemoryTimelineResult(
+            entity=args.entity,
+            entries=[TimelineEntryOut.from_entry(entry) for entry in entries],
+        )
+
+    async def memory_provenance(
+        self, args: MemoryProvenanceArgs
+    ) -> MemoryProvenanceResult | MemoryToolError:
+        """Run ``memory_provenance``. An unknown ``fact_id`` is ``found: false``."""
+        try:
+            provenance = await self._memory.provenance(args.fact_id)
+        except MemoryNotSupportedError as error:
+            return _not_supported(error)
+        except MemoryBackendUnavailableError as error:
+            return _unavailable(error)
+        return MemoryProvenanceResult.build(provenance)
+
+    async def run(self, name: str, arguments: Mapping[str, object]) -> _Model:
+        """Validate ``arguments`` for function ``name`` and run its handler.
+
+        Returns:
+            The result model, or a ``MemoryToolError``.
+
+        Raises:
+            KeyError: ``name`` is not one of ``MEMORY_FUNCTION_NAMES``.
+        """
+        if name == MEMORY_SEARCH:
+            search = parse_arguments(MemorySearchArgs, arguments)
+            if isinstance(search, MemoryToolError):
+                return search
+            return await self.memory_search(search)
+        if name == MEMORY_TIMELINE:
+            timeline = parse_arguments(MemoryTimelineArgs, arguments)
+            if isinstance(timeline, MemoryToolError):
+                return timeline
+            return await self.memory_timeline(timeline)
+        if name == MEMORY_PROVENANCE:
+            provenance = parse_arguments(MemoryProvenanceArgs, arguments)
+            if isinstance(provenance, MemoryToolError):
+                return provenance
+            return await self.memory_provenance(provenance)
+        raise KeyError(f"unknown memory function '{name}'")
+
+    async def call(self, name: str, arguments: Mapping[str, object]) -> str:
+        """Run function ``name`` and return its result as JSON text.
+
+        This is the one entry point every binding passes calls to, so the
+        same call returns the same text on every host.
+
+        Raises:
+            KeyError: ``name`` is not one of ``MEMORY_FUNCTION_NAMES``.
+        """
+        result = await self.run(name, arguments)
+        return result.model_dump_json()

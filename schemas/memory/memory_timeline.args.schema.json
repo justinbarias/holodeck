@@ -4,7 +4,7 @@
   "description": "Arguments of ``memory_timeline``.",
   "properties": {
     "entity": {
-      "description": "The entity whose facts to list.",
+      "description": "The name of the entity whose facts to list, as facts state it: a payment, body, person or provision, for example 'Family Benefit'. Not a question and not a description.",
       "minLength": 1,
       "pattern": "\\S",
       "title": "Entity",

@@ -103,6 +103,7 @@ class ChunkMatch:
 class ChunkSource(Protocol):
     name: str                                                   # property
     async def documents() -> Sequence[SourceDocument]
+    async def document(source_uri: str) -> SourceDocument | None  # no store read
     async def chunks(document: SourceDocument) -> Sequence[ChunkRef]
     async def find(query: str, top_k: int) -> list[ChunkMatch]
 ```
@@ -604,7 +605,7 @@ Worked example, with T1's fixture: the 100-dollar rate from 2020, closed by the 
 
 In the third row the fact is returned as the store believed it at K: `valid_to` and `expired_at` are both set to none.
 
-When K is the present, `expired_at > K` can match nothing, so the second query is skipped. Most calls use the default K and cost one Graphiti search.
+Both queries run for every K, the present included. An earlier version skipped the second query when K was within a minute of the backend's clock. The phase 3 review showed that this drops a fact the rule admits: ingestion can close a fact between the caller reading its clock and the search running, and a K a few seconds in the past is a real past. Every search therefore costs two Graphiti searches.
 
 **Alternative rejected.** Run one query with rules 1 and 2 only, and apply rule 3 in Python. Graphiti cuts each method to `2 × limit` candidates before the backend sees them. In a namespace with a long history most candidates are closed facts, so correct facts would be cut before the filter ran.
 
@@ -642,6 +643,7 @@ Chunks have no valid period. The service knows one date for a chunk: the effecti
 - A chunk whose document takes effect after V is dropped. It also gives no seed.
 - Every other chunk is returned with `valid_from` set to that date and `valid_to` none.
 - `known_at` does not apply to chunks. The index holds only what is in it today.
+- The date is read from the source file on every search, through `ChunkSource.document(source_uri)`: one call per distinct document among the hits, no store listing and no cache. A date corrected on disk is seen by the next search. A missing file, a bad date in front matter, or a document dated only by ingestion time gives an undated chunk, which is kept. (Added after the phase 3 review, with the maintainer's approval of the new method. The first version listed every document in the store and cached the dates for the life of the service.)
 
 So a chunk from a superseded compilation can still be returned for a query about today. Only fact hits carry an end date. The tool description in seam 6 must tell the agent this.
 
@@ -678,7 +680,7 @@ So a chunk from a superseded compilation can still be returned for a query about
 
 - A fact ingested out of date order has `created_at` and `expired_at` close together (T1, one run). Known-at queries on back-filled facts are not meaningful. ING-04 ingests in date order to avoid this.
 - Outgoing-only expansion (D23) can miss a fact whose seed entity is the edge target. T17 measures it.
-- The clock: "K is before now" compares the query's K with the backend host's time. A K a few seconds in the past, set by the service's default, must not start the second query. The service passes the same instant for both defaults and the backend treats K within one minute of now as the present.
+- The clock: the backend does not compare K with its own time. Both queries always run (see the known-at rule).
 
 ## 6. Tool binding
 
@@ -781,7 +783,7 @@ Every timestamp in a result is ISO 8601 with a `Z` suffix (HST-02).
 An exception inside a tool call ends the agent's turn on some hosts. The model can recover from a result. So the handler returns:
 
 ```json
-{ "error": { "code": "invalid_argument", "message": "valid_at is not a date: 'last July'" } }
+{ "error": { "code": "invalid_argument", "message": "valid_at must be an ISO 8601 date or datetime, for example 2022-07-01 or 2022-07-01T09:30:00Z" } }
 ```
 
 | Cause | `code` |
@@ -791,6 +793,8 @@ An exception inside a tool call ends the agent's turn on some hosts. The model c
 | The backend is down, for `memory_timeline` or `memory_provenance` | `backend_unavailable` |
 | The backend is down, for `memory_search` | Not an error: chunk hits with `degraded: true` |
 | An unknown `fact_id` | Not an error: `found: false` |
+
+A message is fixed text for the field. It never repeats the argument value or an unknown field's name, because either can carry a secret or document text (phase 3 review). A store failure that is not "cannot be reached" is not a result: it raises, so a query error or a bug is not hidden as a degraded search.
 
 A tool that was never initialized still raises `BackendSessionError`, as the other tools do. That is a host fault and not something the model can correct.
 
@@ -825,7 +829,7 @@ The YAML `description` field is added in front of this text. It does not replace
 
 - T13: the Claude allowed-tool list contains the three fixed names and no `<name>_search` entry for the memory tool.
 - T14: `_reject_sdk_name_collisions` sees all three names.
-- T14: the same call on both bindings returns byte-identical JSON text.
+- T14: the same call on both bindings returns byte-identical JSON text when it reaches the handler. Verified for 12 argument sets. One accepted difference (maintainer decision, phase 3 review): the Claude SDK validates arguments against the schema before the handler runs, so a schema-invalid call (`hops: 3`, an empty query, an unknown field) returns the SDK's `Input validation error` text with `isError` on Claude, and the `invalid_argument` result on OpenAI Agents. A bad date string passes the schema and gives the same result on both. A test goes through the real SDK dispatch to pin this down.
 - T15: an agent node is one activity and tool calls run inside it. This was read from `temporal/activity.py` and not traced.
 
 ### Risks

@@ -67,6 +67,15 @@ class ChunkSource(Protocol):
         """Return every document the tool has stored."""
         ...
 
+    async def document(self, source_uri: str) -> SourceDocument | None:
+        """Return the document stored under ``source_uri``, or None.
+
+        It does not read the store: a search calls it for each hit's document
+        to learn the document's date, and a store listing there would scan
+        the whole corpus. None means the source file no longer exists.
+        """
+        ...
+
     async def chunks(self, document: SourceDocument) -> Sequence[ChunkRef]:
         """Return the chunks of ``document`` in ascending ordinal."""
         ...

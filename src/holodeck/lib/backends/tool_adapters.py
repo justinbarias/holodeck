@@ -4,6 +4,12 @@ Wraps VectorStoreTool and HierarchicalDocumentTool search methods as
 ``@tool``-decorated functions, bundles them into an in-process MCP server
 via ``create_sdk_mcp_server()``, and provides a factory for ClaudeBackend
 to call during initialization.
+
+A ``temporal_memory`` tool contributes three functions with fixed names
+(spec 043, HST-01). Its adapter is thin: the argument schemas come from the
+models in ``holodeck.lib.memory.tool_api`` and each call passes through to
+``TemporalMemoryTool.call``, whose JSON text goes back in one text block.
+The memory modules are imported only when the agent has a memory tool.
 """
 
 from __future__ import annotations
@@ -11,9 +17,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 import typing
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import SdkMcpTool, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import McpSdkServerConfig
@@ -23,6 +29,7 @@ from holodeck.lib.function_tool_loader import load_function_tool
 from holodeck.models.tool import (
     FunctionTool,
     HierarchicalDocumentToolConfig,
+    TemporalMemoryToolConfig,
     ToolUnion,
 )
 from holodeck.models.tool import (
@@ -30,6 +37,9 @@ from holodeck.models.tool import (
 )
 from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
 from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+if TYPE_CHECKING:
+    from holodeck.tools.temporal_memory_tool import TemporalMemoryTool
 
 _NO_RESULTS = "No results found."
 
@@ -145,6 +155,26 @@ def _make_hierarchical_search_fn(
     return _search
 
 
+def _make_memory_fn(
+    instance: TemporalMemoryTool,
+    name: str,
+    description: str,
+    input_schema: dict[str, Any],
+) -> SdkMcpTool[Any]:
+    """Create the ``@tool`` handler of memory function *name*.
+
+    Thin: the handler layer validates, runs and serializes, and returns an
+    error result instead of raising for a cause the model can correct.
+    """
+
+    @tool(name, description, input_schema)
+    async def _call(args: dict[str, Any]) -> dict[str, Any]:
+        text = await instance.call(name, args)
+        return {"content": [{"type": "text", "text": text}]}
+
+    return _call
+
+
 # ---------------------------------------------------------------------------
 # Adapter classes
 # ---------------------------------------------------------------------------
@@ -229,6 +259,61 @@ class HierarchicalDocToolAdapter:
         return _make_hierarchical_search_fn(self.instance, name, desc)
 
 
+class TemporalMemoryToolAdapter:
+    """Exposes a ``TemporalMemoryTool`` as three Claude Agent SDK tools.
+
+    The names are fixed (``memory_search``, ``memory_timeline``,
+    ``memory_provenance``) and carry no tool-name prefix (HST-01). Each input
+    schema is the JSON Schema of the function's argument model. Descriptions
+    are not truncated: the built-in text states rules the agent needs.
+
+    Args:
+        config: The memory tool configuration from the agent YAML.
+        instance: The initialized ``TemporalMemoryTool``.
+    """
+
+    def __init__(
+        self,
+        config: TemporalMemoryToolConfig,
+        instance: TemporalMemoryTool,
+    ) -> None:
+        self.config = config
+        self.instance = instance
+
+    def function_names(self) -> tuple[str, ...]:
+        """The three function names, in ``MEMORY_FUNCTION_NAMES`` order."""
+        from holodeck.lib.memory.tool_api import MEMORY_FUNCTION_NAMES
+
+        return MEMORY_FUNCTION_NAMES
+
+    def to_sdk_tools(self) -> list[SdkMcpTool[Any]]:
+        """Return one ``SdkMcpTool`` per memory function."""
+        from holodeck.lib.memory.tool_api import (
+            MEMORY_TOOL_MODELS,
+            function_description,
+        )
+
+        tools: list[SdkMcpTool[Any]] = []
+        for name in self.function_names():
+            args_model, _ = MEMORY_TOOL_MODELS[name]
+            tools.append(
+                _make_memory_fn(
+                    self.instance,
+                    name,
+                    function_description(name, self.config.description),
+                    args_model.model_json_schema(),
+                )
+            )
+        return tools
+
+
+ToolAdapter = (
+    VectorStoreToolAdapter
+    | HierarchicalDocToolAdapter
+    | FunctionToolAdapter
+    | TemporalMemoryToolAdapter
+)
+
 # ---------------------------------------------------------------------------
 # Factory & server builder
 # ---------------------------------------------------------------------------
@@ -238,10 +323,10 @@ _SERVER_NAME = "holodeck_tools"
 
 def create_tool_adapters(
     tool_configs: list[ToolUnion],
-    tool_instances: dict[str, VectorStoreTool | HierarchicalDocumentTool],
+    tool_instances: Mapping[str, object],
     base_dir: Path | None = None,
-) -> list[VectorStoreToolAdapter | HierarchicalDocToolAdapter | FunctionToolAdapter]:
-    """Build adapters for vectorstore, hierarchical-document, and function tools.
+) -> list[ToolAdapter]:
+    """Build adapters for vectorstore, hierarchical-document, function and memory tools.
 
     Filters *tool_configs* for supported types, matches each to its
     initialized instance (vectorstore / hierarchical) or loads the Python
@@ -261,9 +346,7 @@ def create_tool_adapters(
         BackendInitError: If a supported tool config has no matching instance.
         ConfigError: If a function tool fails to load.
     """
-    adapters: list[
-        VectorStoreToolAdapter | HierarchicalDocToolAdapter | FunctionToolAdapter
-    ] = []
+    adapters: list[ToolAdapter] = []
 
     for cfg in tool_configs:
         if isinstance(cfg, VectorstoreToolConfig):
@@ -297,14 +380,23 @@ def create_tool_adapters(
         elif isinstance(cfg, FunctionTool):
             func = load_function_tool(cfg, base_dir=base_dir)
             adapters.append(FunctionToolAdapter(config=cfg, callable=func))
+        elif isinstance(cfg, TemporalMemoryToolConfig):
+            from holodeck.tools.temporal_memory_tool import TemporalMemoryTool
+
+            memory = tool_instances.get(cfg.name)
+            if not isinstance(memory, TemporalMemoryTool):
+                raise BackendInitError(
+                    f"No initialized instance found for tool '{cfg.name}' "
+                    f"(type: {cfg.type}). Ensure tool initialization "
+                    "completed before creating adapters."
+                )
+            adapters.append(TemporalMemoryToolAdapter(config=cfg, instance=memory))
 
     return adapters
 
 
 def build_holodeck_sdk_server(
-    adapters: list[
-        VectorStoreToolAdapter | HierarchicalDocToolAdapter | FunctionToolAdapter
-    ],
+    adapters: Sequence[ToolAdapter],
 ) -> tuple[McpSdkServerConfig, list[str]]:
     """Bundle adapters into an in-process MCP server for the Claude subprocess.
 
@@ -316,9 +408,15 @@ def build_holodeck_sdk_server(
         *server_config* is a ``McpSdkServerConfig`` TypedDict and
         *allowed_tool_names* are the fully-qualified MCP tool names.
         Search-backed adapters contribute ``<name>_search``; function-tool
-        adapters contribute the raw tool name.
+        adapters contribute the raw tool name; a memory adapter contributes
+        its three fixed function names.
     """
-    sdk_tools: list[SdkMcpTool[Any]] = [a.to_sdk_tool() for a in adapters]
+    sdk_tools: list[SdkMcpTool[Any]] = []
+    for adapter in adapters:
+        if isinstance(adapter, TemporalMemoryToolAdapter):
+            sdk_tools.extend(adapter.to_sdk_tools())
+        else:
+            sdk_tools.append(adapter.to_sdk_tool())
 
     server_config: McpSdkServerConfig = create_sdk_mcp_server(
         name=_SERVER_NAME,
@@ -327,7 +425,11 @@ def build_holodeck_sdk_server(
 
     allowed_tools: list[str] = []
     for a in adapters:
-        if isinstance(a, FunctionToolAdapter):
+        if isinstance(a, TemporalMemoryToolAdapter):
+            allowed_tools.extend(
+                f"mcp__{_SERVER_NAME}__{name}" for name in a.function_names()
+            )
+        elif isinstance(a, FunctionToolAdapter):
             allowed_tools.append(f"mcp__{_SERVER_NAME}__{a.config.name}")
         else:
             allowed_tools.append(f"mcp__{_SERVER_NAME}__{a.config.name}_search")

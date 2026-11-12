@@ -1,6 +1,6 @@
-"""The Graphiti memory backend: write side (spec 043, design seam 3).
+"""The Graphiti memory backend (spec 043, design seams 3 and 5).
 
-Each ``EpisodeIn`` becomes one Graphiti episode, exactly once, under the
+Write side. Each ``EpisodeIn`` becomes one Graphiti episode, exactly once, under the
 content-hash uuid the service chose:
 
 1. Load the episode node by uuid. If it is absent, save it as *pending*.
@@ -11,6 +11,13 @@ content-hash uuid the service chose:
 The state lives in the node's ``name`` (``hd1:<state>:<json>``), because an
 episode node stores only Graphiti's own nine fields. A crash at any point
 leaves the episode pending, and the next run processes it again.
+
+Read side. ``search`` applies the known-at rule (design seam 5) as two
+filtered Graphiti searches merged by edge uuid, OPEN and CLOSED_LATER, for
+every ``known_at``. ``timeline`` resolves its reference with
+``entity_match.resolve_entities``; it and ``provenance`` read edges and the
+episodes they name. Sources come from the episode ``name``, never from
+``source_description``.
 
 This module does not import ``graphiti_core`` at import time. Graphiti, its
 driver and its clients are built on first use, once, so constructing the
@@ -23,21 +30,23 @@ import asyncio
 import importlib
 import json
 import logging
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, NoReturn, Protocol, TypeVar
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Literal, Protocol, TypeVar
 from uuid import UUID
 
 from holodeck.lib.extras import MissingExtraError, require_extra
 from holodeck.lib.memory.backends.graphiti_secrets import credential_values, redact
+from holodeck.lib.memory.entity_match import EntityCandidate, resolve_entities
 from holodeck.lib.memory.errors import (
     MemoryBackendUnavailableError,
     MemoryConfigError,
-    MemoryNotSupportedError,
     TemporalMemoryError,
 )
 from holodeck.lib.memory.types import (
     EpisodeIn,
+    EpisodeRef,
     FactHit,
     IngestReport,
     MemoryCapabilities,
@@ -54,10 +63,16 @@ from holodeck.models.tool import GraphBackendConfig
 if TYPE_CHECKING:
     from graphiti_core import Graphiti
     from graphiti_core.driver.driver import GraphDriver
+    from graphiti_core.edges import EntityEdge
     from graphiti_core.nodes import EpisodicNode
+    from graphiti_core.search.search_config import SearchConfig
+    from graphiti_core.search.search_filters import SearchFilters
     from pydantic import BaseModel
 
-    from holodeck.lib.memory.backends.graphiti_clients import CountingLLMClient
+    from holodeck.lib.memory.backends.graphiti_clients import (
+        CountingLLMClient,
+        GraphitiRuntime,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +80,19 @@ NAME = "graphiti"
 GRAPHITI_EXTRA = "graphiti"
 GRAPHITI_FEATURE = "The graphiti temporal memory backend"
 
-SUPPORTED = frozenset({MemoryOperation.INGEST, MemoryOperation.PURGE})
+# The rows the spec's Graphiti capability table marks "Not supported" (MB-03).
+UNSUPPORTED = frozenset(
+    {
+        MemoryOperation.SINGLE_VALUED_PREDICATES,
+        MemoryOperation.SUPERSESSION_AUDIT,
+        MemoryOperation.RETRACTION,
+        MemoryOperation.REVIEW_QUEUE,
+    }
+)
+SUPPORTED = frozenset(MemoryOperation) - UNSUPPORTED
+
+# Before every date the store can hold, so a fact with no start sorts first.
+_NO_START = datetime.min.replace(tzinfo=UTC)
 
 EpisodeState = Literal["pending", "complete"]
 NAME_VERSION = "hd1"
@@ -84,6 +111,18 @@ MATCH (e:Episodic {uuid: $uuid})
 WHERE e.group_id = $group_id
 SET e.name = $name
 RETURN count(e) AS updated
+"""
+
+# The candidate entities of a timeline: an exact uuid, or a name the reference
+# contains in any case (which covers an equal name). This is a pre-filter
+# only; ``entity_match.resolve_entities`` decides, so "s. 1" is not taken for
+# "s. 10".
+FIND_ENTITIES_QUERY = """
+MATCH (n:Entity)
+WHERE n.group_id = $group_id
+  AND (n.uuid = $entity_ref
+       OR (size(n.name) > 0 AND toLower($entity_ref) CONTAINS toLower(n.name)))
+RETURN n.uuid AS uuid, n.name AS name
 """
 
 T = TypeVar("T")
@@ -229,11 +268,141 @@ def _describe(error: BaseException) -> str:
     return f"{type(error).__name__}: {text}" if text else type(error).__name__
 
 
+# --- Read-side helpers ----------------------------------------------------
+
+
+def _utc(value: datetime) -> datetime:
+    """A stored instant as aware UTC. A naive value is taken as UTC."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _utc_or_none(value: datetime | None) -> datetime | None:
+    return None if value is None else _utc(value)
+
+
+def _search_config(query: MemoryQuery) -> SearchConfig:
+    """Edges only: full-text, similarity and breadth-first, fused by RRF.
+
+    Built per call: Graphiti's recipe objects are shared and ``search``
+    changes them. RRF needs no model; the cross-encoder refuses every call.
+    """
+    from graphiti_core.search.search_config import (
+        EdgeReranker,
+        EdgeSearchConfig,
+        EdgeSearchMethod,
+        SearchConfig,
+    )
+
+    return SearchConfig(
+        edge_config=EdgeSearchConfig(
+            search_methods=[
+                EdgeSearchMethod.bm25,
+                EdgeSearchMethod.cosine_similarity,
+                EdgeSearchMethod.bfs,
+            ],
+            reranker=EdgeReranker.rrf,
+            bfs_max_depth=query.hops,
+        ),
+        limit=query.limit,
+    )
+
+
+def _known_at_filters(
+    valid_at: datetime, known_at: datetime, *, closed_later: bool
+) -> SearchFilters:
+    """The OPEN or CLOSED_LATER filter of design seam 5.
+
+    Fields are joined by AND and groups inside a field by OR. A dated
+    comparison never matches null, so each nullable field has an
+    ``IS NULL`` group, and no field has more than one dated group.
+    """
+    from graphiti_core.search.search_filters import (
+        ComparisonOperator,
+        DateFilter,
+        SearchFilters,
+    )
+
+    def dated(op: ComparisonOperator, instant: datetime) -> list[DateFilter]:
+        return [DateFilter(date=instant, comparison_operator=op)]
+
+    is_null = [DateFilter(comparison_operator=ComparisonOperator.is_null)]
+    recorded = [dated(ComparisonOperator.less_than_equal, known_at)]
+    started = [dated(ComparisonOperator.less_than_equal, valid_at), is_null]
+    if closed_later:
+        return SearchFilters(
+            created_at=recorded,
+            valid_at=started,
+            expired_at=[dated(ComparisonOperator.greater_than, known_at)],
+        )
+    return SearchFilters(
+        created_at=recorded,
+        valid_at=started,
+        invalid_at=[dated(ComparisonOperator.greater_than, valid_at), is_null],
+    )
+
+
+def _known_at_rule(edge: EntityEdge, valid_at: datetime, known_at: datetime) -> bool:
+    """The known-at rule of design seam 5, on one edge."""
+    if _utc(edge.created_at) > known_at:
+        return False
+    start = _utc_or_none(edge.valid_at)
+    if start is not None and start > valid_at:
+        return False
+    end = _utc_or_none(edge.invalid_at)
+    expired = _utc_or_none(edge.expired_at)
+    return end is None or end > valid_at or (expired is not None and expired > known_at)
+
+
+def _as_believed_at(
+    edge: EntityEdge, known_at: datetime
+) -> tuple[datetime | None, datetime | None]:
+    """``valid_to`` and ``expired_at`` as the store held them at ``known_at``.
+
+    A closing recorded after ``known_at`` was not known then: the fact is
+    returned open, with neither an end nor an expiry.
+    """
+    expired = _utc_or_none(edge.expired_at)
+    if expired is not None and expired > known_at:
+        return None, None
+    return _utc_or_none(edge.invalid_at), expired
+
+
+def _episode_ref(
+    node: EpisodicNode, namespace: str, *, with_text: bool
+) -> EpisodeRef | None:
+    """A complete HoloDeck episode as an ``EpisodeRef``; None for any other."""
+    if node.group_id != namespace or not is_complete(node.name):
+        return None
+    decoded = decode_episode_name(node.name)
+    if decoded is None:
+        return None
+    try:
+        episode_id = UUID(node.uuid)
+    except ValueError:
+        return None
+    return EpisodeRef(
+        episode_id=episode_id,
+        source_tool=decoded.source_tool,
+        chunk_id=decoded.chunk_id,
+        source_uri=decoded.source_uri,
+        reference_time=_utc(node.valid_at),
+        reference_time_source=decoded.reference_time_source,
+        text=node.content if with_text else None,
+    )
+
+
+def _sources(edge: EntityEdge, refs: dict[str, EpisodeRef]) -> tuple[EpisodeRef, ...]:
+    """The edge's episodes that are known, in the edge's order, once each."""
+    return tuple(refs[uuid] for uuid in dict.fromkeys(edge.episodes) if uuid in refs)
+
+
 # --- Backend --------------------------------------------------------------
 
 
 class GraphitiBackend:
-    """``MemoryBackend`` over Graphiti. This task builds the write side only."""
+    """``MemoryBackend`` over Graphiti."""
 
     def __init__(
         self,
@@ -253,6 +422,7 @@ class GraphitiBackend:
         self._scoped: dict[str, GraphDriver] = {}
         self._indices_built = False
         self._lock = asyncio.Lock()
+        self._orphans: set[asyncio.Task[None]] = set()
 
     @property
     def name(self) -> str:
@@ -270,15 +440,23 @@ class GraphitiBackend:
                 require_graphiti()
                 from holodeck.lib.memory.backends import graphiti_clients
 
-                try:
-                    # In a thread: the Kuzu driver opens its database and
-                    # runs schema queries in its constructor.
-                    runtime = await asyncio.to_thread(
+                # In a thread: the Kuzu driver opens its database and runs
+                # schema queries in its constructor. A thread cannot be
+                # stopped, so a cancelled caller hands the build to a task
+                # that closes the runtime when it is ready.
+                build = asyncio.ensure_future(
+                    asyncio.to_thread(
                         graphiti_clients.build_graphiti,
                         self._config,
                         self._extraction_model,
                         self._embedding_service,
                     )
+                )
+                try:
+                    runtime = await asyncio.shield(build)
+                except asyncio.CancelledError:
+                    self._close_when_built(build)
+                    raise
                 except TemporalMemoryError:
                     raise
                 except Exception as error:  # noqa: BLE001 - no driver type leaves
@@ -295,8 +473,11 @@ class GraphitiBackend:
                 self._llm = runtime.llm
             return self._graphiti
 
-    async def _ready_for_write(self) -> Graphiti:
-        """Graphiti with indices and constraints built, once per instance."""
+    async def _ready(self) -> Graphiti:
+        """Graphiti with indices and constraints built, once per instance.
+
+        Writes need the constraints; search needs the full-text index.
+        """
         graphiti = await self._graph()
         async with self._lock:
             if not self._indices_built:
@@ -319,12 +500,40 @@ class GraphitiBackend:
             self._scoped[namespace] = driver
         return driver
 
+    def _close_when_built(self, build: asyncio.Future[GraphitiRuntime]) -> None:
+        """Close the runtime of a build whose caller was cancelled.
+
+        The task is kept in ``_orphans`` so ``close`` can wait for it.
+        """
+
+        async def close_runtime() -> None:
+            try:
+                runtime = await build
+            except Exception:  # noqa: BLE001 - nothing was built, nothing to close
+                return
+            try:
+                await runtime.graphiti.close()
+            except Exception as error:  # noqa: BLE001 - logged; the caller is gone
+                logger.warning(
+                    "graphiti runtime built after cancellation did not close: %s",
+                    type(error).__name__,
+                )
+
+        task = asyncio.get_running_loop().create_task(close_runtime())
+        self._orphans.add(task)
+        task.add_done_callback(self._orphans.discard)
+
     async def close(self) -> None:
-        graphiti = self._graphiti
-        self._graphiti = None
-        self._llm = None
-        self._scoped.clear()
-        self._indices_built = False
+        # The lock waits for a build in progress, so its runtime is closed here.
+        async with self._lock:
+            graphiti = self._graphiti
+            self._graphiti = None
+            self._llm = None
+            self._scoped.clear()
+            self._indices_built = False
+        orphans = list(self._orphans)
+        if orphans:
+            await asyncio.gather(*orphans)
         if graphiti is not None:
             await self._store("close", graphiti.close())
 
@@ -335,15 +544,22 @@ class GraphitiBackend:
         return redact(text, credential_values(self._extraction_model, self._config))
 
     async def _store(self, operation: str, call: Awaitable[T]) -> T:
-        """Await a store call; any store failure leaves as unavailable."""
+        """Await a store call; no driver exception type leaves the backend.
+
+        Only a store that cannot be reached is "unavailable", which a search
+        answers with a degraded result. Any other failure (a query error, a
+        dimension mismatch, a bug) is a ``TemporalMemoryError``: it must not
+        be hidden as a degraded search.
+        """
         try:
             return await call
         except TemporalMemoryError:
             raise
         except Exception as error:  # noqa: BLE001 - no driver type leaves
-            raise MemoryBackendUnavailableError(
-                NAME, f"{operation} failed: {self._redact(_describe(error))}"
-            ) from error
+            detail = f"{operation} failed: {self._redact(_describe(error))}"
+            if _is_unreachable(error):
+                raise MemoryBackendUnavailableError(NAME, detail) from error
+            raise TemporalMemoryError(f"Memory backend '{NAME}': {detail}") from error
 
     async def _load(self, driver: GraphDriver, episode_id: UUID) -> EpisodicNode | None:
         from graphiti_core.nodes import EpisodicNode
@@ -391,7 +607,7 @@ class GraphitiBackend:
     ) -> IngestReport:
         self._capabilities.require(MemoryOperation.INGEST)
         validate_namespace(namespace)
-        graphiti = await self._ready_for_write()
+        graphiti = await self._ready()
         driver = self._driver(graphiti, namespace)
         meter = _Meter.start(self._llm, graphiti)
         written: list[UUID] = []
@@ -520,20 +736,213 @@ class GraphitiBackend:
         # group_ids must never be None here: clear_data then deletes every node.
         await self._store("purge", clear_data(driver, group_ids=[namespace]))
 
-    # --- port: read side (a later task) ---------------------------------
-
-    def _not_built(self, operation: MemoryOperation) -> NoReturn:
-        self._capabilities.require(operation)
-        raise MemoryNotSupportedError(NAME, operation.value)
+    # --- port: read side -----------------------------------------------
 
     async def search(self, namespace: str, query: MemoryQuery) -> list[FactHit]:
-        self._not_built(MemoryOperation.SEARCH)
+        self._capabilities.require(MemoryOperation.SEARCH)
+        if query.seed_episode_ids:
+            self._capabilities.require(MemoryOperation.EXPAND)
+        validate_namespace(namespace)
+        graphiti = await self._ready()
+        driver = self._driver(graphiti, namespace)
+        seeds = await self._seed_entities(driver, namespace, query.seed_episode_ids)
+        config = _search_config(query)
+        valid_at, known_at = query.valid_at, query.known_at
+        # Two searches: facts open at V, and closed facts that were still open
+        # at K. The second runs for every K, the present included: ingestion
+        # can close a fact between the caller reading its clock and this call.
+        passes = [False, True]
+        results = await asyncio.gather(
+            *(
+                self._store(
+                    "search",
+                    graphiti.search_(
+                        query.text,
+                        config=config,
+                        group_ids=[namespace],
+                        # None, not []: with no seed Graphiti expands from
+                        # the sources of its own first results.
+                        bfs_origin_node_uuids=seeds or None,
+                        search_filter=_known_at_filters(
+                            valid_at, known_at, closed_later=closed_later
+                        ),
+                        driver=driver,
+                    ),
+                )
+                for closed_later in passes
+            )
+        )
+        best: dict[str, tuple[EntityEdge, float]] = {}
+        for result in results:
+            for edge, score in zip(
+                result.edges, result.edge_reranker_scores, strict=False
+            ):
+                # The filters already hold the rule; a driver with its own
+                # search interface may not, so the rule is checked again.
+                if edge.group_id != namespace or not _known_at_rule(
+                    edge, valid_at, known_at
+                ):
+                    continue
+                kept = best.get(edge.uuid)
+                if kept is None or score > kept[1]:
+                    best[edge.uuid] = (edge, score)
+        ranked = sorted(best.values(), key=lambda pair: (-pair[1], pair[0].uuid))
+        ranked = ranked[: query.limit]
+        refs = await self._episodes(
+            driver,
+            namespace,
+            (uuid for edge, _ in ranked for uuid in edge.episodes),
+            with_text=False,
+        )
+        hits: list[FactHit] = []
+        for edge, score in ranked:
+            valid_to, expired_at = _as_believed_at(edge, known_at)
+            hits.append(
+                FactHit(
+                    fact_id=edge.uuid,
+                    text=edge.fact,
+                    valid_from=_utc_or_none(edge.valid_at),
+                    valid_to=valid_to,
+                    recorded_at=_utc(edge.created_at),
+                    expired_at=expired_at,
+                    sources=_sources(edge, refs),
+                    score=float(score),
+                    # Graphiti does not record which edge closed which.
+                    superseded_by=None,
+                )
+            )
+        return hits
 
     async def timeline(self, namespace: str, entity_ref: str) -> list[TimelineEntry]:
-        self._not_built(MemoryOperation.TIMELINE)
+        self._capabilities.require(MemoryOperation.TIMELINE)
+        validate_namespace(namespace)
+        from graphiti_core.edges import EntityEdge
+
+        graphiti = await self._graph()
+        driver = self._driver(graphiti, namespace)
+        result = await self._store(
+            "find entity",
+            driver.execute_query(
+                FIND_ENTITIES_QUERY, group_id=namespace, entity_ref=entity_ref
+            ),
+        )
+        records = result[0] if result else []
+        candidates = [
+            EntityCandidate(entity_id=uuid, name=name)
+            for uuid, name in ((r["uuid"], r["name"]) for r in records)
+            if isinstance(uuid, str) and isinstance(name, str)
+        ]
+        entity_uuids = resolve_entities(entity_ref, candidates)
+        edges: dict[str, EntityEdge] = {}
+        for entity_uuid in entity_uuids:
+            found = await self._store(
+                "load entity facts", EntityEdge.get_by_node_uuid(driver, entity_uuid)
+            )
+            for edge in found:
+                if edge.group_id == namespace:
+                    edges.setdefault(edge.uuid, edge)
+        refs = await self._episodes(
+            driver,
+            namespace,
+            (uuid for edge in edges.values() for uuid in edge.episodes),
+            with_text=False,
+        )
+        entries = [
+            TimelineEntry(
+                fact_id=edge.uuid,
+                text=edge.fact,
+                valid_from=_utc_or_none(edge.valid_at),
+                valid_to=_utc_or_none(edge.invalid_at),
+                recorded_at=_utc(edge.created_at),
+                expired_at=_utc_or_none(edge.expired_at),
+                sources=_sources(edge, refs),
+            )
+            for edge in edges.values()
+        ]
+        entries.sort(key=lambda entry: (entry.valid_from or _NO_START, entry.fact_id))
+        return entries
 
     async def provenance(self, namespace: str, fact_id: str) -> Provenance | None:
-        self._not_built(MemoryOperation.PROVENANCE)
+        self._capabilities.require(MemoryOperation.PROVENANCE)
+        validate_namespace(namespace)
+        from graphiti_core.edges import EntityEdge
+
+        graphiti = await self._graph()
+        driver = self._driver(graphiti, namespace)
+        found = await self._store(
+            "load fact", EntityEdge.get_by_uuids(driver, [fact_id])
+        )
+        edge = next(
+            (e for e in found if e.uuid == fact_id and e.group_id == namespace), None
+        )
+        if edge is None:
+            return None
+        refs = await self._episodes(driver, namespace, edge.episodes, with_text=True)
+        return Provenance(
+            fact_id=edge.uuid,
+            text=edge.fact,
+            valid_from=_utc_or_none(edge.valid_at),
+            valid_to=_utc_or_none(edge.invalid_at),
+            recorded_at=_utc(edge.created_at),
+            expired_at=_utc_or_none(edge.expired_at),
+            sources=_sources(edge, refs),
+        )
+
+    async def _seed_entities(
+        self, driver: GraphDriver, namespace: str, episode_ids: Sequence[UUID]
+    ) -> list[str]:
+        """Uuids of the entities the complete seed episodes mention (RET-09).
+
+        One episode lookup and one mention lookup; no model call.
+        """
+        if not episode_ids:
+            return []
+        from graphiti_core.nodes import EpisodicNode
+        from graphiti_core.search import search_utils
+
+        nodes = await self._store(
+            "load seed episodes",
+            EpisodicNode.get_by_uuids(driver, [str(i) for i in episode_ids]),
+        )
+        episodes = [
+            node
+            for node in nodes
+            if node.group_id == namespace and is_complete(node.name)
+        ]
+        if not episodes:
+            return []
+        entities = await self._store(
+            "load seed entities", search_utils.get_mentioned_nodes(driver, episodes)
+        )
+        seeds: list[str] = []
+        for entity in entities:
+            if entity.group_id == namespace and entity.uuid not in seeds:
+                seeds.append(entity.uuid)
+        return seeds
+
+    async def _episodes(
+        self,
+        driver: GraphDriver,
+        namespace: str,
+        uuids: Iterable[str],
+        *,
+        with_text: bool,
+    ) -> dict[str, EpisodeRef]:
+        """The complete HoloDeck episodes among ``uuids``, by uuid, in one lookup."""
+        wanted = list(dict.fromkeys(uuids))
+        if not wanted:
+            return {}
+        from graphiti_core.nodes import EpisodicNode
+
+        nodes = await self._store(
+            "load episodes", EpisodicNode.get_by_uuids(driver, wanted)
+        )
+        refs: dict[str, EpisodeRef] = {}
+        for node in nodes:
+            ref = _episode_ref(node, namespace, with_text=with_text)
+            if ref is not None:
+                refs[node.uuid] = ref
+        return refs
 
 
 @dataclass(frozen=True, slots=True)

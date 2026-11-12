@@ -6,18 +6,30 @@ build_holodeck_sdk_server(), and create_tool_adapters().
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 
 from holodeck.lib.backends.base import BackendInitError, BackendSessionError
 from holodeck.lib.backends.tool_adapters import (
     HierarchicalDocToolAdapter,
+    TemporalMemoryToolAdapter,
     VectorStoreToolAdapter,
     build_holodeck_sdk_server,
     create_tool_adapters,
 )
 from holodeck.lib.hybrid_search import SearchResult
+from holodeck.lib.memory.backends.fake import FakeBackend
+from holodeck.lib.memory.tool_api import (
+    MEMORY_FUNCTION_DESCRIPTIONS,
+    MEMORY_FUNCTION_NAMES,
+    MEMORY_TOOL_MODELS,
+)
 from holodeck.models.tool import (
     HierarchicalDocumentToolConfig,
     MCPTool,
@@ -561,3 +573,203 @@ class TestBuildHolodeckSdkServerCompat:
         assert handlers is not None
         keys = {str(k) for k in handlers}
         assert "tools/list" in keys or any("ListTools" in k for k in keys)
+
+
+# ---------------------------------------------------------------------------
+# T13 (spec 043): TemporalMemoryToolAdapter
+# ---------------------------------------------------------------------------
+
+_MEMORY_DOC = (
+    "---\neffective_date: 2020-01-01\n---\n# Rates\n\n"
+    "## Pension\n\nThe pension rate is 100 dollars per fortnight.\n\n"
+    "## Carer\n\nThe carer payment is paid weekly to a carer.\n\n"
+    "## Youth\n\nYouth support is paid to students under age limits.\n"
+)
+
+
+def _memory_agent(source: str) -> Any:
+    from holodeck.models.agent import Agent
+
+    return Agent(
+        name="a",
+        model={"provider": "openai", "name": "gpt-4o"},
+        instructions={"inline": "hi"},
+        tools=[
+            {
+                "name": "acts",
+                "type": "hierarchical_document",
+                "description": "acts",
+                "source": source,
+                "search_mode": "keyword",
+            },
+            {
+                "name": "law_memory",
+                "type": "temporal_memory",
+                "description": "Family law memory.",
+                "source_tools": ["acts"],
+                "backend": {"driver": "kuzu"},
+            },
+        ],
+    )
+
+
+@pytest_asyncio.fixture
+async def memory_rig(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[tuple[Any, Any, FakeBackend]]:
+    """A started ``TemporalMemoryTool`` over a keyword tool and FakeBackend."""
+    from holodeck.tools import temporal_memory as composition
+    from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+    from holodeck.tools.temporal_memory_tool import TemporalMemoryTool
+
+    (tmp_path / "doc.md").write_text(_MEMORY_DOC)
+    backend = FakeBackend()
+    monkeypatch.setattr(composition, "create_backend", lambda *args: backend)
+    monkeypatch.setattr(composition, "create_embedding_service", lambda agent: None)
+    agent = _memory_agent(str(tmp_path))
+    source_config, memory_config = agent.tools
+    source = HierarchicalDocumentTool(source_config)
+    await source.initialize()
+    memory = TemporalMemoryTool(
+        agent, memory_config, {"acts": source}, embedding_service=None
+    )
+    await memory.initialize()
+    yield memory_config, memory, backend
+    await memory.close()
+    await source.close()
+
+
+@pytest.mark.unit
+class TestTemporalMemoryToolAdapter:
+    """The Claude binding of the memory tool: three fixed names, thin calls."""
+
+    @pytest.mark.asyncio
+    async def test_hst_01_exposes_exactly_the_three_names_with_arg_schemas(
+        self, memory_rig: tuple[Any, Any, FakeBackend]
+    ) -> None:
+        config, memory, _ = memory_rig
+
+        sdk_tools = TemporalMemoryToolAdapter(config, memory).to_sdk_tools()
+
+        assert [t.name for t in sdk_tools] == list(MEMORY_FUNCTION_NAMES)
+        for sdk_tool in sdk_tools:
+            args_model, _ = MEMORY_TOOL_MODELS[sdk_tool.name]
+            assert sdk_tool.input_schema == args_model.model_json_schema()
+
+    @pytest.mark.asyncio
+    async def test_hst_01_allowed_tools_are_the_fixed_names_only(
+        self, memory_rig: tuple[Any, Any, FakeBackend]
+    ) -> None:
+        config, memory, _ = memory_rig
+        hd_config = _make_hierdoc_config(name="acts")
+        adapters = [
+            HierarchicalDocToolAdapter(
+                config=hd_config, instance=_make_mock_hierdoc_tool(hd_config)
+            ),
+            TemporalMemoryToolAdapter(config, memory),
+        ]
+
+        _, allowed = build_holodeck_sdk_server(adapters)
+
+        assert allowed == [
+            "mcp__holodeck_tools__acts_search",
+            "mcp__holodeck_tools__memory_search",
+            "mcp__holodeck_tools__memory_timeline",
+            "mcp__holodeck_tools__memory_provenance",
+        ]
+        assert "mcp__holodeck_tools__law_memory_search" not in allowed
+
+    @pytest.mark.asyncio
+    async def test_descriptions_put_the_yaml_text_before_the_built_in_text(
+        self, memory_rig: tuple[Any, Any, FakeBackend]
+    ) -> None:
+        config, memory, _ = memory_rig
+
+        sdk_tools = TemporalMemoryToolAdapter(config, memory).to_sdk_tools()
+
+        for sdk_tool in sdk_tools:
+            assert sdk_tool.description == (
+                f"Family law memory.\n\n{MEMORY_FUNCTION_DESCRIPTIONS[sdk_tool.name]}"
+            )
+        search = next(t for t in sdk_tools if t.name == "memory_search")
+        assert "prefer facts when they disagree" in search.description
+
+    @pytest.mark.asyncio
+    async def test_call_passes_through_as_one_text_block(
+        self, memory_rig: tuple[Any, Any, FakeBackend]
+    ) -> None:
+        config, memory, backend = memory_rig
+        tools = {
+            t.name: t for t in TemporalMemoryToolAdapter(config, memory).to_sdk_tools()
+        }
+        # Both instants fixed, so two calls return the same text.
+        args = {
+            "query": "pension rate",
+            "valid_at": "2024-01-01",
+            "known_at": "2030-01-01",
+        }
+
+        result = await tools["memory_search"].handler(args)
+
+        assert result["content"][0]["type"] == "text"
+        assert len(result["content"]) == 1
+        assert "is_error" not in result
+        text = result["content"][0]["text"]
+        assert text == await memory.call("memory_search", args)
+        body = json.loads(text)
+        assert body["hits"], body
+        assert body["valid_at"] == "2024-01-01T00:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_bad_valid_at_returns_the_error_result_with_no_backend_call(
+        self, memory_rig: tuple[Any, Any, FakeBackend]
+    ) -> None:
+        config, memory, backend = memory_rig
+        tools = {
+            t.name: t for t in TemporalMemoryToolAdapter(config, memory).to_sdk_tools()
+        }
+        before = dict(backend.calls)
+
+        result = await tools["memory_search"].handler(
+            {"query": "rate", "valid_at": "last July"}
+        )
+
+        body = json.loads(result["content"][0]["text"])
+        assert body["error"]["code"] == "invalid_argument"
+        assert dict(backend.calls) == before
+
+    @pytest.mark.asyncio
+    async def test_uninitialized_memory_tool_raises_backend_session_error(
+        self, memory_rig: tuple[Any, Any, FakeBackend]
+    ) -> None:
+        config, memory, _ = memory_rig
+        tools = {
+            t.name: t for t in TemporalMemoryToolAdapter(config, memory).to_sdk_tools()
+        }
+        await memory.close()
+
+        with pytest.raises(BackendSessionError, match="law_memory"):
+            await tools["memory_timeline"].handler({"entity": "x"})
+
+    @pytest.mark.asyncio
+    async def test_create_tool_adapters_builds_the_memory_adapter(
+        self, memory_rig: tuple[Any, Any, FakeBackend]
+    ) -> None:
+        config, memory, _ = memory_rig
+
+        adapters = create_tool_adapters(
+            tool_configs=[config], tool_instances={"law_memory": memory}
+        )
+
+        assert len(adapters) == 1
+        assert isinstance(adapters[0], TemporalMemoryToolAdapter)
+        assert adapters[0].instance is memory
+
+    @pytest.mark.asyncio
+    async def test_create_tool_adapters_requires_an_initialized_memory_tool(
+        self, memory_rig: tuple[Any, Any, FakeBackend]
+    ) -> None:
+        config, _, _ = memory_rig
+
+        with pytest.raises(BackendInitError, match="law_memory"):
+            create_tool_adapters(tool_configs=[config], tool_instances={})

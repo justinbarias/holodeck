@@ -51,6 +51,9 @@ class FileSource:
     async def documents(self) -> Sequence[SourceDocument]:
         return [SourceDocument(self._name, str(self._path), self._path, True)]
 
+    async def document(self, source_uri: str) -> SourceDocument | None:
+        return SourceDocument(self._name, source_uri, self._path, True)
+
     async def chunks(self, document: SourceDocument) -> Sequence[ChunkRef]:
         return [
             ChunkRef(self._name, f"c{i}", document.source_uri, f"s{i}", i, text)

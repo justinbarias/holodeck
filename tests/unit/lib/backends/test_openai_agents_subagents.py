@@ -21,7 +21,11 @@ from holodeck.lib.backends.openai_agents_subagents import (
     index_parent_tools,
     subagent_instructions,
 )
-from holodeck.lib.backends.openai_agents_tool_adapters import sdk_tool_name_for
+from holodeck.lib.backends.openai_agents_tool_adapters import (
+    build_sdk_tools,
+    sdk_tool_name_for,
+    sdk_tool_names_for,
+)
 from holodeck.lib.errors import ConfigError
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
@@ -75,6 +79,28 @@ def _vectorstore_cfg(name: str) -> dict[str, Any]:
     }
 
 
+def _memory_cfg(name: str = "law_memory") -> dict[str, Any]:
+    return {
+        "name": name,
+        "type": "temporal_memory",
+        "description": "memory",
+        "source_tools": ["acts"],
+        "backend": {"driver": "kuzu"},
+    }
+
+
+def _hierarchical_cfg(name: str = "acts") -> dict[str, Any]:
+    return {
+        "name": name,
+        "type": "hierarchical_document",
+        "description": name,
+        "source": "acts/",
+    }
+
+
+MEMORY_FUNCTIONS = ["memory_search", "memory_timeline", "memory_provenance"]
+
+
 def _mcp_cfg(name: str) -> dict[str, Any]:
     return {
         "name": name,
@@ -104,9 +130,7 @@ def _surface(agent: Agent, *mcp_names: str) -> ParentToolSurface:
     """Build the parent surface the backend would produce for *agent*."""
     sdk_tools = []
     for cfg in agent.tools or []:
-        sdk_name = sdk_tool_name_for(cfg)
-        if sdk_name is not None:
-            sdk_tools.append(_sdk_tool(sdk_name))
+        sdk_tools.extend(_sdk_tool(name) for name in sdk_tool_names_for(cfg))
     servers = [MagicMock(name=n) for n in mcp_names]
     for server, name in zip(servers, mcp_names, strict=True):
         server.name = name
@@ -156,7 +180,7 @@ class TestIndexParentTools:
         agent = _agent(tools=[_function_cfg("lookup"), _vectorstore_cfg("kb")])
         surface = _surface(agent)
         assert set(surface.tools_by_name) == {"lookup", "kb"}
-        assert surface.tools_by_name["kb"].name == "kb_search"
+        assert [t.name for t in surface.tools_by_name["kb"]] == ["kb_search"]
         assert surface.names == {"lookup", "kb"}
 
     def test_disallowed_tool_absent_from_index(self) -> None:
@@ -228,7 +252,7 @@ class TestBuildSubagents:
         assert [t.name for t in handoff.tools] == ["lookup", "kb_search"]
         assert [s.name for s in handoff.mcp_servers] == ["srv"]
         # Same SDK objects, not copies.
-        assert handoff.tools[0] is surface.tools_by_name["lookup"]
+        assert handoff.tools[0] is surface.tools_by_name["lookup"][0]
 
     def test_explicit_tools_restrict_by_config_name(self) -> None:
         agent = _agent(
@@ -484,3 +508,77 @@ class TestHandoffShadowsParentTool:
         )
         with pytest.raises(ConfigError, match="already declares as a tool"):
             _build(agent)
+
+
+@pytest.mark.unit
+class TestMemoryToolGrants:
+    """A memory tool is three function tools, granted by its config name."""
+
+    def _tools(self) -> list[dict[str, Any]]:
+        return [_hierarchical_cfg(), _memory_cfg(), _function_cfg("lookup")]
+
+    def test_the_config_name_is_grantable(self) -> None:
+        surface = _surface(_agent(tools=self._tools()))
+
+        assert surface.names == {"acts", "law_memory", "lookup"}
+        assert [t.name for t in surface.tools_by_name["law_memory"]] == MEMORY_FUNCTIONS
+
+    def test_a_subagent_granted_the_memory_tool_gets_all_three_functions(self) -> None:
+        agent = _agent(
+            tools=self._tools(),
+            agents={"r": {"description": "d", "prompt": "p", "tools": ["law_memory"]}},
+        )
+
+        (handoff,) = _build(agent)
+
+        assert [t.name for t in handoff.tools] == MEMORY_FUNCTIONS
+
+    def test_a_subagent_not_granted_the_memory_tool_gets_none_of_them(self) -> None:
+        agent = _agent(
+            tools=self._tools(),
+            agents={"r": {"description": "d", "prompt": "p", "tools": ["lookup"]}},
+        )
+
+        (handoff,) = _build(agent)
+
+        assert [t.name for t in handoff.tools] == ["lookup"]
+
+    def test_a_skill_allowed_the_memory_tool_gets_all_three_functions(self) -> None:
+        agent = _agent(
+            tools=[
+                *self._tools(),
+                {
+                    "name": "s",
+                    "type": "skill",
+                    "description": "d",
+                    "instructions": "X",
+                    "allowed_tools": ["law_memory"],
+                },
+            ]
+        )
+
+        (skill,) = _build(agent)
+
+        assert [t.name for t in skill.tools] == MEMORY_FUNCTIONS
+
+    def test_disallowing_the_config_name_removes_all_three_and_blocks_a_grant(
+        self,
+    ) -> None:
+        agent = _agent(
+            tools=self._tools(),
+            agents={"r": {"description": "d", "prompt": "p", "tools": ["law_memory"]}},
+        )
+        assert agent.tools is not None
+        # The backend builds tools with the disallowed names removed first.
+        built = build_sdk_tools(
+            [cfg for cfg in agent.tools if cfg.name == "law_memory"],
+            base_dir=None,
+            tool_instances={},
+            disallowed={"law_memory"},
+        )
+        assert built == []
+        surface = index_parent_tools(agent.tools, [_sdk_tool("lookup")], [])
+
+        assert "law_memory" not in surface.names
+        with pytest.raises(ConfigError, match="law_memory"):
+            _build(agent, surface)

@@ -27,6 +27,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid5
 
+from holodeck.lib.memory.entity_match import EntityCandidate, resolve_entities
 from holodeck.lib.memory.errors import MemoryBackendUnavailableError
 from holodeck.lib.memory.types import (
     EpisodeIn,
@@ -288,6 +289,15 @@ class FakeBackend:
     async def timeline(self, namespace: str, entity_ref: str) -> list[TimelineEntry]:
         self._enter("timeline", MemoryOperation.TIMELINE)
         space = self._space(namespace)
+        # The same resolution as every backend: an exact name in any case,
+        # else the names that appear in the reference at word boundaries.
+        known = dict.fromkeys(fact.subject for fact in space.facts.values())
+        subjects = set(
+            resolve_entities(
+                entity_ref,
+                (EntityCandidate(entity_id=s, name=s) for s in known),
+            )
+        )
         entries = [
             TimelineEntry(
                 fact_id=fact.fact_id,
@@ -299,7 +309,7 @@ class FakeBackend:
                 sources=self._sources(space, fact),
             )
             for fact in space.facts.values()
-            if fact.subject == entity_ref
+            if fact.subject in subjects
         ]
         entries.sort(key=lambda entry: (entry.valid_from or _EPOCH, entry.fact_id))
         return entries

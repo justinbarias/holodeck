@@ -13,6 +13,7 @@ import pytest
 import pytest_asyncio
 
 from holodeck.lib.backends.base import BackendSessionError
+from holodeck.lib.hybrid_search import SearchResult
 from holodeck.lib.memory.chunk_source import (
     UNKNOWN_ORDINAL,
     ChunkSource,
@@ -129,6 +130,32 @@ async def test_ret02_find_keeps_tool_order_and_scores(
     assert results, "the query must match, or the comparison proves nothing"
     assert [(m.chunk.chunk_id, m.score) for m in matches] == [
         (r.chunk_id, r.fused_score) for r in results
+    ]
+
+
+async def test_find_drops_hits_that_are_only_front_matter(
+    source: HierarchicalChunkSource, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def hit(chunk_id: str, content: str, score: float) -> SearchResult:
+        return SearchResult(
+            chunk_id=chunk_id,
+            content=content,
+            fused_score=score,
+            source_path="/docs/a.md",
+            parent_chain=[],
+            section_id="1",
+        )
+
+    results = [
+        hit("a", "---\neffective_date: 2019-07-01\n---", 0.9),
+        hit("b", "# T\n\nbody", 0.5),
+    ]
+    monkeypatch.setattr(source._tool, "search", AsyncMock(return_value=results))
+
+    matches = await source.find("query", 5)
+
+    assert [(m.chunk.chunk_id, m.chunk.text, m.score) for m in matches] == [
+        ("b", "# T\n\nbody", 0.5)
     ]
 
 
@@ -281,3 +308,57 @@ async def test_preview_source_cannot_search(tmp_path: Path) -> None:
 
     with pytest.raises(BackendSessionError, match="preview source and cannot search"):
         await preview.find("zebra", 3)
+
+
+async def _fail_store_read() -> dict[str, list[object]]:
+    raise AssertionError("document() must not read the store")
+
+
+async def test_document_returns_what_the_listing_returns_for_that_uri(
+    source: HierarchicalChunkSource, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    listed = await source.documents()
+    monkeypatch.setattr(source._tool, "document_chunks", _fail_store_read)
+
+    found = [await source.document(document.source_uri) for document in listed]
+
+    assert found == listed
+
+
+async def test_document_of_a_remote_source_matches_the_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "doc.md").write_text(DATED)
+    tool = _tool(tmp_path)
+    tool.set_source_context(source_root=tmp_path, is_remote=True)
+    await tool.initialize()
+    remote = HierarchicalChunkSource(tool)
+    [listed] = await remote.documents()
+    monkeypatch.setattr(tool, "document_chunks", _fail_store_read)
+
+    found = await remote.document("docs/doc.md")
+
+    assert found == listed
+    assert found is not None
+    assert found.mtime_reliable is False
+
+
+async def test_document_is_none_for_a_deleted_file(
+    source: HierarchicalChunkSource, tmp_path: Path
+) -> None:
+    (tmp_path / "b_plain.md").unlink()
+
+    assert await source.document(str(tmp_path / "b_plain.md")) is None
+    assert await source.document(str(tmp_path / "a_dated.md")) is not None
+
+
+async def test_document_of_a_preview_source_matches_its_listing(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "a_dated.md").write_text(DATED)
+    preview = HierarchicalChunkSource(_tool(tmp_path), preview=True)
+    [listed] = await preview.documents()
+
+    assert await preview.document(listed.source_uri) == listed
+    assert not preview._tool._initialized

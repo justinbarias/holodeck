@@ -15,6 +15,7 @@ from holodeck.lib.memory import (
     MemoryQuery,
 )
 from holodeck.lib.memory.backends.fake import ALL_OPERATIONS, FakeBackend
+from tests.unit.lib.memory.test_entity_match import CASES as ENTITY_CASES
 
 pytestmark = pytest.mark.asyncio
 
@@ -299,3 +300,36 @@ async def test_mb_03_seeds_need_the_expand_capability() -> None:
     assert await texts(backend, query(datetime(2023, 1, 1, tzinfo=UTC))) == [
         "rate is 120"
     ]
+
+
+async def test_ret_08_timeline_uses_a_subject_named_inside_the_reference() -> None:
+    backend = rate_backend()
+    await backend.ingest(NS, [E1, E2], "")
+    exact = await backend.timeline(NS, "rate")
+
+    topic = await backend.timeline(NS, "the rate over time")
+    unknown = await backend.timeline(NS, "the amount over time")
+
+    assert len(exact) == 2
+    assert topic == exact
+    assert unknown == []
+
+
+@pytest.mark.parametrize(("reference", "subjects", "expected"), ENTITY_CASES)
+async def test_ret_08_timeline_resolves_subjects_like_every_backend(
+    reference: str, subjects: tuple[str, ...], expected: list[str]
+) -> None:
+    # One fact per subject; the default extractor makes the text the subject.
+    backend = FakeBackend()
+    await backend.ingest(
+        NS,
+        [
+            episode(f"subject-{index}", subject, Y2019 + timedelta(days=index))
+            for index, subject in enumerate(subjects)
+        ],
+        "",
+    )
+
+    entries = await backend.timeline(NS, reference)
+
+    assert [entry.text for entry in entries] == expected

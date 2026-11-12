@@ -44,6 +44,8 @@ T2 port, types, fake ─▶ T3 config model ─▶ T4 tool schemas
         T11 Graphiti read ──┐
         T12 service search ─┼▶ T13 tool, Claude ─▶ T14 OpenAI Agents ─▶ T15 Temporal ─▶ Checkpoint D
                             │
+        T24 sample location, timeline ─▶ T25 as-of results, provenance ─▶ Checkpoint D2 (after T13)
+                            │
         T16 sample ─▶ T17 fetch ─▶ T18 questions ─▶ T19 eval ─▶ T22 live runs ─▶ Checkpoint E
         T20 ID coverage check, T21 docs (after T15)
 ```
@@ -132,33 +134,50 @@ Sizes: S is 1 to 2 files, M is 3 to 5. Every task also runs focused Black, Ruff 
 
 ### Phase 3: Retrieval and tools (PR 3, `feat/043-retrieval`)
 
-- [ ] **T11: Graphiti backend, read side.**
+- [x] **T11: Graphiti backend, read side.**
   - Acceptance: `search` applies `valid_at` and `known_at` with the known-at rule in spec section 4 (a closed fact is still returned, as open, when `expired_at > known_at`; where `SearchFilters` cannot express that, the backend filters the returned edges), each dated filter with an `IS NULL` branch and at most one dated group per field, and the hop limit (RET-03, RET-04); expansion is seeded from entity uuids (RET-09); `timeline` returns open and closed facts ordered by `valid_from` (RET-08); `provenance` resolves a fact to episodes, source tools and chunk ids (RET-06); each not-supported row in the capability table raises `MemoryNotSupportedError` with the operation name (MB-03).
   - Verify: unit tests with Graphiti mocked, plus `uv run pytest tests/integration/memory/test_graphiti_read.py -n auto -q -m graphiti`, which includes the "between two compilations" case.
   - Depends on: T7. Files: `backends/graphiti.py`, tests. Size: M. Model: Opus 5.5, medium.
 
-- [ ] **T12: Service search and fusion.**
+- [x] **T12: Service search and fusion.**
   - Acceptance: defaults `valid_at` and `known_at` to the query time (RET-01); calls every source tool's search and maps chunk hits to episode ids (RET-02); fuses by reciprocal rank fusion with the configured weights (RET-05); every hit carries `source_tool`, `chunk_id`, `source_uri` and the valid period (RET-06); an unavailable backend gives chunk-only hits with `degraded: true` (RET-07).
   - Verify: `uv run pytest tests/unit/lib/memory/test_service_search.py -n auto -q`, including a Hypothesis property that fusion is stable under equal ranks.
   - Depends on: T5, T6. Files: `service.py`, tests. Size: M. Model: Sonnet 5.5, high.
 
-- [ ] **T13: The tool and the Claude backend binding.**
+- [x] **T13: The tool and the Claude backend binding.**
   - Acceptance: `TemporalMemoryTool` is created by the tool initializer after its source tools; `ingest_on_start` runs ingestion at initialization (ING-07); the Claude adapter exposes `memory_search`, `memory_timeline` and `memory_provenance` whose results validate against `schemas/memory/` with ISO 8601 UTC timestamps (HST-01, HST-02).
   - Verify: `uv run pytest tests/unit/tools/test_temporal_memory_tool.py tests/unit/lib/backends/test_tool_adapters.py -n auto -q`
   - Depends on: T11, T12. Files: `src/holodeck/tools/temporal_memory_tool.py`, `tool_initializer.py`, `backends/tool_adapters.py`, tests. Size: M. Model: Opus 5.5, medium.
 
-- [ ] **T14: OpenAI Agents binding and the two-backend contract test.**
+- [x] **T14: OpenAI Agents binding and the two-backend contract test.**
   - Acceptance: the same three tools with the same schemas on the OpenAI Agents backend; one parametrized contract test runs against both backends.
   - Verify: `uv run pytest tests/unit/lib/backends/test_memory_tool_contract.py -n auto -q`
   - Depends on: T13. Files: `backends/openai_agents_tool_adapters.py`, test. Size: S. Model: Sonnet 5.5, high.
 
-- [ ] **T15: Temporal activities.**
+- [x] **T15: Temporal activities.**
   - Acceptance: ingestion and each memory tool call run in activities; the workflow sandbox import check still passes (HST-03).
-  - Verify: the existing Temporal determinism tests plus `uv run pytest tests/unit/lib/workflow -n auto -q -k memory`
+  - Verify: the existing Temporal determinism tests plus `uv run pytest tests/unit/temporal -n auto -q -k memory`
   - Depends on: T13. Files: under `src/holodeck/temporal/`, tests. Size: S. Model: Opus 5.5, medium.
 
 **Checkpoint D.**
-- [ ] Live validation loop steps 1 and 2 on the sample: `holodeck test run`, then `holodeck serve` with raw AG-UI requests on two threads, two turns each, with `TOOL_CALL_*` events for the memory tools inspected. Adversarial review of PR 3 has no open finding; PR 3 committed.
+- [x] Live validation loop steps 1 and 2 on the sample: `holodeck test run`, then `holodeck serve` with raw AG-UI requests on two threads, two turns each, with `TOOL_CALL_*` events for the memory tools inspected. Adversarial review of PR 3 has no open finding; PR 3 committed.
+
+### Phase 3b: Memory tool renderers in the CopilotKit sample (PR 3b, `feat/043-ui`)
+
+Added 2026-11-11 at the maintainer's request. The sample's wildcard tool renderer shows every backend tool call as raw JSON. This phase adds a named renderer for each memory tool. A renderer draws the tool's own typed result (`schemas/memory/`), so the model writes none of the displayed data. No agent, backend or schema change. A frontend tool that the agent calls to show a view (supported on the Claude backend through AG-UI) is not in this phase.
+
+- [ ] **T24: Sample location and the fact timeline.**
+  - Acceptance: `sample/copilotkit` is tracked in the repository through an exception to `/sample/*` in `.gitignore` (decided by the maintainer), with no `node_modules`, build output or `.env` file committed; a `memory_timeline` call renders `FactTimeline`: one lane per attribute, one bar per fact from `valid_from` to `valid_to`, closed facts dimmed, the open fact highlighted, and a draggable "as of" marker that filters in the browser with no model call; a fact with no start date is listed below the chart, not drawn; an error result (`invalid_argument`, `not_supported`, `backend_unavailable`) renders its message, not an empty chart; any other tool still uses the wildcard renderer.
+  - Verify: component tests on fixture results taken from the live `cpc-live` namespace (rates 90, 100, 120, 150 and the administration change); `npm run build` and `npm run lint` pass; light and dark themes, and a 375 px wide viewport, checked in the browser.
+  - Depends on: T13. Files: `sample/copilotkit/src/components/`, `.gitignore`. Size: M. Model: Opus 5.5, medium.
+
+- [ ] **T25: As-of results and provenance.**
+  - Acceptance: a `memory_search` call renders `AsOfResults`: a header with the resolved `valid_at` and `known_at`, fact hits with their valid period and a link to the superseding fact, chunk hits after them, and a banner when `degraded` is true; a `memory_provenance` call renders `ProvenanceCard`: the fact, each source document with its effective date, and the chunk text; `found: false` renders a plain "not found" line; all timestamps are shown in UTC as the result gives them.
+  - Verify: component tests on fixture results, including a degraded result and a not-found result; `npm run build` and `npm run lint` pass.
+  - Depends on: T24. Files: `sample/copilotkit/src/components/`. Size: S. Model: Sonnet 5.5, high.
+
+**Checkpoint D2.**
+- [ ] Live validation loop step 3: the maintainer drives the CopilotKit browser flow against `holodeck serve` on the fixture and sees the three views. `make verify-deps` passes with the sample present (npm audit). Adversarial review of PR 3b has no open finding; PR 3b committed.
 
 ### Phase 4: Evaluation and documentation (PR 4, `feat/043-eval-docs`)
 
@@ -225,6 +244,12 @@ Sizes: S is 1 to 2 files, M is 3 to 5. Every task also runs focused Black, Ruff 
 - 2026-11-11: Supersession probe on the live fixture, at the maintainer's direction. The default extraction instructions gained a sentence that makes a new value say it replaces the earlier one; rate changes closed went from 1 of 3 to 2 of 3. Graphiti's contradiction prompt does not see the instructions and refuses to infer replacement from dates. Evidence and limits are in graphiti-evidence.md. Unclosed superseded facts remain the main risk for T16 and T17.
 - 2026-11-11: Second supersession probe, at the maintainer's direction. `build_graphiti` now passes a prompt library that replaces Graphiti's `dedupe_edges.resolve_edge` with a prompt for dated provisions (`backends/graphiti_prompts.py`); the replacement sentence in the default instructions is reverted. Live result: 3 of 3 rate changes closed, the explicit change closed. A unit test pins the hash of Graphiti's own prompt so an upgrade forces a review. Over-closing (facts that should stay open) is not tested yet and is added to T16's scope.
 - 2026-11-11: Second Codex pass (gpt-6-astra, high) on the dry-run fix and the prompt override: 1 high, 5 medium, 1 low; Codex could not run tests. Finding 5 (the prompt called every role single-valued) is fixed in the prompt with a test and a live re-run. Findings 1 to 4 are limits now stated in the spec (ING-08), the CLI help and the design doc: schema creation on connect by the Kuzu and FalkorDB drivers, stale stored chunks, chunking-setting changes on unchanged files, and no closure without two start dates. Findings 6 and 7 are older defects outside this feature and are listed under open items. Not refuted: `preview_chunks` callers unchanged, the override changes one prompt only, the hash guard, string construction.
+- 2026-11-11: Phase 3 started on `feat/043-retrieval`. T12 (Sonnet 5.5, high) done by a subagent and validated: 41 tests, the worked fusion values hold, and the composition now passes `top_k`, `hops` and the fusion weights. Phase 3b (T24, T25, Checkpoint D2) added at the maintainer's request: renderers for the three memory tools in the CopilotKit sample.
+- 2026-11-11: T11 (Opus 5.5, medium) done by a subagent and validated: 26 unit tests and 9 Neo4j tests, including the between-two-compilations case; unit suite 7,434 passed; integration suite 15 passed on the local Neo4j. Read-only probe of the live `cpc-live` namespace through the service: the base rate is 150 dollars now, 100 at 2021-01-01, 90 at 2019-12-01 and absent at 2018-01-01; the timeline lists 8 facts in order; provenance returns the chunk text. Differences from the fake that the backend cannot remove: one edge per fact (no second version on closing), `superseded_by` always empty, timeline matches an entity by name at either end of a fact. A fact with no start date is returned for every earlier date (the known-at rule's null branch). Not run: FalkorDB, Kuzu, Neptune.
+- 2026-11-11: order changed by the maintainer. After Checkpoint D: phase 3b (T24, T25), then T16 (sample agent) brought forward from phase 4 onto the `feat/043-ui` branch, so the CopilotKit app has a sample to run against. Then the stack is submitted (PR cut) and work pauses while the maintainer tries the CopilotKit app. Checkpoint D2's browser step is that session. T17 to T22 stay in phase 4.
+- 2026-11-11: T13 (Opus 5.5, medium), T14 (Sonnet 5.5, high) and T15 (Opus 5.5, medium) done by subagents and validated. Unit suite 7,581 passed, 1 skipped; Neo4j integration suite 15 passed; Ruff, Black, the repository's MyPy command, `make schema-check` and `make harness-check` clean. T15's tests are under `tests/unit/temporal` (the plan named a directory that does not exist). Known differences and gaps: the Claude SDK validates arguments against the schema before the handler runs, so schema-invalid arguments return the SDK's error there and `invalid_argument` on OpenAI Agents; a subagent or skill on OpenAI Agents cannot be granted the memory tool by its config name; the test runner does not collect memory results as retrieval context; `ActivityParameters` has no heartbeat timeout field, so a workflow passes it to `execute_activity` directly.
+- 2026-11-11: Checkpoint D live validation, steps 1 and 2, on the `cpc-live` fixture (Claude Haiku through OAuth, Ollama embeddings, local Neo4j). Step 1, `holodeck test run`: 3 of 3 cases passed with the expected memory tool called; answers 150 dollars today, 100 on 1 January 2021, and the full 90/100/120/150 history. Step 2, `holodeck serve` with raw AG-UI requests: two threads, two turns each, four HTTP 200 runs, each with `RUN_STARTED`, `TOOL_CALL_START/ARGS/END/RESULT` for the memory functions, `TEXT_MESSAGE_*` and `RUN_FINISHED`, and no `RUN_ERROR`; the second turn on each thread used the first turn's context. Found there and fixed: `memory_timeline` returned nothing for "Family Benefit base rate" because it matched an exact entity name only. The timeline now also uses an entity whose whole name appears inside the reference when nothing matches exactly (backend, fake, port text, tests; 8 entries on the live graph).
+- 2026-11-11: Phase 3 adversarial review by Codex (gpt-6-astra, high): 2 high, 10 medium, 2 low; Codex could not run tests. Fixed by three subagents split by file ownership (the maintainer's instruction): 1, the present-time shortcut is removed and search always runs both queries, with a 25-row table test of the rule; 2, the ingestion activity forwards no exception text, cause or detail, and only an unreachable store and a failed episode are retryable; 3 and 13, the timeline name fallback matches a whole name at word boundaries through one shared function used by Graphiti and the fake; 4, only an unreachable store degrades a search; 5 and 6, `ChunkSource.document()` added with the maintainer's approval, so a search reads each hit document's date from the file with no listing and no cache; 7, `invalid_argument` messages are fixed text; 9, granting the memory tool's config name on OpenAI Agents grants all three functions (maintainer decision); 11, a backend built after its caller was cancelled is closed; 12, unparsable JSON arguments return `invalid_argument`; 14, weak tests strengthened and checked by breaking the code. Accepted with the maintainer's decision: 8, the Claude SDK validates the schema before the handler, now stated in the design and pinned by a test through the real dispatch. Not fixed: 10, downloaded source directories are never removed on the success path either, an older tool-lifecycle defect, listed under open items. Gates after the fixes: unit suite 7,704 passed, 1 skipped. The fixes were not re-reviewed.
 - 2026-11-11: T23 (Opus 5.5, medium), T8 and T9 (Sonnet 5.5, medium) and T10 (Sonnet 5.5, high) done by subagents and validated: unit suite 7332 passed; the six `graphiti` integration tests pass on the local Neo4j with stub clients. Orchestrator changes: the reserved function names moved to the model layer so that loading an agent imports no memory module (T9's lazy-import rule); the nightly job fails, and does not skip, when Neo4j is unreachable. T23 deviations kept: `max_turns` is 2, so the CLI's own schema check can correct the model once; `strict_mcp_config=True` is set; no `bypassPermissions`. T23 made no live call. The live run at Checkpoint C must confirm: structured output arrives with `tools=[]`; the default permission mode does not block it; where token counts are; whether 1 turn is always enough; that no user settings or MCP servers load; and the time per episode at 4 concurrent calls.
 - 2026-11-11: Phase 2 started on `feat/043-ingest`. T6 (Sonnet 5.5, high) and T7 (Opus 5.5, medium) done by subagents and validated: unit suite 7275 passed. T6 uses seeded random corpora for its three properties, because Hypothesis is not installed and a new dependency is an ask-first item. T7 settled the five "verify" items of design seam 3 on the local Neo4j with a stub LLM client; the results are in the design doc. Still open from design seam 4: no real model call has gone through any Graphiti client, and FalkorDB, Neptune and Kuzu have not run.
 - 2026-11-11: T4 (Sonnet 5.5, medium) and T5 (Opus 5.5, medium) done by subagents and validated by the orchestrator. Orchestrator changes: `instants.py` written first as the shared date parser; provenance text returned once; `find()` no longer loads the corpus (a hit's ordinal is `UNKNOWN_ORDINAL`); one vacuous T5 test fixed. T5 deviations kept and recorded in design seam 2: `document_chunks()` always loads from the store; a front-matter-only chunk is left out.
@@ -259,6 +284,12 @@ Sizes: S is 1 to 2 files, M is 3 to 5. Every task also runs focused Black, Ruff 
 - Spec open questions 1 (licence), 2 (compilations and labelling) and 3 (spend) need maintainer answers before T17, T18 and T22.
 - Spec open questions 4 and 5 are answered by T1.
 - Spec open question 6 (front matter in chunk text) stays open; A6 holds for this plan.
+- Temporary directories that `SourceResolver` downloads for a remote source are not owned by the tool's lifetime: nothing removes them on success or failure except the orphan sweep at `holodeck serve` start. Temporal workers never sweep. Older defect; the memory ingestion activity adds one more caller.
+- On OpenAI Agents, the vectorstore, hierarchical-document and function-tool argument parsers still let a `ValueError` or `RecursionError` from `json.loads` escape (a 4,301-digit integer, very deep nesting). Fixed for the memory functions only.
+- The ingestion activity logs the full traceback at DEBUG, which can contain document text. Nothing at INFO or above does.
+- The Claude dispatch test for schema-invalid arguments skips on `mcp` 1.x, which the dependency range still allows.
+- The test runner does not collect memory results as retrieval context for evaluation metrics. Decide in T16.
+- Phase 3b: the maintainer decided on 2026-11-11 to track `sample/copilotkit` in this repository with an exception to `/sample/*` in `.gitignore`. T24 copies it from the main checkout without `node_modules`, build output or any `.env` file. A node-and-edge graph view would need subject and object entities in the tool results, which is a schema change and is not planned.
 - `SourceResolver.resolve` leaks its temporary directory when cancelled during a download (it catches `Exception` only). Older defect; the dry-run preview is a new caller.
 - `HierarchicalDocumentTool._convert_to_markdown` runs blocking file conversion on the event loop, in ingestion and in the preview. Older defect.
 - Extraction produced no fact for "X may appoint inspectors" statements on the live fixture. T16 needs power and role cases, for extraction and for over-closing.
