@@ -8,6 +8,7 @@ Feature: `043-temporal-memory`. **Status:** approved for build 2026-11-11; plan 
 
 ## Related records
 
+- [Design](../../design-docs/043-temporal-memory/design.md)
 - [Graphiti evidence](../../design-docs/043-temporal-memory/graphiti-evidence.md)
 - [Execution plan](../../exec-plans/active/043-temporal-memory/index.md)
 - [Feature inventory](../inventory.md)

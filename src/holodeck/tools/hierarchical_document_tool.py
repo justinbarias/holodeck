@@ -736,6 +736,22 @@ class HierarchicalDocumentTool(
                 preview.append((self._compute_source_key(file_path), texts))
         return preview
 
+    async def document_chunks(self) -> dict[str, list[DocumentChunk]]:
+        """Return every stored chunk, grouped by source key, in chunk order.
+
+        Read-only. Always reads the vector store through
+        ``_load_chunks_from_store``: the chunks held in memory are not the
+        whole corpus after a restart (unchanged files are skipped) or on a
+        native-hybrid store (the corpus is not reloaded), and a repeated
+        ``initialize`` appends to them. An uninitialized tool returns ``{}``.
+        """
+        grouped: dict[str, list[DocumentChunk]] = {}
+        for chunk in await self._load_chunks_from_store():
+            grouped.setdefault(chunk.source_path, []).append(chunk)
+        for chunks in grouped.values():
+            chunks.sort(key=lambda chunk: chunk.chunk_index)
+        return grouped
+
     async def _ingest_documents(
         self,
         force_ingest: bool = False,

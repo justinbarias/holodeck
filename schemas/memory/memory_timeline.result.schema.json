@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "SourceOut": {
+      "additionalProperties": false,
+      "description": "One episode that supports a fact.",
+      "properties": {
+        "chunk_id": {
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "episode_id": {
+          "title": "Episode Id",
+          "type": "string"
+        },
+        "reference_time": {
+          "title": "Reference Time",
+          "type": "string"
+        },
+        "reference_time_source": {
+          "enum": [
+            "front_matter",
+            "mtime",
+            "ingestion"
+          ],
+          "title": "Reference Time Source",
+          "type": "string"
+        },
+        "source_tool": {
+          "title": "Source Tool",
+          "type": "string"
+        },
+        "source_uri": {
+          "title": "Source Uri",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        }
+      },
+      "required": [
+        "episode_id",
+        "source_tool",
+        "chunk_id",
+        "source_uri",
+        "reference_time",
+        "reference_time_source"
+      ],
+      "title": "SourceOut",
+      "type": "object"
+    },
+    "TimelineEntryOut": {
+      "additionalProperties": false,
+      "description": "One fact about an entity, open or closed.",
+      "properties": {
+        "expired_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expired At"
+        },
+        "fact_id": {
+          "title": "Fact Id",
+          "type": "string"
+        },
+        "recorded_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recorded At"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SourceOut"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid To"
+        }
+      },
+      "required": [
+        "fact_id",
+        "text",
+        "valid_from",
+        "valid_to",
+        "recorded_at",
+        "expired_at",
+        "sources"
+      ],
+      "title": "TimelineEntryOut",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Result of ``memory_timeline``.",
+  "properties": {
+    "entity": {
+      "title": "Entity",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/TimelineEntryOut"
+      },
+      "title": "Entries",
+      "type": "array"
+    }
+  },
+  "required": [
+    "entity",
+    "entries"
+  ],
+  "title": "MemoryTimelineResult",
+  "type": "object"
+}

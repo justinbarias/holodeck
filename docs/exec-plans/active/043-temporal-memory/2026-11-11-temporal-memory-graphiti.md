@@ -1,7 +1,7 @@
 # Execution plan: Temporal Knowledge Graph Memory on Graphiti
 
 Feature: `043-temporal-memory`. Product contract: [spec 043](../../../product-specs/043-temporal-memory/spec.md).
-**Status:** Plan approved 2026-11-11. T0 and T1 done; Checkpoint A passed; Phase 0 committed on `feat/043-spec`; T2 next. Nothing pushed.
+**Status:** Plan approved 2026-11-11. T0 and T1 done; Checkpoint A passed; Phase 0 committed on `feat/043-spec`; T2 done on `feat/043-contracts` (uncommitted); T3 next. Nothing pushed.
 **Code baseline:** `6203c82` (release 0.8.0).
 
 ## 1. Objective and acceptance
@@ -72,28 +72,28 @@ Sizes: S is 1 to 2 files, M is 3 to 5. Every task also runs focused Black, Ruff 
 
 ### Phase 1: Contracts (PR 1, `feat/043-contracts`)
 
-- [ ] **T2: Port, types, errors and the fake backend.**
+- [x] **T2: Port, types, errors and the fake backend.**
   - Acceptance: `MemoryBackend` and `MemoryCapabilities` in `ports.py`; frozen dataclasses in `types.py` with UTC-aware datetimes rejected when naive; three typed errors; `FakeBackend` implements every port method deterministically and counts calls.
   - Verify: `uv run pytest tests/unit/lib/memory/test_ports.py tests/unit/lib/memory/test_fake_backend.py -n auto -q` (covers MB-01 to MB-04).
   - Depends on: Checkpoint A. Files: `src/holodeck/lib/memory/{__init__,ports,types,errors}.py`, `backends/fake.py`, tests. Size: M. Owner: orchestrator, inline (boundary contract).
 
-- [ ] **T3: `TemporalMemoryToolConfig` and agent-level validation.**
+- [x] **T3: `TemporalMemoryToolConfig` and agent-level validation.**
   - Acceptance: the model has `extra="forbid"` and the fields in spec section 4; loading fails with the exact tool name for an empty, repeated or wrong-type `source_tools` entry (CFG-02), a second memory tool (CFG-03), `single_valued_predicates` on Graphiti (CFG-04) and mismatched embeddings (CFG-06); `schemas/agent.schema.json` regenerated.
   - Verify: `uv run pytest tests/unit/models/test_temporal_memory_tool.py -n auto -q && make schema && make schema-check`
   - Depends on: T2. Files: `src/holodeck/models/tool.py`, `src/holodeck/models/agent.py`, `schemas/agent.schema.json`, template schema copies, tests. Size: M. Owner: orchestrator, inline (schema).
 
-- [ ] **T4: Host-neutral tool schemas.**
-  - Acceptance: `schemas/memory/` holds JSON Schemas for the arguments and results of the three tools; a test fails if they drift from the Pydantic or dataclass types.
-  - Verify: `uv run pytest tests/unit/lib/memory/test_tool_schemas.py -n auto -q`
-  - Depends on: T2. Files: `schemas/memory/*.json`, one generator or test. Size: S. Model: Sonnet 5.5, medium.
+- [x] **T4: Host-neutral tool schemas.**
+  - Acceptance: `src/holodeck/lib/memory/tool_api.py` holds the Pydantic argument and result models of the three tools, the error result, and converters from the port dataclasses (design seam 6); `schemas/memory/` holds JSON Schemas generated from those models; a check fails if they drift. The `call()` dispatcher is T13.
+  - Verify: `uv run pytest tests/unit/lib/memory/test_tool_api.py -n auto -q && uv run python scripts/generate_memory_schemas.py --check`
+  - Depends on: T2. Files: `src/holodeck/lib/memory/tool_api.py`, `scripts/generate_memory_schemas.py`, `schemas/memory/*.json`, `Makefile`, tests. Size: S. Model: Sonnet 5.5, medium.
 
-- [ ] **T5: Chunk accessor and effective-date reader.**
-  - Acceptance: a typed `ChunkSource` protocol (`tool_name`, `iter_chunks()`, `search()`) that `HierarchicalDocumentTool` satisfies without changing its search behaviour; `effective_date.py` returns the date and its source (`front_matter`, `mtime`, `ingestion`) for a configurable key; chunk text is unchanged (A6).
+- [x] **T5: Chunk accessor and effective-date reader.**
+  - Acceptance: the `ChunkSource` protocol of design seam 2 (`name`, `documents()`, `chunks()`, `find()`), an adapter in `src/holodeck/tools/hierarchical_chunk_source.py`, and one read-only `document_chunks()` on `HierarchicalDocumentTool`, with no change to its search behaviour; `effective_date.py` returns the date and its source (`front_matter`, `mtime`, `ingestion`) for a configurable key; chunk text is unchanged (A6).
   - Verify: `uv run pytest tests/unit/lib/memory/test_effective_date.py tests/unit/tools/test_hierarchical_chunk_source.py -n auto -q`; the existing hierarchical tool tests still pass.
-  - Depends on: T2, Checkpoint A. Files: `src/holodeck/lib/memory/{chunk_source,effective_date}.py`, `src/holodeck/tools/hierarchical_document_tool.py`, tests. Size: M. Model: Opus 5.5, medium (interface extension).
+  - Depends on: T2, Checkpoint A. Files: `src/holodeck/lib/memory/{chunk_source,effective_date}.py`, `src/holodeck/tools/{hierarchical_document_tool,hierarchical_chunk_source}.py`, tests. Size: M. Model: Opus 5.5, medium (interface extension).
 
 **Checkpoint B.**
-- [ ] `make schema-check` and `make harness-check` pass; unit tests green; adversarial review of PR 1 has no open finding; PR 1 committed.
+- [x] `make schema-check` and `make harness-check` pass; unit tests green; adversarial review of PR 1 has no open finding; PR 1 committed.
 
 ### Phase 2: Ingestion (PR 2, `feat/043-ingest`)
 
@@ -108,7 +108,7 @@ Sizes: S is 1 to 2 files, M is 3 to 5. Every task also runs focused Black, Ruff 
   - Depends on: T2, T1 findings. Files: `src/holodeck/lib/memory/backends/graphiti.py`, `registry.py`, `src/holodeck/cli/main.py` (environment variable), tests. Size: M. Model: Opus 5.5, medium.
 
 - [ ] **T23: Agent SDK client for Graphiti.**
-  - Acceptance: a Graphiti `LLMClient` backed by the Claude Agent SDK returns schema-valid output or raises after three attempts; the backend selects it for `anthropic` when `ANTHROPIC_API_KEY` is unset and the OAuth token is set (GPH-04); it runs with no tools and without `bypassPermissions`, or the task records why a stricter mode is not possible; `--dry-run` shows an estimated duration (ING-08).
+  - Acceptance: a Graphiti `LLMClient` backed by the Claude Agent SDK returns schema-valid output or raises after three attempts; the backend selects it for `anthropic` when `auth_provider` is `oauth_token`, and refuses `bedrock`, `vertex`, `foundry` and `custom` at load (GPH-04); it runs with no tools and without `bypassPermissions`, or the task records why a stricter mode is not possible; `--dry-run` shows an estimated duration (ING-08).
   - Verify: `uv run pytest tests/unit/lib/memory/test_agent_sdk_llm_client.py -n auto -q` with the SDK mocked, plus one live episode at Checkpoint C.
   - Depends on: T7. Files: `src/holodeck/lib/memory/backends/graphiti_agent_sdk.py`, `backends/graphiti.py`, tests. Size: S. Model: Opus 5.5, medium.
 
@@ -133,7 +133,7 @@ Sizes: S is 1 to 2 files, M is 3 to 5. Every task also runs focused Black, Ruff 
 ### Phase 3: Retrieval and tools (PR 3, `feat/043-retrieval`)
 
 - [ ] **T11: Graphiti backend, read side.**
-  - Acceptance: `search` applies `valid_at` and `known_at` filters, each with an `IS NULL` branch and at most one dated group per field, and the hop limit (RET-03, RET-04); expansion is seeded from entity uuids (RET-09); `timeline` returns open and closed facts ordered by `valid_from` (RET-08); `provenance` resolves a fact to episodes, source tools and chunk ids (RET-06); each not-supported row in the capability table raises `MemoryNotSupportedError` with the operation name (MB-03).
+  - Acceptance: `search` applies `valid_at` and `known_at` with the known-at rule in spec section 4 (a closed fact is still returned, as open, when `expired_at > known_at`; where `SearchFilters` cannot express that, the backend filters the returned edges), each dated filter with an `IS NULL` branch and at most one dated group per field, and the hop limit (RET-03, RET-04); expansion is seeded from entity uuids (RET-09); `timeline` returns open and closed facts ordered by `valid_from` (RET-08); `provenance` resolves a fact to episodes, source tools and chunk ids (RET-06); each not-supported row in the capability table raises `MemoryNotSupportedError` with the operation name (MB-03).
   - Verify: unit tests with Graphiti mocked, plus `uv run pytest tests/integration/memory/test_graphiti_read.py -n auto -q -m graphiti`, which includes the "between two compilations" case.
   - Depends on: T7. Files: `backends/graphiti.py`, tests. Size: M. Model: Opus 5.5, medium.
 
@@ -155,7 +155,7 @@ Sizes: S is 1 to 2 files, M is 3 to 5. Every task also runs focused Black, Ruff 
 - [ ] **T15: Temporal activities.**
   - Acceptance: ingestion and each memory tool call run in activities; the workflow sandbox import check still passes (HST-03).
   - Verify: the existing Temporal determinism tests plus `uv run pytest tests/unit/lib/workflow -n auto -q -k memory`
-  - Depends on: T13. Files: under `src/holodeck/lib/workflow/`, tests. Size: S. Model: Opus 5.5, medium.
+  - Depends on: T13. Files: under `src/holodeck/temporal/`, tests. Size: S. Model: Opus 5.5, medium.
 
 **Checkpoint D.**
 - [ ] Live validation loop steps 1 and 2 on the sample: `holodeck test run`, then `holodeck serve` with raw AG-UI requests on two threads, two turns each, with `TOOL_CALL_*` events for the memory tools inspected. Adversarial review of PR 3 has no open finding; PR 3 committed.
@@ -219,7 +219,14 @@ Sizes: S is 1 to 2 files, M is 3 to 5. Every task also runs focused Black, Ruff 
 - 2026-11-11: T0 done. `uv lock` resolved 331 packages with no override; two new packages (`graphiti-core` 0.31.2, `neo4j` 6.4.1). 83 install-profile, constraint and verifier tests pass. T0 grew by three files: the deploy constraints are generated from the lock, and a repository guard requires each new extra to have a verifier profile. `make verify-profiles` (wheel build per profile) was not run. Evidence: [graphiti-evidence.md](../../../design-docs/043-temporal-memory/graphiti-evidence.md).
 - 2026-11-11: T1 done. Items (b), (d), (e), (f), (g) and (h) support the spec. Three findings change it and are held for Checkpoint A: `add_episode(uuid=...)` cannot create an episode, so the episode-identity design needs another mechanism; breadth-first expansion follows outgoing edges only; default extraction produces no facts for amounts. The LLM ran through the Claude Agent SDK with the OAuth token at the maintainer's request: it worked with no schema failures at 6.5 to 15.5 seconds per episode. No call was made through the `openai` 3 client.
 - 2026-11-11: Checkpoint A passed. The maintainer decided D21 (pre-saved episode node with a completion marker), D22 (extraction instructions with a built-in default), D23 (accept outgoing-only expansion and measure) and D24 (Anthropic client chosen by credential). The spec was updated first. T23 was added for the Agent SDK client. The `ChunkSource` shape is the one in T5, approved with this plan.
+- 2026-11-11: T4 (Sonnet 5.5, medium) and T5 (Opus 5.5, medium) done by subagents and validated by the orchestrator. Orchestrator changes: `instants.py` written first as the shared date parser; provenance text returned once; `find()` no longer loads the corpus (a hit's ordinal is `UNKNOWN_ORDINAL`); one vacuous T5 test fixed. T5 deviations kept and recorded in design seam 2: `document_chunks()` always loads from the store; a front-matter-only chunk is left out.
+- 2026-11-11: Phase 1 adversarial review by Codex (gpt-6-astra, high) on the diff from `35616a3`: 0 high, 11 medium, 2 low. Codex could not run probes, so each finding got a regression test first; all 13 reproduced and all are fixed. Fixed: a fact that returns after a change now starts a new period in the fake backend; an extraction error is reported, not raised; a past-known fact shows no later expiry; seeds require the `EXPAND` capability; another tool cannot take a memory function name, including a search tool named `memory`; a missing file falls back to ingestion time; a byte order mark, an impossible YAML date and a four-dash rule are handled in front matter; an out-of-range instant is a `MemoryValueError`; an empty degraded search stays degraded; fusion weights must be finite; a boolean is not a hop count. One part of finding 10 was not taken: the fake does not require `VALID_AT` or `KNOWN_AT`, because a query always carries both instants and the port cannot tell a default from a chosen date. T12 checks those capabilities in the service when the caller passes a date. After the fixes: unit suite 7075 passed, `make schema-check` and `make harness-check` pass.
+- 2026-11-11: T3 done. `TemporalMemoryToolConfig`, `GraphBackendConfig`, `FusionWeights` and `MemorySchemaHints` are in `models/tool.py`; the agent-level rules are in `models/agent.py`. 33 tests in `tests/unit/models/test_temporal_memory_tool.py` pass, the unit suite passes (6995), and `make schema-check` and `make harness-check` pass. Two points differ from the spec text and were updated there: the backend gained `aoss_host`, which the Neptune driver cannot run without; and CFG-06 compares embedding models only, because a hierarchical tool has no dimension setting. The tool loads from YAML but gives the agent no function until T13.
+- 2026-11-11: Design seam 6 accepted. The graph database being down at start gives degraded mode unless `ingest_on_start` is set; a Temporal worker refuses `ingest_on_start`; the three function names stay fixed. `EpisodeRef` gained an optional `text` field for provenance. The spec tools table and ING-07 were updated.
+- 2026-11-11: Design seam 5 accepted: the known-at rule runs as two filtered searches, which replaces the "filter the returned edges" option in T11. The T15 file path was corrected to `src/holodeck/temporal/`.
+- 2026-11-11: Design seams 2 to 4 accepted in the [design doc](../../../design-docs/043-temporal-memory/design.md). Seam 3 added `context_episode_ids` to `EpisodeIn`. Seam 4 changed D24 and GPH-04: `auth_provider` selects the Anthropic client, and `bedrock`, `vertex`, `foundry` and `custom` are refused at load. The T23 acceptance line was updated.
 - 2026-11-11: the maintainer chose one stacked PR per phase. Phase 0 is the bottom branch `feat/043-spec`.
+- 2026-11-11: T2 done. 27 unit tests pass; Black, Ruff and MyPy clean. The port gained four things the spec's first sketch lacked, and the spec was updated: `name`, `episode_count` (for `holodeck memory status`), `close`, and an `instructions` argument on `ingest` (D22). `provenance` returns `None` for an unknown fact. Writing the fake exposed a rule the T1 filter test did not: with Graphiti's single-edge model, filtering on `expired_at` alone hides every closed fact from current queries. The correct known-at rule is now in spec section 4 and in T11's acceptance.
 
 ## 6. Acceptance evidence
 

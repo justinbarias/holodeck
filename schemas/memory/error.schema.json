@@ -1,0 +1,42 @@
+{
+  "$defs": {
+    "MemoryToolErrorBody": {
+      "additionalProperties": false,
+      "description": "Why a tool call failed.",
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_argument",
+            "not_supported",
+            "backend_unavailable"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "MemoryToolErrorBody",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Result of a failed tool call.",
+  "properties": {
+    "error": {
+      "$ref": "#/$defs/MemoryToolErrorBody"
+    }
+  },
+  "required": [
+    "error"
+  ],
+  "title": "MemoryToolError",
+  "type": "object"
+}
