@@ -46,11 +46,11 @@ T2 port, types, fake ─▶ T3 config model ─▶ T4 tool schemas
                             │
         T24 sample location, timeline ─▶ T25 as-of results, provenance ─▶ Checkpoint D2 (after T13)
                             │
-        T16 sample ─▶ T17 fetch ─▶ T18 questions ─▶ T19 eval ─▶ T22 live runs ─▶ Checkpoint E
-        T20 ID coverage check, T21 docs (after T15)
+        T16 sample ─▶ T22 live evidence ─▶ Checkpoint E
+        T21 docs (after T15)
 ```
 
-Parallel pairs once their inputs exist: T6 with T7, T11 with T12, T17 with T16, T20 with T21. Each pair has separate file ownership.
+Parallel pairs once their inputs exist: T6 with T7, T11 with T12, T16 with T21. Each pair has separate file ownership.
 
 ## 3. Tasks
 
@@ -177,47 +177,34 @@ Added 2026-11-11 at the maintainer's request. The sample's wildcard tool rendere
   - Depends on: T24. Files: `sample/copilotkit/src/components/`. Size: S. Model: Sonnet 5.5, high.
 
 **Checkpoint D2.**
-- [ ] Live validation loop step 3: the maintainer drives the CopilotKit browser flow against `holodeck serve` on the fixture and sees the three views. `make verify-deps` passes with the sample present (npm audit). Adversarial review of PR 3b has no open finding; PR 3b committed.
+- [x] Live validation loop step 3: the maintainer drives the CopilotKit browser flow against `holodeck serve` on the fixture and sees the three views. `make verify-deps` passes with the sample present (npm audit). Adversarial review of PR 3b has no open finding; PR 3b committed.
 
-### Phase 4: Evaluation and documentation (PR 4, `feat/043-eval-docs`)
+### Phase 4: Documentation and live evidence (PR 4, `feat/043-docs`)
 
-- [ ] **T16: Sample agent.**
+Rescoped by the maintainer on 2026-11-12: T17, T18 and T19 move to a domain playbook (for example, a legal playbook) that ships its own eval set; T20 is dropped.
+
+- [x] **T16: Sample agent.** (Built on `feat/043-ui`, PR #452.)
   - Acceptance: `sample/temporal-memory/` has an agent with two source tools, a small dated fixture corpus and test cases that assert memory tool calls.
   - Verify: `cd sample/temporal-memory && uv run holodeck test run agent.yaml`
   - Depends on: T14. Files: the sample directory. Size: S. Model: Sonnet 5.5, medium.
 
-- [ ] **T17: Golden corpus fetch script.**
-  - Acceptance: `manifest.yaml` pins four to six compilations of each Act with URL, start date and SHA-256; the script downloads, verifies, converts to markdown and writes `effective_date` front matter; a hash mismatch fails with the compilation id; the downloaded text is git-ignored.
-  - Verify: `uv run python scripts/fetch_golden_corpus.py --out tests/golden/family-assistance/corpus` twice; the second run downloads nothing.
-  - Depends on: spec open questions 1 and 2 answered. Files: `scripts/fetch_golden_corpus.py`, `tests/golden/family-assistance/manifest.yaml`, `.gitignore`. Size: M. Model: Sonnet 5.5, high.
+- **T17: Golden corpus fetch script.** Moved to the domain playbook. The fetch-and-convert part is already in `sample/temporal-memory/fetch_corpus.py`.
+- **T18: Labelled questions.** Moved to the domain playbook.
+- **T19: Eval runner.** Moved to the domain playbook. The playbook can use `holodeck test run` with evaluations instead of a custom runner.
+- **T20: Requirement-ID coverage check.** Dropped by the maintainer on 2026-11-12.
 
-- [ ] **T18: Labelled questions.**
-  - Acceptance: `questions.yaml` has at least 30 questions with expected answers, `valid_at` dates and expected source sections, covering the five cases in spec section 9; the maintainer has reviewed every label.
-  - Verify: a schema test for the file; maintainer sign-off recorded in section 5.
-  - Depends on: T17. Files: `tests/golden/family-assistance/questions.yaml`, test. Size: M. Owner: orchestrator drafts, maintainer reviews.
-
-- [ ] **T19: Eval runner.**
-  - Acceptance: reports the five measures in EVAL-01 for memory and for a chunk-only baseline, as JSON and a short markdown summary; runs offline against `FakeBackend` in a unit test.
-  - Verify: `uv run pytest tests/unit/lib/memory/test_eval.py -n auto -q`
-  - Depends on: T12, T18. Files: `src/holodeck/lib/memory/eval.py`, tests. Size: M. Model: Opus 5.5, medium.
-
-- [ ] **T20: Requirement-ID coverage check.**
-  - Acceptance: a script reads the IDs in spec section 5 and fails, naming each ID, when no test name or case id contains it; wired into CI.
-  - Verify: `uv run python scripts/check_requirement_coverage.py docs/product-specs/043-temporal-memory/spec.md` exits 0; removing one ID from a test name makes it exit 1.
-  - Depends on: T15. Files: the script, the CI workflow. Size: S. Model: Sonnet 5.5, medium.
-
-- [ ] **T21: Documentation.**
+- [x] **T21: Documentation.**
   - Acceptance: `docs/guides/temporal-memory.md` covers setup, configuration, the three tools and the capability table; `ARCHITECTURE.md`, the tools guide, the quality map, the schema inventory and the spec inventory row are updated.
   - Verify: `make harness-check && uv run mkdocs build`
   - Depends on: T15. Files: the guide and the listed documents. Size: M. Model: Sonnet 5.5, medium.
 
 - [ ] **T22: Live evidence.**
-  - Acceptance: the dry-run episode count for the full corpus is recorded and its spend approved; the live golden-corpus eval report is committed under this directory; the CopilotKit browser step of the live validation loop is done with the maintainer.
-  - Verify: the report file exists with all five measures; section 5 records the CopilotKit observations.
-  - Depends on: T19, T16. Files: evidence files in this directory. Size: S. Owner: orchestrator with maintainer. **Ask first** (LLM spend).
+  - Acceptance: section 5 records the full sample ingest (episode count, failures, closures, time) and the maintainer's CopilotKit session against `holodeck serve` on the full-Act sample; section 6 links each criterion to its evidence.
+  - Verify: the section 5 entries and the section 6 table.
+  - Depends on: T16. Files: this plan. Size: S. Owner: orchestrator with maintainer. No new LLM spend.
 
 **Checkpoint E.**
-- [ ] Adversarial review of PR 4, then one integrated adversarial pass over `git diff main...feat/043-eval-docs`, have no open finding. Every row in section 6 has evidence. Spec inventory row updated. The stack is ready for the maintainer to authorize merge.
+- [ ] Adversarial review of PR 4, then one integrated adversarial pass over `git diff main...feat/043-docs`, have no open finding. Every row in section 6 has evidence. Spec inventory row updated. The stack is ready for the maintainer to authorize merge.
 
 ## 4. Risks
 
@@ -226,9 +213,9 @@ Added 2026-11-11 at the maintainer's request. The sample's wildcard tool rendere
 | `graphiti-core` does not resolve against `openai>=3,<4` | High: blocks the MVP | T0 runs first; on failure stop and return to the maintainer |
 | Graphiti duplicates an episode when the uuid exists | High: breaks idempotent re-ingest | T1 (a) measures it; the backend checks `has_episode` before any write regardless |
 | Hop limit or retroactive invalidation does not behave as the spec assumes | Medium | T1 (c) and (d); update the spec before Phase 1 |
-| Ingest cost of the full corpus | Medium | Dry-run count before any live run; chunk-hash skipping; approval at T22 |
+| Ingest cost of the full corpus | Medium | Dry-run count before any live run; chunk-hash skipping; the full sample took 851 episodes and about 8.5 hours |
 | Graphiti minor releases change signatures | Medium | Pin to one minor; all Graphiti calls in one module; contract tests |
-| Legislation licence or labelling effort | Medium: blocks T17 and T18 only | Answer open questions 1 and 2 during Phase 1; Phases 1 to 3 do not depend on them |
+| Legislation licence or labelling effort | Closed | The licence is CC BY 4.0; labelling moved to the domain playbook |
 | The chunk accessor changes hierarchical tool behaviour | Medium | Read-only protocol; existing tool tests are part of T5's gate |
 
 ## 5. Progress and decisions
@@ -271,6 +258,11 @@ Added 2026-11-11 at the maintainer's request. The sample's wildcard tool rendere
 - 2026-11-12: Diff-driven closing on `feat/043-closure-check` (Opus 5.5, not committed, not run live). The closure check can only reopen what Graphiti closed: with reasoning `medium` and a typed ontology, the five-section run (3, 3AA, 57GJ, 61AA, 85CB at 2020-07-01 and 2026-07-01) ended with 0 false closures but 8 stale 2020 facts still open although their lines changed (Home Affairs Minister to ASIO Minister, "dad and partner pay" removed, "at-risk day" to "wellbeing day"). New tool setting `close_on_text_change` (default `false`, Graphiti on Neo4j only): after the closure check and before the completion marker, once every chunk of the new section is in the graph, the backend finds the complete episodes of the same section at the most recent earlier date (a Cypher pre-filter on the name, then `same_section`), takes the open, dated facts (start before the episode's) that those episodes state and that no chunk of the new section states, and closes a fact when `decide_text_closure` says so: its best old line (token-set Jaccard) scores at least `MIN_LINE_MATCH` = 0.2, every best old line is gone from the new text, and its best Jaccard against the new lines is below the old score minus `SUPPORT_MARGIN` = 0.1. One write sets `invalid_at` to the episode's reference time and `expired_at` to now, on open facts only. Counted in `IngestReport.facts_closed_by_text`, the INFO line and the span attribute `holodeck.memory.facts_closed_by_text`. Known limit pinned by a test: "subsection (4) does not apply" reworded to "subsections (4) and (4A) do not apply" closes a fact that is still true (0.3 against 0.625). Checked by unit tests on a fake driver only; the thresholds are starting values, not tuned on the live closures.
 - 2026-11-12: Adversarial review (Codex, gpt-6-astra) of the closure check and text closing, fixed on `feat/043-closure-check` (Opus 5.5; not committed, not run live). (1) The closure check took every fact closed in the namespace during the call, so a concurrent ingest's closure in another section was reopened. It now takes only facts on the episode node's `entity_edges` (Graphiti lists every edge it resolved or invalidated there) and still in the time window. The review proposed `invalid_at = reference time` plus a shared endpoint; not adopted: Graphiti sets `invalid_at` to the closing edge's `valid_at`, which the model may take from the text, and a shared-endpoint rule would hide the getzep/graphiti#1728 closures that rule 1a exists to reopen. Ingest is not serialised per namespace anywhere in HoloDeck; one writer per namespace is now a documented requirement. (2) A retry's window starts at the pending node's `created_at` (the first attempt), and the earlier attempts' `entity_edges` are added back after `add_episode`. (3) Dating leaves a fact undated when its `invalid_at` is not after the start (ingest and backfill; counted and logged). (4) Out-of-order ingest: a text-closing candidate must have no source episode dated after E, and the closure check reopens a fact a later-dated episode states (`restated_later`). (5) Document lineage: new optional front-matter key `series_id` becomes `EpisodeIn.document_key` and is kept in the episode name; an older version must share the `series_id` when both documents have one, else the source tool (text closing and closure check, `other_document`). `effective_date.document_series` reads the key. (6) Text closing compares with every older date of the section, not only the latest. (7, 8) Positional section ids (`chunk_<n>`) are no section id: `same_section` compares number and path, and the service groups such chunks by (number, path) or gives them no section keys when either is missing. (9) Text closing waits until every other chunk of the section is complete, not only present. (11) `tests/integration/memory/test_graphiti_closure_queries.py` runs every dating, closure and text-closing query on Neo4j with hand-built nodes, plus the closure check and text closing end to end; not run here (no Neo4j). Finding 10 (lexical false closure) is unchanged.
 - 2026-11-12: Codex finding 10 fixed on `feat/043-closure-check` (Opus 5.5; not committed, not run live). Text closing closed "Subsection (4) does not apply" when the line became "subsections (4) and (4A) do not apply" (Jaccard 3/11 against 0.625). `decide_text_closure` now has a fourth keep rule after the margin, `line_reworded`: the anchor is the content words (`content_tokens`: stopwords removed, plurals made singular, numbers unchanged) that the fact shares with a best old line, at least 2; the fact stays open when one new line holds the whole anchor and adds no restrictive word (not, never, nil, none, cannot, without, except, unless, only, excluding) outside it. `tokens`, `jaccard`, `MIN_LINE_MATCH` and `SUPPORT_MARGIN` are unchanged, so `decide_closure` and the scores are too. Unit tests pin the finding-10 case (kept, old 0.625, new 3/11) and six closing cases: dropped negation, added negation, another name, another amount, an added "only", an anchor split over two lines; plus a one-word anchor. No other existing test changed outcome. New false-keep risk: a meaning change that keeps every anchored word and adds no restrictive word ("applies to children" to "applies to children over 16") stays open.
+- 2026-11-12: The closure work is committed on `feat/043-closure-check` (PR #453, draft); the "not committed" notes above describe its state before that. The stack is six PRs (#447, #448, #449, #451, #452, #453), rebased on main after #454, #455 and #456 and all green. CI's required 3.11 lane now runs on Azure Container Apps runners (#456).
+- 2026-11-12: Full ingest of the Family Assistance Act and the Administration Act (2020-07-01 and 2026-07-01) with every closure fix, `extraction_reasoning_effort: medium`, `close_on_text_change: true` and the typed `schema_hints`: 851 episodes written, 0 failed, one resume after an OpenAI request hung for 10 minutes. Graph: 2,950 entities, 7,473 facts, 3 with no start date (276 before Fix A). Closures: 131 by extraction, 84 reopened by the closure check, 178 by text closing; the text closures are not audited yet. Each episode took about 33 to 47 s and 14 OpenAI calls, against 10.6 s and 7 calls without the schema and reasoning settings. Finding: the typed ontology made 72% of entities `Section` and 41% of facts `REFERS_TO`; only 13% of facts join two domain entities. A question-first ontology is proposed, to be compared on the five-section probe before the next full ingest.
+- 2026-11-12: Checkpoint D2 closed by the maintainer after driving the CopilotKit app against `holodeck serve` on the full-Act sample. `make verify-deps` was not re-run in this session. T16 done (built on `feat/043-ui`). T21 started on a new stacked branch `feat/043-docs` on top of `feat/043-closure-check`, at the maintainer's direction, together with these plan updates.
+- 2026-11-12: Phase 4 rescoped by the maintainer. Evals are domain-specific: T17 (golden corpus), T18 (labelled questions) and T19 (eval runner) move to a domain playbook, for example a legal playbook published after this feature merges, which ships its own eval set. T20 (requirement-ID coverage check) is dropped. Spec updated first: D17, EVAL-01, the golden-corpus section, success criteria 9 and 10, layer 4 of the delivery table and open questions 1 to 3. T22 now records the live evidence already gathered, with no new LLM spend. Still open and domain-neutral: the test runner does not pass memory results to evaluation metrics as retrieval context (section 7).
+- 2026-11-12: T21 (Sonnet 5.5, medium) done by a subagent on `feat/043-docs` and validated: new `docs/guides/temporal-memory.md` (setup, drivers, every config field, schema hints and how to design them, effective dates and `series_id`, ingestion, how facts close and its limits, the three tools, degraded mode, capabilities, Temporal, cost); `ARCHITECTURE.md`, the tools guide, the docs index, the quality map, the generated schema inventory (generator in `scripts/check_harness.py`) and the spec inventory row updated. The orchestrator corrected the cost table (the two runs differ in corpus and settings) and the CopilotKit line. `make harness-check`, `uv run mkdocs build --strict` and `tests/unit/test_harness.py` (10 passed) pass. Spec drift found and not fixed here: the spec's configuration section lacks `extraction_reasoning_effort`, `close_on_text_change` and the `schema_hints` edge fields; it does not say the closure check and text closing run on Neo4j only; and it implies a general dry-run time estimate, which exists only for the Agent SDK path.
 
 ## 6. Acceptance evidence
 
@@ -280,19 +272,19 @@ Added 2026-11-11 at the maintainer's request. The sample's wildcard tool rendere
 | 2. Contract tests on both backends | T14 | — |
 | 3. Unchanged re-ingest: zero LLM calls, zero writes | T6, T10 | — |
 | 4. Second compilation: only new hashes | T6 | — |
-| 5. Every fact resolves through `memory_provenance` | T11, T19 | — |
+| 5. Every fact resolves through `memory_provenance` | T11 | — |
 | 6. `valid_at` between compilations returns the earlier fact | T11 | — |
 | 7. Not-supported operations raise by name | T11 | — |
 | 8. Graph stopped: chunk hits with `degraded: true` | T12 | — |
-| 9. Eval report with five measures | T19, T22 | — |
-| 10. Every requirement ID has a test | T20 | — |
+| 9. Moved to a domain playbook | — | — |
+| 10. Dropped | — | — |
 | 11. Live validation loop recorded | Checkpoint D, T22 | — |
 | 12. Two source tools, one graph | T6, T16 | — |
 | 13. Default instruction yields dated rate facts | T10 | — |
 
 ## 7. Open items
 
-- Spec open questions 1 (licence), 2 (compilations and labelling) and 3 (spend) need maintainer answers before T17, T18 and T22.
+- Spec open questions 1 to 3 are closed: 1 answered (CC BY 4.0), 2 moved to the domain playbook, 3 answered by the full sample ingest (851 episodes).
 - Spec open questions 4 and 5 are answered by T1.
 - Spec open question 6 (front matter in chunk text) stays open; A6 holds for this plan.
 - Temporary directories that `SourceResolver` downloads for a remote source are not owned by the tool's lifetime: nothing removes them on success or failure except the orphan sweep at `holodeck serve` start. Temporal workers never sweep. Older defect; the memory ingestion activity adds one more caller.
