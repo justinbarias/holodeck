@@ -198,13 +198,13 @@ Rescoped by the maintainer on 2026-11-12: T17, T18 and T19 move to a domain play
   - Verify: `make harness-check && uv run mkdocs build`
   - Depends on: T15. Files: the guide and the listed documents. Size: M. Model: Sonnet 5.5, medium.
 
-- [ ] **T22: Live evidence.**
+- [x] **T22: Live evidence.** Recorded in section 5 (2026-11-12 full ingest and Checkpoint D2 entries) and section 6.
   - Acceptance: section 5 records the full sample ingest (episode count, failures, closures, time) and the maintainer's CopilotKit session against `holodeck serve` on the full-Act sample; section 6 links each criterion to its evidence.
   - Verify: the section 5 entries and the section 6 table.
   - Depends on: T16. Files: this plan. Size: S. Owner: orchestrator with maintainer. No new LLM spend.
 
 **Checkpoint E.**
-- [ ] Adversarial review of PR 4, then one integrated adversarial pass over `git diff main...feat/043-docs`, have no open finding. Every row in section 6 has evidence. Spec inventory row updated. The stack is ready for the maintainer to authorize merge.
+- [x] Merged to main on 2026-11-12 with the maintainer's authorization: the stack #447, #448, #449, #451, #452, #453 and #457, squash-merged atomically, last commit `24b34a3`, every PR green. The integrated adversarial pass over the whole stack was skipped by the maintainer's choice; each layer had its own Codex review (phases 1, 2, 3, 3b and the closure check), and #457 (docs) had none.
 
 ## 4. Risks
 
@@ -263,24 +263,25 @@ Rescoped by the maintainer on 2026-11-12: T17, T18 and T19 move to a domain play
 - 2026-11-12: Checkpoint D2 closed by the maintainer after driving the CopilotKit app against `holodeck serve` on the full-Act sample. `make verify-deps` was not re-run in this session. T16 done (built on `feat/043-ui`). T21 started on a new stacked branch `feat/043-docs` on top of `feat/043-closure-check`, at the maintainer's direction, together with these plan updates.
 - 2026-11-12: Phase 4 rescoped by the maintainer. Evals are domain-specific: T17 (golden corpus), T18 (labelled questions) and T19 (eval runner) move to a domain playbook, for example a legal playbook published after this feature merges, which ships its own eval set. T20 (requirement-ID coverage check) is dropped. Spec updated first: D17, EVAL-01, the golden-corpus section, success criteria 9 and 10, layer 4 of the delivery table and open questions 1 to 3. T22 now records the live evidence already gathered, with no new LLM spend. Still open and domain-neutral: the test runner does not pass memory results to evaluation metrics as retrieval context (section 7).
 - 2026-11-12: T21 (Sonnet 5.5, medium) done by a subagent on `feat/043-docs` and validated: new `docs/guides/temporal-memory.md` (setup, drivers, every config field, schema hints and how to design them, effective dates and `series_id`, ingestion, how facts close and its limits, the three tools, degraded mode, capabilities, Temporal, cost); `ARCHITECTURE.md`, the tools guide, the docs index, the quality map, the generated schema inventory (generator in `scripts/check_harness.py`) and the spec inventory row updated. The orchestrator corrected the cost table (the two runs differ in corpus and settings) and the CopilotKit line. `make harness-check`, `uv run mkdocs build --strict` and `tests/unit/test_harness.py` (10 passed) pass. Spec drift found and not fixed here: the spec's configuration section lacks `extraction_reasoning_effort`, `close_on_text_change` and the `schema_hints` edge fields; it does not say the closure check and text closing run on Neo4j only; and it implies a general dry-run time estimate, which exists only for the Agent SDK path.
+- 2026-11-12: Stack merged to main (squash, `24b34a3`) with Checkpoint E's integrated review skipped by the maintainer. Close-out on `chore/043-close-out`: T22 and Checkpoint E closed, section 6 filled with test evidence, the spec's configuration section brought in line with the code (`extraction_reasoning_effort`, `close_on_text_change`, `schema_hints` edge fields, Neo4j-only closing, the dry-run estimate), the plan moved to `completed/`, and 043 marked shipped. Still open after close-out: the 178 text closures from the full ingest are not audited; a question-first ontology is proposed but not tried; the test runner does not pass memory results to evaluation metrics as retrieval context.
 
 ## 6. Acceptance evidence
 
 | Spec criterion | Proving task | Evidence |
 | --- | --- | --- |
-| 1. `make schema-check` passes | T3 | — |
-| 2. Contract tests on both backends | T14 | — |
-| 3. Unchanged re-ingest: zero LLM calls, zero writes | T6, T10 | — |
-| 4. Second compilation: only new hashes | T6 | — |
-| 5. Every fact resolves through `memory_provenance` | T11 | — |
-| 6. `valid_at` between compilations returns the earlier fact | T11 | — |
-| 7. Not-supported operations raise by name | T11 | — |
-| 8. Graph stopped: chunk hits with `degraded: true` | T12 | — |
+| 1. `make schema-check` passes | T3 | Passed at T3 and in every stack PR's checks (section 5, T3 entry) |
+| 2. Contract tests on both backends | T14 | [test_memory_tool_contract.py](../../../../tests/unit/lib/backends/test_memory_tool_contract.py): `test_both_bindings_publish_the_same_schema_and_description` |
+| 3. Unchanged re-ingest: zero LLM calls, zero writes | T6, T10 | [test_graphiti_ingest.py](../../../../tests/integration/memory/test_graphiti_ingest.py): `test_ing_02_reingest_makes_no_llm_call`; Checkpoint C second run: 0 new, 0 LLM calls |
+| 4. Second compilation: only new hashes | T6 | [test_service_ingest.py](../../../../tests/unit/lib/memory/test_service_ingest.py); full sample: 851 new episodes, 482 chunks unchanged between compilations skipped |
+| 5. Every fact resolves through `memory_provenance` | T11 | [test_graphiti_read.py](../../../../tests/integration/memory/test_graphiti_read.py): `test_ret_06_provenance_resolves_a_fact_to_its_chunks` |
+| 6. `valid_at` between compilations returns the earlier fact | T11 | [test_graphiti_read.py](../../../../tests/integration/memory/test_graphiti_read.py): `test_ret_03_between_two_compilations` |
+| 7. Not-supported operations raise by name | T11 | [test_graphiti_backend_read.py](../../../../tests/unit/lib/memory/test_graphiti_backend_read.py) (`MemoryNotSupportedError`) |
+| 8. Graph stopped: chunk hits with `degraded: true` | T12 | [test_tool_api.py](../../../../tests/unit/lib/memory/test_tool_api.py): `test_ret_07_search_result_degraded_and_instants` |
 | 9. Moved to a domain playbook | — | — |
 | 10. Dropped | — | — |
-| 11. Live validation loop recorded | Checkpoint D, T22 | — |
-| 12. Two source tools, one graph | T6, T16 | — |
-| 13. Default instruction yields dated rate facts | T10 | — |
+| 11. Live validation loop recorded | Checkpoint D, T22 | Section 5: Checkpoint D (steps 1 and 2, 2026-11-11) and Checkpoint D2 (step 3, the maintainer's CopilotKit session on the full-Act sample, 2026-11-12) |
+| 12. Two source tools, one graph | T6, T16 | [test_service_ingest.py](../../../../tests/unit/lib/memory/test_service_ingest.py): `test_a8_the_same_chunk_from_two_tools_is_submitted_once`; the T16 sample builds one graph from two hierarchical tools |
+| 13. Default instruction yields dated rate facts | T10 | [graphiti-evidence.md](../../../design-docs/043-temporal-memory/graphiti-evidence.md), Checkpoint C and the supersession probes |
 
 ## 7. Open items
 

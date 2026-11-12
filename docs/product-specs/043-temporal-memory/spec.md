@@ -1,6 +1,6 @@
 # SPEC: Temporal Knowledge Graph Memory
 
-**Status:** Approved for build 2026-11-11. Decisions in section 3 were settled with the maintainer; D21 to D24 follow the [Graphiti evidence run](../../design-docs/043-temporal-memory/graphiti-evidence.md). Only the dependency is in the tree.
+**Status:** Shipped 2026-11-12 (stack #447 to #457). Decisions in section 3 were settled with the maintainer; D21 to D24 follow the [Graphiti evidence run](../../design-docs/043-temporal-memory/graphiti-evidence.md). Evals moved to a domain playbook on 2026-11-12.
 **Date:** 2026-11-11.
 **Code baseline:** `6203c82` (release 0.8.0).
 **Source:** the host-neutral spec "Temporal Knowledge Graph Memory" (generic spec). This document binds it to HoloDeck and records where the MVP differs.
@@ -186,16 +186,32 @@ tools:
       # aoss_host: required for neptune only (its OpenSearch host)
     extraction_model: { provider: openai, name: gpt-5.4-mini }   # default: agent model
     extraction_instructions: null       # default: built-in instruction for amounts, rates and dates
+    extraction_reasoning_effort: null   # none | minimal | low | medium | high | xhigh; OpenAI and Azure OpenAI only
+    close_on_text_change: false         # close facts whose source line changed; Neo4j only
     effective_date_key: effective_date
     ingest_on_start: false
     hops: 1                             # 1 or 2
     top_k: 10
     fusion_weights: { chunks: 1.0, graph: 1.0 }
     schema_hints:
-      entity_types: [Act, Section, Payment, Person, Rate]
+      entity_types:                     # domain types; sections and Acts stay provenance
+        - Person
+        - { name: Payment, description: A benefit or payment, such as Family Tax Benefit. }
+      edge_types:
+        - name: HAS_RATE
+          description: A payment has a rate or amount.
+          attributes: [{ name: amount, type: number }, { name: category, type: string }]
+          single_valued: true           # written into the type's description only
+          key_attributes: [category]
+      edge_type_map:
+        - { source: Payment, target: Entity, edges: [HAS_RATE] }
 ```
 
 Provider mapping for `extraction_model`: `openai` to `OpenAIClient`, `azure_openai` to `AzureOpenAILLMClient`, `ollama` to `OpenAIGenericClient`. For `anthropic`, `auth_provider` decides: `api_key` or not set, Graphiti's `AnthropicClient`; `oauth_token`, a HoloDeck client that calls the Claude Agent SDK; any other value fails at load with `MemoryConfigError`. The Agent SDK path measured 6.5 to 15.5 seconds per chunk. The embedder comes from the source tools' shared embedding settings (CFG-06).
+
+`extraction_reasoning_effort` is passed as `reasoning` to Graphiti's OpenAI and Azure OpenAI clients; other providers ignore it and log one warning. `schema_hints` maps to Graphiti's `entity_types`, `edge_types` and `edge_type_map`; a type pair with no entry keeps the model's own edge name.
+
+**Fact closing.** After each `add_episode`, the Graphiti backend dates facts that have no start, then runs a deterministic closure check that reopens closures Graphiti's contradiction step made from another section or document lineage, an unchanged line, a later restatement, or with no replacement. With `close_on_text_change`, it also closes open facts whose source line changed in a newer version of the same section. A document lineage is the `series_id` front-matter key, else the source tool. Both steps run on the Neo4j driver only; other drivers skip them and log one line. The [design doc](../../design-docs/043-temporal-memory/design.md) has the rules and their limits.
 
 ### Tools
 
@@ -237,7 +253,7 @@ Results are JSON with ISO 8601 UTC timestamps. A date argument with no time mean
 | CFG-02 | Unwanted | If `source_tools` is empty, repeats a name, or names anything other than a `hierarchical_document` tool in the same agent, then loading shall fail with the tool name. | — |
 | CFG-06 | Unwanted | If the source tools set different embedding models, then loading shall fail and name the tools that differ. A hierarchical tool has no dimension setting, so the model alone is compared. | — |
 | CFG-03 | Unwanted | If more than one `temporal_memory` tool is configured, then loading shall fail. | HST-01 |
-| CFG-04 | Unwanted | If `schema_hints.single_valued_predicates` is set with the Graphiti backend, then loading shall fail and name the field. | TMP-07 |
+| CFG-04 | Unwanted | If `schema_hints.single_valued_predicates` is set with the Graphiti backend, then loading shall fail and name the field. A `single_valued` flag on an edge type is accepted and only written into that type's description for the model. | TMP-07 |
 | CFG-05 | Unwanted | If the `graphiti` extra is not installed, then loading shall fail with the install command. | — |
 | ING-01 | Event-driven | When ingestion runs, the memory shall compute each chunk's hash and submit only chunks that have no complete episode. | ING-01 |
 | ING-02 | Unwanted | If every chunk already has an episode, then the memory shall make no LLM calls and no writes. | ING-02 |
@@ -246,7 +262,7 @@ Results are JSON with ISO 8601 UTC timestamps. A date argument with no time mean
 | ING-05 | Unwanted | If the backend fails on an episode, then the memory shall stop, report the episodes written, and leave the rest for the next run. | ING-04 |
 | ING-06 | Ubiquitous | The memory shall emit one trace per ingestion run with a span per episode and token counts. | ING-10 |
 | ING-07 | Optional | Where `ingest_on_start` is true, the tool shall run ingestion during initialization, and shall fail to start if the backend is unavailable. Under a Temporal worker, `ingest_on_start: true` shall fail at worker start and name the ingestion activity. | HST-03 |
-| ING-08 | Event-driven | When `--dry-run` is given, ingestion shall report the count of new episodes and an estimated duration, and make no LLM call, no embedding call, no vector store write, and no write of an episode, entity or fact to the graph. | — |
+| ING-08 | Event-driven | When `--dry-run` is given, ingestion shall report the count of new episodes and, where a measured rate exists (today only the Agent SDK path, about 11 seconds per episode), an estimated duration, and make no LLM call, no embedding call, no vector store write, and no write of an episode, entity or fact to the graph. | — |
 | ING-09 | Unwanted | If an episode exists but is not marked complete, then the memory shall process it again. | ING-08 |
 | ING-10 | Ubiquitous | The memory shall pass `extraction_instructions` to the backend, or the built-in default when the field is unset. | ING-03 |
 | RET-01 | Ubiquitous | The memory shall default `valid_at` and `known_at` to the time of the query. | RET-01 |
