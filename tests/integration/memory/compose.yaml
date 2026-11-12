@@ -1,0 +1,26 @@
+# Neo4j for the Graphiti memory integration tests (spec 043, T10).
+#
+#   docker compose -f tests/integration/memory/compose.yaml up -d --wait
+#   uv run pytest tests/integration/memory -n auto -q -m graphiti
+#   docker compose -f tests/integration/memory/compose.yaml down -v
+#
+# The password is a test value. The database holds only test data and has no
+# volume, so `down` removes it.
+name: holodeck-memory-it
+
+services:
+  neo4j:
+    image: neo4j:5.26
+    environment:
+      NEO4J_AUTH: neo4j/holodeck-it-pass
+    ports:
+      - "127.0.0.1:7687:7687"
+      - "127.0.0.1:7474:7474"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - cypher-shell -u neo4j -p holodeck-it-pass "RETURN 1" > /dev/null
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 10s

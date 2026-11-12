@@ -9,7 +9,6 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from holodeck.lib.memory.tool_api import MEMORY_FUNCTION_NAMES
 from holodeck.models.claude_config import ClaudeConfig
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.deployment import DeploymentConfig
@@ -19,6 +18,7 @@ from holodeck.models.observability import ObservabilityConfig
 from holodeck.models.openai_config import OpenAIConfig
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.tool import (
+    MEMORY_FUNCTION_NAMES,
     HierarchicalDocumentToolConfig,
     SkillTool,
     TemporalMemoryToolConfig,

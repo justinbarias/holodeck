@@ -7,6 +7,7 @@ no network, no LLM and no embedding call.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -200,3 +201,83 @@ async def test_uninitialized_tool_raises(tmp_path: Path) -> None:
         await source.documents()
     with pytest.raises(BackendSessionError, match="not initialized"):
         await source.find("query", 3)
+
+
+async def _listing(
+    source: HierarchicalChunkSource,
+) -> list[tuple[SourceDocument, list[tuple[str, str, int, str, str]]]]:
+    return [
+        (
+            document,
+            [
+                (ref.source_uri, ref.section_id, ref.ordinal, ref.text, ref.chunk_id)
+                for ref in await source.chunks(document)
+            ],
+        )
+        for document in await source.documents()
+    ]
+
+
+async def test_ing_08_preview_lists_what_ingestion_stores(
+    source: HierarchicalChunkSource, tmp_path: Path
+) -> None:
+    preview = HierarchicalChunkSource(_tool(tmp_path), preview=True)
+
+    listed = await _listing(preview)
+
+    assert listed == await _listing(source)
+    assert sum(len(chunks) for _, chunks in listed) == 4
+
+
+async def test_ing_08_preview_of_a_remote_source_lists_what_ingestion_stores(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "doc.md").write_text(DATED)
+    stored_tool = _tool(tmp_path)
+    stored_tool.set_source_context(source_root=tmp_path, is_remote=True)
+    await stored_tool.initialize()
+    preview_tool = _tool(tmp_path)
+    preview_tool.set_source_context(source_root=tmp_path, is_remote=True)
+
+    listed = await _listing(HierarchicalChunkSource(preview_tool, preview=True))
+
+    assert listed == await _listing(HierarchicalChunkSource(stored_tool))
+    assert [document.source_uri for document, _ in listed] == ["docs/doc.md"]
+
+
+async def test_ing_08_preview_does_not_initialize_embed_or_store(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "a_dated.md").write_text(DATED)
+    tool = _tool(tmp_path)
+    embedding = AsyncMock()
+    tool.set_embedding_service(embedding)
+    preview = HierarchicalChunkSource(tool, preview=True)
+
+    documents = await preview.documents()
+    await preview.chunks(documents[0])
+
+    assert not tool._initialized
+    assert tool._adapter is None
+    assert embedding.mock_calls == []
+
+
+async def test_ing_08_preview_reads_the_files_again_on_each_listing(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "a_dated.md").write_text(DATED)
+    preview = HierarchicalChunkSource(_tool(tmp_path), preview=True)
+    assert len(await preview.documents()) == 1
+
+    (tmp_path / "b_plain.md").write_text(PLAIN)
+
+    assert len(await preview.documents()) == 2
+
+
+async def test_preview_source_cannot_search(tmp_path: Path) -> None:
+    (tmp_path / "a_dated.md").write_text(DATED)
+    preview = HierarchicalChunkSource(_tool(tmp_path), preview=True)
+
+    with pytest.raises(BackendSessionError, match="preview source and cannot search"):
+        await preview.find("zebra", 3)
