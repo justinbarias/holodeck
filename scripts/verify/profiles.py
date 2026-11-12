@@ -134,6 +134,7 @@ EXTRA_MODULES: dict[str, tuple[str, ...]] = {
     "azure-blob": ("azure.storage.blob",),
     "all-sources": ("boto3", "azure.storage.blob"),
     "temporal": ("temporalio",),
+    "graphiti": ("graphiti_core", "neo4j", "anthropic"),
 }
 # The aggregate extra: every row above.
 ALL_EXTRA = "all"
@@ -161,7 +162,8 @@ PACKAGES: tuple[Package, ...] = (
     Package("twine", "twine"),
     # Installed only by their extra.
     Package("deepeval", "deepeval", ("eval",)),
-    Package("anthropic", "anthropic", ("eval",)),
+    # graphiti-core[anthropic] brings the SDK that its Anthropic client needs.
+    Package("anthropic", "anthropic", ("eval", "graphiti")),
     Package("ollama", "ollama", ("eval",)),
     Package("nltk", "nltk", ("nlp",)),
     Package("sacrebleu", "sacrebleu", ("nlp",)),
@@ -171,6 +173,8 @@ PACKAGES: tuple[Package, ...] = (
     Package("dash", "dash", ("dashboard",)),
     Package("agents", "openai-agents", ("openai-agents",)),
     Package("temporalio", "temporalio", ("temporal",)),
+    Package("graphiti_core", "graphiti-core", ("graphiti",)),
+    Package("neo4j", "neo4j", ("graphiti",)),
     Package("qdrant_client", "qdrant-client", ("qdrant", "vectorstores")),
     Package("chromadb", "chromadb", ("chromadb", "vectorstores")),
     Package("psycopg", "psycopg", ("postgres", "vectorstores")),
@@ -280,6 +284,12 @@ PROFILES: tuple[Profile, ...] = (
         "features",
         probes=("temporal-imports",),
         cli=("worker-help",),
+    ),
+    Profile(
+        "graphiti",
+        ("graphiti",),
+        "features",
+        probes=("graphiti-imports",),
     ),
     Profile(
         "deploy",

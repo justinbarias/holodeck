@@ -1893,6 +1893,31 @@ grpc = [
 ]
 
 [[package]]
+name = "graphiti-core"
+version = "0.31.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "neo4j" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "openai" },
+    { name = "posthog" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "tenacity" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ca/f5/1e0b758bdfa15f5bc971b97e326d6dfcf979b66024e7e7a82a08798d7413/graphiti_core-0.31.2.tar.gz", hash = "sha256:cee47010d440ae015646c722b18272c3b2e659e38ab7ed6a0fd165a15282f451", size = 7142697, upload-time = "2026-10-20T17:25:56.472Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/82/73/a0957ba4de14bfc69cb201db9b147f5835564838411e147c4c63e4967d0b/graphiti_core-0.31.2-py3-none-any.whl", hash = "sha256:b26e1f350482266aec24beb1cd4c58d5e32ede1a897af8fa25b10800a16bbb8d", size = 403350, upload-time = "2026-10-20T17:25:54.496Z" },
+]
+
+[package.optional-dependencies]
+anthropic = [
+    { name = "anthropic" },
+]
+
+[[package]]
 name = "griffelib"
 version = "2.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2108,6 +2133,7 @@ all = [
     { name = "deepeval" },
     { name = "docker" },
     { name = "google-cloud-run" },
+    { name = "graphiti-core", extra = ["anthropic"] },
     { name = "nltk" },
     { name = "ollama" },
     { name = "openai" },
@@ -2197,6 +2223,9 @@ eval = [
     { name = "anthropic" },
     { name = "deepeval" },
     { name = "ollama" },
+]
+graphiti = [
+    { name = "graphiti-core", extra = ["anthropic"] },
 ]
 nlp = [
     { name = "nltk" },
@@ -2317,6 +2346,8 @@ requires-dist = [
     { name = "google-cloud-run", marker = "extra == 'all'", specifier = ">=0.13.0" },
     { name = "google-cloud-run", marker = "extra == 'deploy-all'", specifier = ">=0.13.0" },
     { name = "google-cloud-run", marker = "extra == 'deploy-gcp'", specifier = ">=0.13.0" },
+    { name = "graphiti-core", extras = ["anthropic"], marker = "extra == 'all'", specifier = ">=0.31,<0.32" },
+    { name = "graphiti-core", extras = ["anthropic"], marker = "extra == 'graphiti'", specifier = ">=0.31,<0.32" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "inquirerpy", specifier = ">=0.3.4,<0.4.0" },
     { name = "jinja2", specifier = ">=3.0.0,<4.0.0" },
@@ -2406,7 +2437,7 @@ requires-dist = [
     { name = "weaviate-client", marker = "extra == 'weaviate'", specifier = ">=4.24,<5" },
     { name = "werkzeug", specifier = ">=3.1.9" },
 ]
-provides-extras = ["all", "all-sources", "azure-ai-search", "azure-blob", "azure-cosmos", "chromadb", "claude-otel", "dashboard", "deploy", "deploy-all", "deploy-aws", "deploy-azure", "deploy-gcp", "dev", "eval", "nlp", "openai-agents", "opensearch", "optimizer", "otel-all", "otel-azmon", "otel-prometheus", "pinecone", "postgres", "qdrant", "s3", "temporal", "vectorstores", "weaviate"]
+provides-extras = ["all", "all-sources", "azure-ai-search", "azure-blob", "azure-cosmos", "chromadb", "claude-otel", "dashboard", "deploy", "deploy-all", "deploy-aws", "deploy-azure", "deploy-gcp", "dev", "eval", "graphiti", "nlp", "openai-agents", "opensearch", "optimizer", "otel-all", "otel-azmon", "otel-prometheus", "pinecone", "postgres", "qdrant", "s3", "temporal", "vectorstores", "weaviate"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4389,6 +4420,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/67/43/e11d75a7fb635c6f63dd6e176cb3e050ec2fee35f2f2267b332a6ad351ec/narwhals-2.28.0.tar.gz", hash = "sha256:2d9860c80d6610820826e94c6e42ce4b1d92d89cdd479586e652a8d211dab345", size = 754977, upload-time = "2026-10-27T12:19:33.777Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cf/82/8ef9c7e0f50493307a49c09cfa7f00c5a778b6d1921f7b2dabe1d3a5809e/narwhals-2.28.0-py3-none-any.whl", hash = "sha256:1f69d6385ec30e2fa6e1fdeb37c562ecabd0f713f6f3e3b58a668c5c9df9567f", size = 490591, upload-time = "2026-10-27T12:19:31.649Z" },
+]
+
+[[package]]
+name = "neo4j"
+version = "6.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/d1/bc40a291c60b06738ce92d5f0259d348eee1f07ba10d569a881c848c8afe/neo4j-6.4.1.tar.gz", hash = "sha256:fac99b7cb9679b93ef97dc23f22a3f0e7c3feb2db223eddfd2521f27005cfeaf", size = 287897, upload-time = "2026-10-15T10:47:26.666Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/69/3036bdcacfba561c6ef4b00fe72529e0a1b6241a6b2de82572a0940a276b/neo4j-6.4.1-py3-none-any.whl", hash = "sha256:f56a281c74355522fc2642df8919bec450115431531b8f3f6fe1cc17acb57a27", size = 390684, upload-time = "2026-10-15T10:47:25.236Z" },
 ]
 
 [[package]]

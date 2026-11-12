@@ -31,6 +31,7 @@ An earlier release does not close unfinished work. The inventory remains the sou
 | Test Optimizer | [033-holodeck-test-optimizer](exec-plans/active/033-holodeck-test-optimizer/index.md) |
 | Production Hardening | [034-production-hardening](exec-plans/active/034-production-hardening/index.md) |
 | Dependency Stack Revamp (Semantic Kernel removal) | Implementation complete 2026-11-10; live evidence open, so the plan stays active. [Execution plan](exec-plans/active/042-dependency-stack-revamp/2026-11-10-remove-semantic-kernel.md); [records](exec-plans/active/042-dependency-stack-revamp/index.md) |
+| Temporal Knowledge Graph Memory | Plan approved 2026-11-11; T0, T1 and Checkpoint A done. [Execution plan](exec-plans/active/043-temporal-memory/2026-11-11-temporal-memory-graphiti.md); [records](exec-plans/active/043-temporal-memory/index.md) |
 | OpenAI Agents SDK Backend | [Completion execution plan](exec-plans/active/035-openai-agents-backend/2026-09-06-complete-035.md); [historical records](exec-plans/active/035-openai-agents-backend/index.md) |
 
 Drafts without an execution plan yet: [037](product-specs/037-gepa-optimizer/index.md), [041](product-specs/041-temporal-file-inputs/index.md).

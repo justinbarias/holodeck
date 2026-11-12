@@ -221,6 +221,14 @@ deploy-all = [
 temporal = [
     "temporalio==1.35.0",
 ]
+# Temporal knowledge graph memory (spec 043): the Graphiti MemoryBackend.
+# One minor only: every Graphiti call sits in
+# holodeck.lib.memory.backends.graphiti and is checked against this line.
+# The neo4j driver comes with the base package; falkordb, neptune and kuzu
+# need their own graphiti-core extras.
+graphiti = [
+    "graphiti-core[anthropic]>=0.31,<0.32",
+]
 
 # Compatibility aggregate: every runtime extra (all except dev). Listed by
 # self-reference so it cannot drift from the extras above;
@@ -229,7 +237,7 @@ all = [
     "holodeck-ai[eval,nlp,optimizer,opensearch]",
     "holodeck-ai[pinecone,azure-ai-search,postgres,qdrant,chromadb,weaviate,azure-cosmos,vectorstores]",
     "holodeck-ai[otel-prometheus,otel-azmon,otel-all,claude-otel]",
-    "holodeck-ai[openai-agents,dashboard,temporal]",
+    "holodeck-ai[openai-agents,dashboard,temporal,graphiti]",
     "holodeck-ai[deploy,deploy-aws,deploy-gcp,deploy-azure,deploy-all]",
     "holodeck-ai[s3,azure-blob,all-sources]",
 ]
