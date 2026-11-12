@@ -11,7 +11,7 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -403,12 +403,13 @@ class TestExponentialBackoff:
 
     @pytest.mark.asyncio
     async def test_delays_increase_exponentially(self) -> None:
-        """Test that retry delays increase exponentially."""
-        call_times: list[float] = []
+        """Test that retry delays follow base_delay * exponential_base**attempt."""
+        call_count = 0
 
         async def mock_completion(**kwargs: Any) -> MagicMock:
-            call_times.append(asyncio.get_event_loop().time())
-            if len(call_times) < 3:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
                 raise Exception("Error")
             return make_completion_response("Success")
 
@@ -420,19 +421,18 @@ class TestExponentialBackoff:
             ),
         )
 
-        with patch_acompletion(side_effect=mock_completion):
-            await generator.generate_context(
+        with (
+            patch_acompletion(side_effect=mock_completion),
+            patch("asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        ):
+            result = await generator.generate_context(
                 chunk_text="Chunk",
                 document_text="Document",
             )
 
-        # Check that delays approximately follow exponential pattern
-        if len(call_times) >= 3:
-            delay1 = call_times[1] - call_times[0]
-            delay2 = call_times[2] - call_times[1]
-            # Second delay should be roughly 2x the first (with some tolerance)
-            # delay1 ~= 0.1, delay2 ~= 0.2
-            assert delay2 > delay1 * 1.5  # Allow some tolerance
+        assert result == "Success"
+        assert call_count == 3
+        assert mock_sleep.await_args_list == [call(0.1), call(0.2)]
 
     @pytest.mark.asyncio
     async def test_max_three_attempts(self) -> None:
@@ -517,12 +517,13 @@ class TestAdaptiveConcurrency:
 
     @pytest.mark.asyncio
     async def test_respects_retry_after_header(self) -> None:
-        """Test that Retry-After header is respected when present."""
-        call_times: list[float] = []
+        """Test that Retry-After header overrides the exponential delay."""
+        call_count = 0
 
         async def mock_completion(**kwargs: Any) -> MagicMock:
-            call_times.append(asyncio.get_event_loop().time())
-            if len(call_times) == 1:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
                 error = Exception("Rate limit")
                 error.status_code = 429  # type: ignore[attr-defined]
                 error.headers = {"Retry-After": "0.1"}  # type: ignore[attr-defined]
@@ -534,16 +535,19 @@ class TestAdaptiveConcurrency:
             retry_config=RetryConfig(base_delay=0.01),
         )
 
-        with patch_acompletion(side_effect=mock_completion):
-            await generator.generate_context(
+        with (
+            patch_acompletion(side_effect=mock_completion),
+            patch("asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        ):
+            result = await generator.generate_context(
                 chunk_text="Chunk",
                 document_text="Document",
             )
 
-        # Check that delay was at least the Retry-After value
-        if len(call_times) >= 2:
-            delay = call_times[1] - call_times[0]
-            assert delay >= 0.09  # Allow small tolerance
+        assert result == "Success"
+        assert call_count == 2
+        # Retry-After (0.1s) wins over the exponential delay (base_delay=0.01)
+        assert mock_sleep.await_args_list == [call(0.1)]
 
 
 class TestDocumentTruncation:

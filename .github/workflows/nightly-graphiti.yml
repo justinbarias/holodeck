@@ -1,0 +1,51 @@
+name: Nightly Graphiti memory
+
+# Runs the Graphiti memory backend against a real Neo4j with stub model
+# clients (spec 043, T10). No model call and no API key. It is a separate
+# workflow, not a job in scheduled-verify.yml, because that workflow runs
+# weekly and a second cron there would also start its verify job every night.
+on:
+  schedule:
+    - cron: "30 3 * * *" # 03:30 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  graphiti-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      UV_PYTHON: "3.11"
+      HOLODECK_TEST_NEO4J_URI: bolt://127.0.0.1:7687
+      HOLODECK_TEST_NEO4J_USER: neo4j
+      HOLODECK_TEST_NEO4J_PASSWORD: holodeck-it-pass # test value, same as compose.yaml
+      HOLODECK_TEST_NEO4J_REQUIRED: "1" # an unreachable database fails the run
+    services:
+      neo4j:
+        image: neo4j:5.26
+        env:
+          NEO4J_AUTH: neo4j/holodeck-it-pass
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p holodeck-it-pass 'RETURN 1'"
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 24
+          --health-start-period 10s
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3 # no floating major tags since v8
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra graphiti
+
+      - name: Graphiti integration tests
+        run: uv run pytest tests/integration/memory -n auto -q -m graphiti

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Arguments of ``memory_search``.",
+  "properties": {
+    "hops": {
+      "anyOf": [
+        {
+          "maximum": 2,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Graph expansion depth in entity-to-entity edges.",
+      "title": "Hops"
+    },
+    "known_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "What the memory had recorded by this date. Default: now.",
+      "title": "Known At"
+    },
+    "query": {
+      "description": "What to look for.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "Query",
+      "type": "string"
+    },
+    "valid_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "What was true on this date (ISO 8601). Default: now.",
+      "title": "Valid At"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "MemorySearchArgs",
+  "type": "object"
+}

@@ -22,6 +22,7 @@ from pydantic import (
     Discriminator,
     Field,
     SecretStr,
+    StringConstraints,
     Tag,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
@@ -33,7 +34,8 @@ from holodeck.config.context import agent_base_dir, is_stored_snapshot
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.retired_providers import retired_provider_message
 from holodeck.lib.skills import SkillLoadError, load_skill_definition, resolve_skill_dir
-from holodeck.models.llm import LLMProvider
+from holodeck.models.claude_config import AuthProvider
+from holodeck.models.llm import LLMProvider, ProviderEnum
 
 _SUPPORTED_SOURCE_SCHEMES = {"s3", "az", "https", "http", "file"}
 
@@ -1029,6 +1031,404 @@ class SkillTool(BaseModel):
         return self
 
 
+class GraphBackendConfig(BaseModel):
+    """Connection to the graph store behind a ``temporal_memory`` tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["graphiti"] = Field(
+        default="graphiti", description="Memory backend. Only graphiti is supported."
+    )
+    driver: Literal["neo4j", "falkordb", "neptune", "kuzu"] = Field(
+        ..., description="Graph database driver. kuzu is deprecated upstream."
+    )
+    uri: str | None = Field(
+        default=None,
+        description=(
+            "Connection URI for neo4j, falkordb and neptune. For kuzu, a "
+            "database path; unset means an in-memory database."
+        ),
+    )
+    user: str | None = Field(default=None, description="Database user")
+    password: SecretStr | None = Field(default=None, description="Database password")
+    aoss_host: str | None = Field(
+        default=None,
+        description="OpenSearch host. Required for neptune, unused otherwise.",
+    )
+
+    @model_validator(mode="after")
+    def check_driver_settings(self) -> "GraphBackendConfig":
+        """Require the settings each driver cannot run without."""
+        if self.driver != "kuzu" and not (self.uri and self.uri.strip()):
+            raise ValueError(f"backend.uri is required for {self.driver}")
+        if self.driver == "neptune" and not (self.aoss_host and self.aoss_host.strip()):
+            raise ValueError("backend.aoss_host is required for neptune")
+        return self
+
+
+class FusionWeights(BaseModel):
+    """Weights for reciprocal rank fusion of chunk hits and fact hits."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chunks: float = Field(
+        default=1.0, ge=0.0, allow_inf_nan=False, description="Weight of chunk hits"
+    )
+    graph: float = Field(
+        default=1.0, ge=0.0, allow_inf_nan=False, description="Weight of fact hits"
+    )
+
+    @model_validator(mode="after")
+    def check_not_both_zero(self) -> "FusionWeights":
+        """Reject weights that would rank nothing."""
+        if self.chunks == 0.0 and self.graph == 0.0:
+            raise ValueError("fusion_weights cannot both be 0")
+        return self
+
+
+MemoryTypeName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_]*$")]
+"""An entity or edge type name. It becomes a Pydantic model's class name."""
+
+MEMORY_WILDCARD_ENTITY = "Entity"
+"""In ``edge_type_map``, any entity type (Graphiti's base entity label)."""
+
+MEMORY_RESERVED_EDGE_FIELDS = frozenset(
+    {
+        "attributes",
+        "created_at",
+        "episodes",
+        "expired_at",
+        "fact",
+        "fact_embedding",
+        "group_id",
+        "invalid_at",
+        "name",
+        "reference_time",
+        "source_node_uuid",
+        "target_node_uuid",
+        "uuid",
+        "valid_at",
+    }
+)
+"""The fields of Graphiti's ``EntityEdge``. An edge attribute cannot reuse
+one: Graphiti stores attributes beside these fields. A unit test keeps this
+set equal to ``EntityEdge.model_fields``."""
+
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+"""Reasoning effort of an OpenAI or Azure OpenAI extraction model."""
+
+
+class MemoryEntityType(BaseModel):
+    """An entity type with a description for the extraction model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: MemoryTypeName = Field(..., description="Entity type name")
+    description: str | None = Field(
+        default=None, description="What an entity of this type is"
+    )
+
+
+class MemoryEdgeAttribute(BaseModel):
+    """One attribute the extraction model fills on an edge of a type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_]*$")] = Field(
+        ..., description="Attribute name"
+    )
+    type: Literal["string", "number", "date", "boolean"] = Field(
+        ..., description="Value type. A date is an ISO 8601 string."
+    )
+    description: str | None = Field(
+        default=None, description="What the attribute holds"
+    )
+
+    @model_validator(mode="after")
+    def check_name(self) -> "MemoryEdgeAttribute":
+        """Reject names Graphiti or Pydantic already use."""
+        if self.name in MEMORY_RESERVED_EDGE_FIELDS:
+            raise ValueError(
+                f"edge attribute '{self.name}' is a Graphiti edge field; "
+                f"reserved names: {', '.join(sorted(MEMORY_RESERVED_EDGE_FIELDS))}"
+            )
+        if self.name.startswith("model_") or self.name in dir(BaseModel):
+            raise ValueError(
+                f"edge attribute '{self.name}' is a Pydantic model attribute; "
+                "choose another name"
+            )
+        return self
+
+
+class MemoryEdgeType(BaseModel):
+    """A relation type the extraction model should use for facts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: MemoryTypeName = Field(..., description="Edge type (relation) name")
+    description: str = Field(
+        ...,
+        min_length=1,
+        description="What the relation means. The extraction model reads it.",
+    )
+    attributes: list[MemoryEdgeAttribute] = Field(
+        default_factory=list, description="Attributes of an edge of this type"
+    )
+    single_valued: bool = Field(
+        default=False,
+        description=(
+            "One value at a time per (source entity, edge type, key attribute "
+            "values): a new edge of this type replaces the old one."
+        ),
+    )
+    key_attributes: list[str] = Field(
+        default_factory=list,
+        description="Attributes that, with the source entity, identify one value",
+    )
+
+    @model_validator(mode="after")
+    def check_attributes(self) -> "MemoryEdgeType":
+        """Attribute names are unique; key attributes name attributes."""
+        prefix = f"edge type '{self.name}':"
+        names = [attribute.name for attribute in self.attributes]
+        repeated = sorted({name for name in names if names.count(name) > 1})
+        if repeated:
+            raise ValueError(f"{prefix} attributes repeat {', '.join(repeated)}")
+        unknown = [key for key in self.key_attributes if key not in names]
+        if unknown:
+            raise ValueError(
+                f"{prefix} key_attributes {', '.join(unknown)} are not attributes"
+            )
+        if self.key_attributes and not self.single_valued:
+            raise ValueError(f"{prefix} key_attributes needs single_valued: true")
+        return self
+
+
+class MemoryEdgeTypeMapEntry(BaseModel):
+    """The edge types allowed from one entity type to another."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: MemoryTypeName = Field(
+        ..., description='Source entity type, or "Entity" for any'
+    )
+    target: MemoryTypeName = Field(
+        ..., description='Target entity type, or "Entity" for any'
+    )
+    edges: list[MemoryTypeName] = Field(
+        ..., min_length=1, description="Edge type names allowed for this pair"
+    )
+
+
+class MemorySchemaHints(BaseModel):
+    """Optional guidance for extraction."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_types: list[MemoryTypeName | MemoryEntityType] = Field(
+        default_factory=list,
+        description=(
+            "Entity types the extraction model should prefer: names, or "
+            "objects with a name and a description"
+        ),
+    )
+    edge_types: list[MemoryEdgeType] = Field(
+        default_factory=list,
+        description="Edge (relation) types the extraction model should use",
+    )
+    edge_type_map: list[MemoryEdgeTypeMapEntry] = Field(
+        default_factory=list,
+        description=(
+            "Which edge types may join which entity types. Unset allows every "
+            "edge type between any two entities."
+        ),
+    )
+    single_valued_predicates: list[str] = Field(
+        default_factory=list,
+        description="Not supported by the graphiti backend; loading fails if set.",
+    )
+
+    @property
+    def entity_type_specs(self) -> list[MemoryEntityType]:
+        """Every entity type as an object; a bare name has no description."""
+        return [
+            item if isinstance(item, MemoryEntityType) else MemoryEntityType(name=item)
+            for item in self.entity_types
+        ]
+
+    @model_validator(mode="after")
+    def check_names(self) -> "MemorySchemaHints":
+        """Names are unique, and the map names declared types only."""
+        entity_names = [spec.name for spec in self.entity_type_specs]
+        edge_names = [edge.name for edge in self.edge_types]
+        for label, names in (
+            ("entity_types", entity_names),
+            ("edge_types", edge_names),
+        ):
+            repeated = sorted({name for name in names if names.count(name) > 1})
+            if repeated:
+                raise ValueError(f"schema_hints.{label} repeats {', '.join(repeated)}")
+        known_entities = {*entity_names, MEMORY_WILDCARD_ENTITY}
+        known_edges = set(edge_names)
+        for entry in self.edge_type_map:
+            for end in (entry.source, entry.target):
+                if end not in known_entities:
+                    raise ValueError(
+                        f"schema_hints.edge_type_map names entity type '{end}', "
+                        'which is not in entity_types (use "Entity" for any)'
+                    )
+            unknown = [name for name in entry.edges if name not in known_edges]
+            if unknown:
+                raise ValueError(
+                    "schema_hints.edge_type_map names edge types "
+                    f"{', '.join(unknown)}, which are not in edge_types"
+                )
+        pairs = [(entry.source, entry.target) for entry in self.edge_type_map]
+        repeated_pairs = sorted({p for p in pairs if pairs.count(p) > 1})
+        if repeated_pairs:
+            listed = ", ".join(f"{s} -> {t}" for s, t in repeated_pairs)
+            raise ValueError(f"schema_hints.edge_type_map repeats {listed}")
+        return self
+
+
+MEMORY_FUNCTION_NAMES = ("memory_search", "memory_timeline", "memory_provenance")
+"""The functions a temporal_memory tool gives the agent (spec 043, HST-01).
+
+The same names are in ``holodeck.lib.memory.tool_api``, which a test keeps
+equal. They are repeated here so that loading an agent does not import the
+memory package.
+"""
+
+_MEMORY_AUTH_PROVIDERS = frozenset({AuthProvider.api_key, AuthProvider.oauth_token})
+
+
+def memory_extraction_model_error(tool_name: str, model: LLMProvider) -> str | None:
+    """Return why ``model`` cannot be a memory extraction model, or None.
+
+    For Anthropic, ``auth_provider`` selects the client: ``api_key`` (the
+    default) or ``oauth_token``. No other value has a client (spec 043, D24).
+    """
+    if model.provider != ProviderEnum.ANTHROPIC or model.auth_provider is None:
+        return None
+    if model.auth_provider in _MEMORY_AUTH_PROVIDERS:
+        return None
+    return (
+        f"temporal_memory tool '{tool_name}': extraction_model auth_provider "
+        f"'{model.auth_provider.value}' is not supported; use api_key or oauth_token"
+    )
+
+
+class TemporalMemoryToolConfig(BaseModel):
+    """A bi-temporal knowledge graph built from hierarchical document tools.
+
+    The tool reads chunks from its ``source_tools``, extracts dated facts into
+    a graph, and gives the agent ``memory_search``, ``memory_timeline`` and
+    ``memory_provenance``. Rules that need the other tools of the agent are
+    checked by ``Agent``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        pattern=r"^[0-9A-Za-z_]+$",
+        description="Tool identifier (alphanumeric and underscores only)",
+    )
+    description: str = Field(..., description="Human-readable tool description")
+    type: Literal["temporal_memory"] = Field(
+        default="temporal_memory", description="Tool type"
+    )
+    source_tools: list[str] = Field(
+        ...,
+        description=(
+            "Names of hierarchical_document tools in this agent. One graph is "
+            "built across all of them."
+        ),
+    )
+    namespace: str | None = Field(
+        default=None,
+        pattern=r"^[a-zA-Z0-9_-]+$",
+        description="Graph namespace. Defaults to the tool name.",
+    )
+    backend: GraphBackendConfig = Field(..., description="Graph store connection")
+    extraction_model: LLMProvider | None = Field(
+        default=None,
+        description="Model that extracts facts. Defaults to the agent model.",
+    )
+    extraction_reasoning_effort: ReasoningEffort | None = Field(
+        default=None,
+        description=(
+            "Reasoning effort of an OpenAI or Azure OpenAI extraction model. "
+            "Unset keeps Graphiti's default ('auto', which is 'none' for "
+            "GPT-5.1 and later). Ignored, with a warning, for other providers."
+        ),
+    )
+    close_on_text_change: bool = Field(
+        default=False,
+        description=(
+            "Close an open fact when a newer version of its section no longer "
+            "states it: its source line changed and the new text matches it "
+            "clearly worse (lexical match). Graphiti backend on Neo4j only."
+        ),
+    )
+    extraction_instructions: str | None = Field(
+        default=None,
+        description=(
+            "Guidance for extraction. Defaults to a built-in instruction for "
+            "amounts, rates and dates."
+        ),
+    )
+    effective_date_key: str = Field(
+        default="effective_date",
+        min_length=1,
+        pattern=r"^\S+$",
+        description="Front-matter key that holds a document's effective date",
+    )
+    ingest_on_start: bool = Field(
+        default=False,
+        description="Run graph ingestion when the tool is initialized",
+    )
+    hops: int = Field(default=1, ge=1, le=2, description="Expansion depth, 1 or 2")
+    top_k: int = Field(default=10, ge=1, le=100, description="Hits returned")
+    fusion_weights: FusionWeights = Field(
+        default_factory=FusionWeights,
+        description="Weights for fusing chunk hits and fact hits",
+    )
+    schema_hints: MemorySchemaHints | None = Field(
+        default=None, description="Optional extraction guidance"
+    )
+
+    @property
+    def resolved_namespace(self) -> str:
+        """The namespace in use: ``namespace``, or the tool name."""
+        return self.namespace or self.name
+
+    @model_validator(mode="after")
+    def check_tool_rules(self) -> "TemporalMemoryToolConfig":
+        """Apply the rules that need this tool only (CFG-02, CFG-04, D24)."""
+        prefix = f"temporal_memory tool '{self.name}':"
+        if not self.source_tools:
+            raise ValueError(
+                f"{prefix} source_tools must name at least one "
+                "hierarchical_document tool"
+            )
+        repeated = sorted(
+            {name for name in self.source_tools if self.source_tools.count(name) > 1}
+        )
+        if repeated:
+            raise ValueError(f"{prefix} source_tools repeats {', '.join(repeated)}")
+        if self.schema_hints and self.schema_hints.single_valued_predicates:
+            raise ValueError(
+                f"{prefix} schema_hints.single_valued_predicates is not supported "
+                f"by the {self.backend.provider} backend"
+            )
+        if self.extraction_model is not None:
+            error = memory_extraction_model_error(self.name, self.extraction_model)
+            if error:
+                raise ValueError(error)
+        return self
+
+
 def _get_tool_type(v: Any) -> str:
     """Extract tool type from dict or model for discrimination.
 
@@ -1053,6 +1453,7 @@ ToolUnion = Annotated[
     | Annotated[MCPTool, Tag("mcp")]
     | Annotated[PromptTool, Tag("prompt")]
     | Annotated[HierarchicalDocumentToolConfig, Tag("hierarchical_document")]
-    | Annotated[SkillTool, Tag("skill")],
+    | Annotated[SkillTool, Tag("skill")]
+    | Annotated[TemporalMemoryToolConfig, Tag("temporal_memory")],
     Discriminator(_get_tool_type),
 ]

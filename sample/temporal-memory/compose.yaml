@@ -1,0 +1,53 @@
+# Qdrant (vector store) and Neo4j (memory graph) for the temporal-memory sample.
+#
+#   export NEO4J_PASSWORD=...        # required; no default is committed
+#   docker compose up -d --wait
+#   docker compose down              # keeps the data volumes
+#   docker compose down -v           # removes them too
+#
+# Host ports default to the standard ones. Set QDRANT_HTTP_PORT,
+# QDRANT_GRPC_PORT, NEO4J_HTTP_PORT or NEO4J_BOLT_PORT to move them, and
+# change QDRANT_URL and NEO4J_URI in .env to match.
+name: holodeck-temporal-memory
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.20.0
+    ports:
+      - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
+      - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      # The image has no curl or wget; bash can open the port itself.
+      test:
+        - CMD-SHELL
+        - >-
+          bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 &&
+          printf "GET /readyz HTTP/1.0\r\n\r\n" >&3 && grep -q "200 OK" <&3'
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+
+  neo4j:
+    image: neo4j:5.26
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
+    ports:
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - cypher-shell -u neo4j -p "$${NEO4J_AUTH#neo4j/}" "RETURN 1" > /dev/null
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 15s
+
+volumes:
+  qdrant-data:
+  neo4j-data:

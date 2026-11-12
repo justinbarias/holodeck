@@ -98,6 +98,10 @@ def render_inventory(root: Path) -> str:
             "- [Vector stores](../guides/vector-stores.md): "
             "configured embedding stores.",
             "- [Temporal](../guides/temporal.md): externally managed workflow history.",
+            "- [Temporal memory graph](../guides/temporal-memory.md): an externally "
+            "managed Neo4j graph. `Episodic` nodes (one per chunk), `Entity` nodes "
+            "and `RELATES_TO` edges (facts with `valid_at`, `invalid_at` and "
+            "`expired_at`), separated by `group_id`, which is the tool's namespace.",
             "",
             "The agent schema is generated from Pydantic and loader authoring keys.",
             "Run `make schema` before this inventory when those inputs change.",

@@ -1,0 +1,51 @@
+{
+  "name": "memory_search",
+  "args": {
+    "query": "Harbour Grant payment amount",
+    "valid_at": "2023-03-01",
+    "known_at": "2026-11-11T12:00:00Z"
+  },
+  "result": {
+    "valid_at": "2023-03-01T00:00:00Z",
+    "known_at": "2026-11-11T12:00:00Z",
+    "degraded": true,
+    "hits": [
+      {
+        "kind": "chunk",
+        "text": "Harbour Grant payment guide, section 2. Each eligible household receives a Harbour Grant payment every month. The standard amount is set out in the schedule at the end of this guide and is reviewed once a year. Households that share a dwelling are assessed as one household for the purpose of this payment, and the payment is made to the nominated account holder only.",
+        "score": 0.0164,
+        "source_tool": "grant_docs",
+        "chunk_id": "docs_harbour-grant-2023.md_chunk_2",
+        "source_uri": "docs/harbour-grant-2023.md",
+        "fact_id": null,
+        "valid_from": "2023-01-01T00:00:00Z",
+        "valid_to": null,
+        "superseded_by": null
+      },
+      {
+        "kind": "chunk",
+        "text": "The Harbour Grant payment is 80 dollars per month.",
+        "score": 0.0161,
+        "source_tool": "grant_docs",
+        "chunk_id": "docs_harbour-grant-2022.md_chunk_1",
+        "source_uri": "docs/harbour-grant-2022.md",
+        "fact_id": null,
+        "valid_from": "2022-01-01T00:00:00Z",
+        "valid_to": null,
+        "superseded_by": null
+      },
+      {
+        "kind": "chunk",
+        "text": "Notes on the Harbour Grant payment: the monthly amount may change when the schedule is reviewed.",
+        "score": 0.0156,
+        "source_tool": "grant_docs",
+        "chunk_id": "docs_harbour-grant-notes.md_chunk_1",
+        "source_uri": "docs/harbour-grant-notes.md",
+        "fact_id": null,
+        "valid_from": null,
+        "valid_to": null,
+        "superseded_by": null
+      }
+    ]
+  }
+}

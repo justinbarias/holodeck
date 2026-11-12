@@ -19,6 +19,8 @@ from pathlib import Path
 # =============================================================================
 os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
+# Graphiti sends a PostHog event on construction unless this is false (GPH-02).
+os.environ.setdefault("GRAPHITI_TELEMETRY_ENABLED", "false")
 
 from importlib.metadata import PackageNotFoundError, version
 
@@ -70,6 +72,7 @@ _COMMANDS = {
         "deploy",
         "init",
         "mcp",
+        "memory",
         "serve",
         "test",
         "vectorstore",
@@ -92,6 +95,7 @@ def main(ctx: click.Context) -> None:
         deploy  Build and deploy agent containers
         worker  Run a Temporal worker serving agents as activities
         vectorstore  Inspect and migrate retrieval collections
+        memory  Build and inspect an agent's temporal memory
 
     Initialize and manage AI agent projects with YAML configuration.
     """

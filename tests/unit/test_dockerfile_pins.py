@@ -120,9 +120,36 @@ def test_every_holodeck_install_uses_constraints() -> None:
     assert not offenders, "\n".join(offenders)
 
 
+def _builds_python_image(text: str) -> bool:
+    """True for a Dockerfile with a Python or uv stage, or a HoloDeck install.
+
+    A Node-only image, such as the CopilotKit sample's frontend, has no
+    Python base image to pin.
+    """
+    from_lines = [
+        line for line in _instructions(text) if line.lstrip().startswith("FROM")
+    ]
+    return any(
+        re.search(r"\bpython:|astral-sh/uv", line) for line in from_lines
+    ) or bool(_holodeck_install_lines(text))
+
+
+@pytest.mark.unit
+def test_python_image_check_skips_only_images_without_python() -> None:
+    assert not _builds_python_image("FROM node:22-alpine AS base\nRUN npm ci\n")
+    assert _builds_python_image("FROM python:3.12-slim\n")
+    assert _builds_python_image("FROM node:22\nRUN uv pip install holodeck-ai==1.0\n")
+
+
 @pytest.mark.unit
 def test_base_images_pin_python_and_uv_by_digest() -> None:
-    for path in _tracked_dockerfiles():
+    python_images = [
+        path
+        for path in _tracked_dockerfiles()
+        if _builds_python_image(path.read_text())
+    ]
+    assert len(python_images) >= 2
+    for path in python_images:
         text = path.read_text()
         assert re.search(r"python:3\.\d+(-slim)?@sha256:[0-9a-f]{64}", text), path
         assert re.search(r"astral-sh/uv:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}", text), path

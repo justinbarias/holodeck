@@ -69,6 +69,7 @@ tools:
 | `hierarchical_document` | Structure-aware hybrid document search  | ✅ Implemented |
 | `mcp`                   | Model Context Protocol servers (stdio)  | ✅ Implemented |
 | `skill`                 | Scoped sub-agent (inline or SKILL.md)   | ✅ OpenAI backend |
+| `temporal_memory`       | Dated facts from document tools, queried as of a date | ✅ Implemented |
 | `prompt`                | LLM-powered semantic functions          | 🚧 Planned     |
 
 ---
@@ -499,6 +500,22 @@ The frontmatter must be a `---`-delimited YAML mapping with non-empty `name` and
 
 ---
 
+## Temporal memory tools ✅
+
+A `temporal_memory` tool builds a bi-temporal fact graph from your `hierarchical_document` tools and gives the agent three functions: `memory_search`, `memory_timeline` and `memory_provenance`. Use it when documents amend each other and the agent must say what was true on a date. It needs the `graphiti` extra and a graph database (Neo4j). An agent can have one.
+
+```yaml
+  - name: policy_memory
+    type: temporal_memory
+    description: Dated facts from the policy documents.
+    source_tools: [policy_docs]
+    backend: { provider: graphiti, driver: neo4j, uri: ${NEO4J_URI}, user: ${NEO4J_USER}, password: ${NEO4J_PASSWORD} }
+```
+
+Build the graph with `holodeck memory ingest`. See the [Temporal Memory guide](temporal-memory.md) for setup, every field, the three functions and the limits.
+
+---
+
 ## Prompt tools 🚧
 
 > **Status:** Planned — configuration schema defined, execution not yet implemented.
@@ -571,6 +588,7 @@ Use descriptive names and clear descriptions (the model decides when to call a t
 
 - [Agent Configuration](agent-configuration.md) — tool usage in context
 - [Vector Stores](vector-stores.md) — RAG provider setup
+- [Temporal Memory](temporal-memory.md) — dated facts from document tools
 - [MCP CLI](mcp-cli.md) — discovering and managing MCP servers
 - [File References](file-references.md) — path resolution
 - [Examples](../examples/README.md) — complete tool usage

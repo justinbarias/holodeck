@@ -46,6 +46,7 @@ Paths are relative to the repository root. Each directory owns the responsibilit
 | [backends](src/holodeck/lib/backends) | Provider selection, lifecycle protocols, SDK adapters, MCP bridges, and tracing. Start at `base.py` and `selector.py`. |
 | [tools](src/holodeck/tools) | Vector search, hierarchical document retrieval, and MCP integration. |
 | [retrieval](src/holodeck/lib/retrieval) | Vector store contract (`VectorStoreAdapter`, record, filter, capability and error types), the provider registry, eight native adapters in `adapters/` (in-memory, Qdrant, Chroma, Postgres, Pinecone, Weaviate, Azure AI Search, Azure Cosmos DB NoSQL), and the pipeline fingerprint, manifest and write guard. Start at `adapter.py` and `registry.py`. |
+| [memory](src/holodeck/lib/memory) | Temporal memory (spec 043): the `MemoryBackend` port and types (`ports.py`, `types.py`), the `TemporalMemory` service (`service.py`), the Graphiti backend and its closure check in `backends/`, effective dates, and the tool handler (`tool_api.py`). The tool lifecycle is in `src/holodeck/tools/temporal_memory_tool.py`; the CLI is `holodeck memory`. |
 | [services](src/holodeck/services) | Shared services, including embedding support. |
 | [test runner](src/holodeck/lib/test_runner) | Agent execution and evaluation orchestration. Start at `executor.py`. |
 | [evaluators](src/holodeck/lib/evaluators) | DeepEval metrics, deterministic NLP metrics (BLEU, ROUGE, METEOR), and code graders. |
@@ -97,10 +98,15 @@ one extra per vector store, `openai-agents`, `dashboard`, `temporal`, `deploy*`,
 and the aggregate `all`. A command that needs a missing extra stops early with the
 install command. `make verify-profiles` installs the built wheel for each profile.
 
+## Temporal memory
+
+A `temporal_memory` tool reaches its graph store only through the `MemoryBackend` port in `lib/memory/ports.py`. No Graphiti type appears in a port signature or a tool result. The Graphiti backend (`lib/memory/backends/graphiti.py`) implements the port. It runs Graphiti's own extraction and invalidation, then a deterministic closure check. The `TemporalMemory` service owns episode hashing, effective dates, ordering, fusion with the source tools' chunk search, and degraded results. The Claude and OpenAI Agents backends expose the same three functions through `tool_api.py`. Under Temporal, memory calls run in activities and ingestion has its own activity. See the [guide](docs/guides/temporal-memory.md).
+
 ## Data, external systems, and operations
 
 HoloDeck stores evaluation results and deployment state in local JSON files.
 Retrieval stores embeddings in the configured vector store. Temporal owns workflow history.
+The `temporal_memory` tool keeps a fact graph in an external graph database (Neo4j is the tested driver).
 The [schema inventory](docs/generated/db-schema.md) links the storage implementations.
 
 External dependencies include model providers, MCP servers, vector stores,

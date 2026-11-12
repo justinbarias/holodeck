@@ -1,12 +1,17 @@
 """Payload and parameter models for the Temporal integration (spec 040).
 
-Two kinds of model live here:
+Two kinds of model live here, plus :data:`MEMORY_INGEST_ACTIVITY`, the
+registered name of the memory ingestion activity (spec 043):
 
 * **Payloads** — :class:`AgentActivityInput` and :class:`AgentActivityResult`
   cross the Temporal wire and are encoded by
   ``temporalio.contrib.pydantic.pydantic_data_converter``. Every field is
   JSON-serializable. Per FR-008 the gate-validated object is the canonical
   value, so the result carries a plain ``dict`` and never the raw model text.
+* **Memory ingestion payloads** — :class:`MemoryIngestInput` and
+  :class:`MemoryIngestResult` (spec 043, HST-03). The result carries counts
+  and episode ids only: no document text, and no error text, which can quote
+  a document.
 * **Parameters** — :class:`ActivityParameters` never crosses the wire. It is a
   workflow-side helper (decision 10) that expands into ``execute_activity``
   keyword arguments.
@@ -28,6 +33,14 @@ from temporalio.common import RetryPolicy
 from holodeck.models.token_usage import TokenUsage
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
+
+MEMORY_INGEST_ACTIVITY = "holodeck.memory_ingest"
+"""Registered name of the memory ingestion activity (spec 043, ING-07).
+
+A workflow schedules it by this name with a :class:`MemoryIngestInput`. The
+activity heartbeats per episode, so the caller should set
+``heartbeat_timeout`` on ``execute_activity``.
+"""
 
 
 class AgentActivityInput(BaseModel):
@@ -87,6 +100,53 @@ class AgentActivityResult(BaseModel):
                 ``model``.
         """
         return model.model_validate(self.output)
+
+
+class MemoryIngestInput(BaseModel):
+    """Input payload for the memory ingestion activity.
+
+    Attributes:
+        node_id: The worker node whose agent owns the ``temporal_memory``
+            tool to ingest.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str = Field(min_length=1)
+
+
+class MemoryIngestResult(BaseModel):
+    """What one run of the memory ingestion activity did.
+
+    Mirrors the counts of the service's ingestion report. Document text and
+    the backend's error text are deliberately absent: both can quote a
+    document, and this payload is stored in the workflow history.
+
+    Attributes:
+        node_id: The node whose memory was ingested.
+        documents: Documents considered.
+        episodes_new: Episodes that were not complete before this run.
+        episodes_skipped: Episodes already complete, plus repeats.
+        episodes_written: Episodes completed by this run.
+        written: Ids of the episodes completed by this run, in order.
+        failed: The episode the run stopped on, or ``None``.
+        llm_calls: LLM calls the backend made.
+        input_tokens: Prompt tokens, or ``None`` when unknown.
+        output_tokens: Completion tokens, or ``None`` when unknown.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str
+    documents: int = Field(ge=0)
+    episodes_new: int = Field(ge=0)
+    episodes_skipped: int = Field(ge=0)
+    episodes_written: int = Field(ge=0)
+    written: list[str] = Field(default_factory=list)
+    failed: str | None = None
+    llm_calls: int = Field(ge=0)
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 class ActivityParameters(BaseModel):
@@ -195,4 +255,11 @@ class ActivityParameters(BaseModel):
         return kwargs
 
 
-__all__ = ["ActivityParameters", "AgentActivityInput", "AgentActivityResult"]
+__all__ = [
+    "MEMORY_INGEST_ACTIVITY",
+    "ActivityParameters",
+    "AgentActivityInput",
+    "AgentActivityResult",
+    "MemoryIngestInput",
+    "MemoryIngestResult",
+]

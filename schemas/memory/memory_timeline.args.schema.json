@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Arguments of ``memory_timeline``.",
+  "properties": {
+    "entity": {
+      "description": "The name of the entity whose facts to list, as facts state it: a payment, body, person or provision, for example 'Family Benefit'. Not a question and not a description.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "Entity",
+      "type": "string"
+    }
+  },
+  "required": [
+    "entity"
+  ],
+  "title": "MemoryTimelineArgs",
+  "type": "object"
+}

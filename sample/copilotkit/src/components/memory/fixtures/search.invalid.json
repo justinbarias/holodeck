@@ -1,0 +1,13 @@
+{
+  "name": "memory_search",
+  "args": {
+    "query": "base rate",
+    "valid_at": "last July"
+  },
+  "result": {
+    "error": {
+      "code": "invalid_argument",
+      "message": "valid_at must be an ISO 8601 date or datetime, for example 2022-07-01 or 2022-07-01T09:30:00Z"
+    }
+  }
+}

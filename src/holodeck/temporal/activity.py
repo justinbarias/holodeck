@@ -67,8 +67,13 @@ from holodeck.lib.workflow.edge import (
     resolve_agent_path,
 )
 from holodeck.models.agent import Agent
+from holodeck.models.tool import TemporalMemoryToolConfig
 from holodeck.models.workflow import EdgeNode
-from holodeck.temporal.models import AgentActivityInput, AgentActivityResult
+from holodeck.temporal.models import (
+    MEMORY_INGEST_ACTIVITY,
+    AgentActivityInput,
+    AgentActivityResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +195,33 @@ async def _run_gated_turn(
     )
 
 
+def refuse_ingest_on_start(node: EdgeNode, agent: Agent) -> None:
+    """Refuse an agent whose ``temporal_memory`` tool sets ``ingest_on_start``.
+
+    With ``ingest_on_start: true`` the first agent activity that builds the
+    tool would run the whole ingestion inside one agent turn, an activity of
+    unbounded length (spec 043, ING-07). Under a worker, ingestion runs in its
+    own heartbeating activity instead. Outside a worker the setting is valid.
+
+    Args:
+        node: The edge node being registered.
+        agent: The node's loaded agent configuration.
+
+    Raises:
+        ConfigError: If the agent's memory tool sets ``ingest_on_start: true``.
+    """
+    for tool in agent.tools or []:
+        if isinstance(tool, TemporalMemoryToolConfig) and tool.ingest_on_start:
+            raise ConfigError(
+                f"nodes.{node.id}.edge.agent",
+                f"temporal_memory tool '{tool.name}' sets ingest_on_start: "
+                "true, which a Temporal worker refuses: ingestion inside an "
+                "agent activity has no time limit. Set ingest_on_start: false "
+                f"and ingest with the '{MEMORY_INGEST_ACTIVITY}' activity or "
+                "the CLI command `holodeck memory ingest`.",
+            )
+
+
 def agent_activity(
     node: EdgeNode, base_dir: Path
 ) -> Callable[[AgentActivityInput], Awaitable[AgentActivityResult]]:
@@ -215,9 +247,10 @@ def agent_activity(
         returning an :class:`~holodeck.temporal.models.AgentActivityResult`.
 
     Raises:
-        ConfigError: If the agent path escapes ``base_dir``, or the agent
+        ConfigError: If the agent path escapes ``base_dir``, the agent
             declares no ``response_format`` and so could never produce
-            structured output for the gate.
+            structured output for the gate, or its ``temporal_memory`` tool
+            sets ``ingest_on_start: true`` (spec 043, ING-07).
         GateSchemaError: If the gate schema is missing, unparseable, or
             unusable as a gate.
         FileNotFoundError: If the node's ``agent.yaml`` does not exist.
@@ -234,6 +267,7 @@ def agent_activity(
     agent_path = resolve_agent_path(node, base_dir)
     gate_schema = load_gate_schema(node, base_dir)
     agent = ConfigLoader().load_agent_yaml(str(agent_path))
+    refuse_ingest_on_start(node, agent)
 
     # Same guard execute_edge_node applies, hoisted to registration: an agent
     # with no response_format can never produce structured_output, so every
@@ -274,4 +308,4 @@ def agent_activity(
     )
 
 
-__all__ = ["agent_activity"]
+__all__ = ["agent_activity", "refuse_ingest_on_start"]

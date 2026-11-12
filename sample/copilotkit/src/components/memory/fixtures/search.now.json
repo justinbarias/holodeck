@@ -1,0 +1,75 @@
+{
+  "name": "memory_search",
+  "args": {
+    "query": "base rate of Family Benefit",
+    "valid_at": "2026-11-11",
+    "known_at": "2026-11-11T12:00:00Z"
+  },
+  "result": {
+    "valid_at": "2026-11-11T00:00:00Z",
+    "known_at": "2026-11-11T12:00:00Z",
+    "degraded": false,
+    "hits": [
+      {
+        "kind": "fact",
+        "text": "From 1 July 2024, the base rate of Family Benefit is 150 dollars per fortnight for each child.",
+        "score": 0.01639344262295082,
+        "source_tool": "benefit_docs",
+        "chunk_id": "docs_rate-2024.md_chunk_1",
+        "source_uri": "docs/rate-2024.md",
+        "fact_id": "9f87ed20-3484-4d29-910c-38b0b70bed1f",
+        "valid_from": "2024-07-01T00:00:00Z",
+        "valid_to": null,
+        "superseded_by": null
+      },
+      {
+        "kind": "fact",
+        "text": "From 1 July 2024, Family Benefit is administered by the Social Services Office.",
+        "score": 0.016129032258064516,
+        "source_tool": "benefit_docs",
+        "chunk_id": "docs_rate-2024.md_chunk_2",
+        "source_uri": "docs/rate-2024.md",
+        "fact_id": "ac6ecdee-97f7-45a4-b5c7-a136e14dacba",
+        "valid_from": "2024-07-01T00:00:00Z",
+        "valid_to": null,
+        "superseded_by": null
+      },
+      {
+        "kind": "fact",
+        "text": "The young child supplement is payable with Family Benefit from 1 July 2021.",
+        "score": 0.015873015873015872,
+        "source_tool": "benefit_docs",
+        "chunk_id": "docs_supplement-2021.md_chunk_1",
+        "source_uri": "docs/supplement-2021.md",
+        "fact_id": "645906e9-ccc8-46e0-a761-3c3ef8bf580c",
+        "valid_from": "2021-07-01T00:00:00Z",
+        "valid_to": null,
+        "superseded_by": null
+      },
+      {
+        "kind": "fact",
+        "text": "The young child supplement applies to each child under 5 years of age.",
+        "score": 0.015625,
+        "source_tool": "benefit_docs",
+        "chunk_id": "docs_supplement-2021.md_chunk_1",
+        "source_uri": "docs/supplement-2021.md",
+        "fact_id": "13aabed1-55b3-4556-8b9f-34eab936a079",
+        "valid_from": "2021-07-01T00:00:00Z",
+        "valid_to": null,
+        "superseded_by": null
+      },
+      {
+        "kind": "fact",
+        "text": "The young child supplement is payable at 30 dollars per fortnight from 1 July 2021.",
+        "score": 0.015384615384615385,
+        "source_tool": "benefit_docs",
+        "chunk_id": "docs_supplement-2021.md_chunk_1",
+        "source_uri": "docs/supplement-2021.md",
+        "fact_id": "28e42cbb-4ba4-423a-ba92-e485c34a4111",
+        "valid_from": "2021-07-01T00:00:00Z",
+        "valid_to": null,
+        "superseded_by": null
+      }
+    ]
+  }
+}

@@ -7,10 +7,10 @@ This inventory lists published JSON contracts and links storage code.
 
 | Schema | Title | Root properties | Definitions |
 | --- | --- | --- | --- |
-| [agent.schema.json](../../schemas/agent.schema.json) | Agent | 16 | 63 |
+| [agent.schema.json](../../schemas/agent.schema.json) | Agent | 16 | 71 |
 | [optimize-progress.schema.json](../../schemas/optimize-progress.schema.json) | optimize-progress.schema | 0 | 14 |
 
-<!-- agent.schema.json sha256: 1c95489652971ddfd4c4d5b49f3eb1610804fdda3f160070131e8c4043cca86b -->
+<!-- agent.schema.json sha256: a7a3ebf81955a51b228d84fd8b56ad0356393d20ccd40044220b79dd33f326fc -->
 <!-- optimize-progress.schema.json sha256: ea6ea54961bac9b1c8e6c141ae74cc11ce9c394502bda0b244a90b486d92f18f -->
 
 ## Storage implementations
@@ -20,6 +20,7 @@ This inventory lists published JSON contracts and links storage code.
 - [Image manifest](../../src/holodeck/deploy/manifest.py): `.holodeck/builds/<tag>.json` beside the agent configuration.
 - [Vector stores](../guides/vector-stores.md): configured embedding stores.
 - [Temporal](../guides/temporal.md): externally managed workflow history.
+- [Temporal memory graph](../guides/temporal-memory.md): an externally managed Neo4j graph. `Episodic` nodes (one per chunk), `Entity` nodes and `RELATES_TO` edges (facts with `valid_at`, `invalid_at` and `expired_at`), separated by `group_id`, which is the tool's namespace.
 
 The agent schema is generated from Pydantic and loader authoring keys.
 Run `make schema` before this inventory when those inputs change.
