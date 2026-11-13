@@ -136,6 +136,26 @@ export default function Page() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<Record<string, number>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerWasOpen = useRef(false);
+
+  // Narrow screens: the rail is a modal drawer. Focus moves into it, Escape
+  // closes it, the page behind is inert, and focus returns to the menu button.
+  useEffect(() => {
+    if (drawerOpen) {
+      drawerWasOpen.current = true;
+      document.querySelector<HTMLElement>("#pb-rail .pb-rail__close")?.focus();
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === "Escape") setDrawerOpen(false);
+      };
+      document.addEventListener("keydown", onKey);
+      return () => document.removeEventListener("keydown", onKey);
+    }
+    if (drawerWasOpen.current) {
+      drawerWasOpen.current = false;
+      menuButtonRef.current?.focus();
+    }
+  }, [drawerOpen]);
   const currentThreadId = threadId ?? agent.threadId;
 
   useEffect(() => {
@@ -383,12 +403,13 @@ export default function Page() {
           />
         ) : null}
 
-        <main className="pb-main">
+        <main className="pb-main" inert={drawerOpen}>
           <div className="pb-topbar">
             <button
               type="button"
               className="pb-iconbtn pb-iconbtn--rail"
               onClick={() => setDrawerOpen(true)}
+              ref={menuButtonRef}
               aria-label="Open menu"
               aria-controls="pb-rail"
               aria-expanded={drawerOpen}
@@ -484,6 +505,7 @@ export default function Page() {
               }}
             >
               <Conversation
+                threadId={currentThreadId}
                 rows={conversation.rows}
                 timings={timings}
                 now={now}

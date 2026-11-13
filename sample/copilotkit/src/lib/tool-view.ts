@@ -61,13 +61,20 @@ export function decodeResult(result: unknown): unknown {
   }
 }
 
+/** holodeck serve reports a failed tool as TOOL_CALL_RESULT content "Error: <message>". */
+const SERVE_ERROR_PREFIX = /^Error:\s*/;
+
 /**
  * The error a tool call reported, or null. The AG-UI tool message carries an
- * `error` field; a result object of the shape `{ error: "..." }` or
- * `{ error: { message } }` counts too.
+ * `error` field; holodeck serve instead sends the content "Error: <message>"
+ * (src/holodeck/serve/protocols/agui.py); a result object of the shape
+ * `{ error: "..." }` or `{ error: { message } }` counts too.
  */
 export function toolFailure(result: unknown, error?: string | null): string | null {
   if (error && error.trim()) return error.trim();
+  if (typeof result === "string" && SERVE_ERROR_PREFIX.test(result.trim())) {
+    return result.trim().replace(SERVE_ERROR_PREFIX, "").trim() || "The tool reported an error.";
+  }
   const value = decodeResult(result);
   if (!isObject(value)) return null;
   const reported = value.error;

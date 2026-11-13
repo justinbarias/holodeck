@@ -6,6 +6,8 @@
  * Pure module (type imports only), so Node runs the tests with type stripping.
  */
 import type { AssistantMessage, Message, ToolCall, UserMessage } from "@ag-ui/client";
+import { parseToolResult } from "../components/memory/parse.ts";
+import { toolFailure } from "./tool-view.ts";
 
 export type ToolCallStatus = "inProgress" | "executing" | "complete";
 
@@ -109,7 +111,15 @@ export function buildConversation(
     run = [];
   };
 
-  for (const message of messages) {
+  // Only the turn after the last user message can still be running: a call
+  // from an earlier turn with no result was stopped, whatever the agent is
+  // doing now.
+  let lastUser = -1;
+  messages.forEach((message, index) => {
+    if (message.role === "user") lastUser = index;
+  });
+
+  for (const [index, message] of messages.entries()) {
     if (message.role === "user") {
       flush();
       unanswered = [];
@@ -132,7 +142,7 @@ export function buildConversation(
     }
     for (const call of assistant.toolCalls ?? []) {
       cueCount += 1;
-      run.push(toCue(call, cueCount, results.get(call.id), isRunning));
+      run.push(toCue(call, cueCount, results.get(call.id), isRunning && index > lastUser));
       unanswered = [...unanswered, cueCount];
     }
   }
@@ -166,4 +176,28 @@ export function toolNameSummary(names: readonly string[]): string {
   return [...counts]
     .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
     .join(", ");
+}
+
+/** Where one call stands, for its cue light and for group summaries. */
+export type CueState = "running" | "done" | "failed" | "stopped";
+
+export function cueState(call: Cue): CueState {
+  if (call.status !== "complete") return "running";
+  if (call.stopped) return "stopped";
+  if (toolFailure(call.result, call.error)) return "failed";
+  if (parseToolResult(call.result).kind === "error") return "failed";
+  return "done";
+}
+
+/**
+ * A group's status, by its worst call: running, then failed, then stopped;
+ * "All done" only when every call returned a result without an error.
+ */
+export function groupSummary(calls: readonly Cue[]): { state: CueState; word: string } {
+  const count = (state: CueState) => calls.filter((call) => cueState(call) === state).length;
+  for (const state of ["running", "failed", "stopped"] as const) {
+    const n = count(state);
+    if (n > 0) return { state, word: `${n} ${state}` };
+  }
+  return { state: "done", word: "All done" };
 }

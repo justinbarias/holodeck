@@ -51,3 +51,10 @@ test("durations under the measuring floor are not shown", () => {
   assert.deepEqual(measuredElapsed({ start: 1000, end: 1420 }, 2000), { elapsedMs: 420, running: false });
   assert.deepEqual(measuredElapsed({ start: 1000, end: null }, 1250), { elapsedMs: 250, running: true });
 });
+
+test("serve's \"Error: <message>\" result is a failure", () => {
+  assert.equal(toolFailure("Error: Permission denied"), "Permission denied");
+  assert.equal(toolFailure("  Error:   Timed out. Retry later."), "Timed out. Retry later.");
+  assert.equal(toolFailure("Error:"), "The tool reported an error.");
+  assert.equal(toolFailure("No Error: here"), null);
+});

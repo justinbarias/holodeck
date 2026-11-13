@@ -16,7 +16,7 @@ import { FactTimeline } from "@/components/memory/FactTimeline";
 import { ProvenanceCard } from "@/components/memory/ProvenanceCard";
 import { DisclosureProvider, ToolCallInfoProvider } from "@/components/tool-card/context";
 import { buildConversation } from "@/lib/conversation";
-import type { ToolTiming } from "@/lib/use-run-events";
+import { timingKey, type ToolTiming } from "@/lib/run-events";
 import familyBenefit from "@/components/memory/fixtures/timeline.family-benefit.json";
 import unknownEntity from "@/components/memory/fixtures/timeline.unknown.json";
 import invalidArgument from "@/components/memory/fixtures/search.invalid.json";
@@ -359,13 +359,14 @@ const THREAD: Message[] = [
 ];
 
 const T0 = Date.UTC(2026, 10, 13, 14, 2);
+const DEMO_THREAD = "demo";
 const THREAD_TIMINGS = new Map<string, ToolTiming>([
-  ["t1", { start: T0, end: T0 + 1940 }],
-  ["t2", { start: T0 + 2000, end: T0 + 3120 }],
-  ["t3", { start: T0 + 9000, end: T0 + 9210 }],
-  ["t4", { start: T0 + 9300, end: T0 + 10420 }],
-  ["t5", { start: T0 + 10500, end: T0 + 10980 }],
-  ["t6", { start: T0 + 11000, end: T0 + 41000 }],
+  [timingKey(DEMO_THREAD, "t1"), { start: T0, end: T0 + 1940 }],
+  [timingKey(DEMO_THREAD, "t2"), { start: T0 + 2000, end: T0 + 3120 }],
+  [timingKey(DEMO_THREAD, "t3"), { start: T0 + 9000, end: T0 + 9210 }],
+  [timingKey(DEMO_THREAD, "t4"), { start: T0 + 9300, end: T0 + 10420 }],
+  [timingKey(DEMO_THREAD, "t5"), { start: T0 + 10500, end: T0 + 10980 }],
+  [timingKey(DEMO_THREAD, "t6"), { start: T0 + 11000, end: T0 + 41000 }],
 ]);
 
 const DEMO_SCALE = 2400;
@@ -385,7 +386,7 @@ const initialOpen = Object.fromEntries(sections.map((_, index) => [`demo:${index
 export default function MemoryDemoPage() {
   const thread = buildConversation(THREAD, false);
   return (
-    <DisclosureProvider initial={{ ...initialOpen, "group:t3": true, "demo:0:open:chart": true }}>
+    <DisclosureProvider initial={{ ...initialOpen, [timingKey(DEMO_THREAD, "group:t3")]: true, "demo:0:open:chart": true }}>
       <div className="pb-demo">
         <main className="pb-demo__main">
           <div className="pb-demo__head">
@@ -400,6 +401,7 @@ export default function MemoryDemoPage() {
             <h2>A thread on the cue margin</h2>
             <p>Two turns. The first answer is bracketed to Q1 and Q2; the second turn used four tools, so they sit in one group.</p>
             <Conversation
+              threadId={DEMO_THREAD}
               rows={thread.rows}
               timings={THREAD_TIMINGS}
               now={T0 + 41000}

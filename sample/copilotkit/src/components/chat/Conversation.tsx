@@ -8,35 +8,41 @@ import { AlertIcon, ChevronIcon, FileIcon } from "@/components/Icons";
 import { CopyButton } from "@/components/tool-card/CopyButton";
 import { StatusWord, type CardTone } from "@/components/tool-card/ToolCardShell";
 import { ToolCallInfoProvider, useDisclosure, type CallTiming } from "@/components/tool-card/context";
-import { parseToolResult } from "@/components/memory/parse";
-import { cueRange, toolNameSummary, userText, type Cue, type Row } from "@/lib/conversation";
-import { formatDuration, measuredElapsed, toolFailure } from "@/lib/tool-view";
-import type { RunError, ToolTiming } from "@/lib/use-run-events";
+import {
+  cueRange,
+  cueState,
+  groupSummary,
+  toolNameSummary,
+  userText,
+  type Cue,
+  type CueState,
+  type Row,
+} from "@/lib/conversation";
+import { timingKey } from "@/lib/run-events";
+import { formatDuration, measuredElapsed } from "@/lib/tool-view";
+import type { RunError, Timings } from "@/lib/use-run-events";
 
 export interface ConversationProps {
+  /** Timings and expand/collapse choices are kept per thread. */
+  threadId: string;
   rows: Row[];
-  timings: ReadonlyMap<string, ToolTiming>;
+  timings: Timings;
   now: number;
   isRunning: boolean;
   runError: RunError | null;
   onEditResend: () => void;
 }
 
+const STATE_TONE: Record<CueState, CardTone> = {
+  running: "running",
+  done: "done",
+  failed: "failed",
+  stopped: "empty",
+};
+
 /** Tone of a cue light: running, failed, done or stopped. */
 function cueTone(call: Cue): CardTone {
-  if (call.status !== "complete") return "running";
-  if (call.stopped) return "empty";
-  if (toolFailure(call.result, call.error)) return "failed";
-  if (parseToolResult(call.result).kind === "error") return "failed";
-  return "done";
-}
-
-function timingOf(
-  call: Cue,
-  timings: ReadonlyMap<string, ToolTiming>,
-  now: number,
-): { elapsedMs: number | null; running: boolean } {
-  return measuredElapsed(timings.get(call.toolCallId), now);
+  return STATE_TONE[cueState(call)];
 }
 
 /**
@@ -45,6 +51,7 @@ function timingOf(
  * call, and a bracket beside each answer ties it to the cues before it.
  */
 export function Conversation({
+  threadId,
   rows,
   timings,
   now,
@@ -52,16 +59,19 @@ export function Conversation({
   runError,
   onEditResend,
 }: ConversationProps) {
+  const keyOf = (id: string) => timingKey(threadId, id);
+  const timingOf = (call: Cue) => measuredElapsed(timings.get(keyOf(call.toolCallId)), now);
+
   // One time scale per thread: the longest call so far is the full bar.
   let scaleMs = 1000;
   for (const row of rows) {
     const calls = row.kind === "tool" ? [row.call] : row.kind === "group" ? row.calls : [];
     for (const call of calls) {
-      const { elapsedMs } = timingOf(call, timings, now);
+      const { elapsedMs } = timingOf(call);
       if (elapsedMs !== null) scaleMs = Math.max(scaleMs, elapsedMs);
     }
   }
-  const timingFor = (call: Cue): CallTiming => ({ ...timingOf(call, timings, now), scaleMs });
+  const timingFor = (call: Cue): CallTiming => ({ ...timingOf(call), scaleMs });
 
   const last = rows[rows.length - 1];
   const waiting =
@@ -87,12 +97,22 @@ export function Conversation({
                   <CueMark label={`Q${row.call.cue}`} tone={cueTone(row.call)} />
                 </span>
                 <div className="pb-content">
-                  <ToolRow call={row.call} timing={timingFor(row.call)} />
+                  <ToolRow
+                    call={row.call}
+                    disclosureKey={keyOf(row.call.toolCallId)}
+                    timing={timingFor(row.call)}
+                  />
                 </div>
               </li>
             );
           case "group":
-            return <GroupRow key={row.key} groupKey={row.key} calls={row.calls} timingFor={timingFor} />;
+            return <GroupRow
+                key={row.key}
+                groupKey={keyOf(row.key)}
+                calls={row.calls}
+                keyOf={keyOf}
+                timingFor={timingFor}
+              />;
           case "answer":
             return (
               <li key={row.key} className="pb-row" data-kind="answer">
@@ -156,9 +176,17 @@ function CueMark({ label, tone }: { label: string; tone: CardTone }) {
   );
 }
 
-function ToolRow({ call, timing }: { call: Cue; timing: CallTiming }) {
+function ToolRow({
+  call,
+  disclosureKey,
+  timing,
+}: {
+  call: Cue;
+  disclosureKey: string;
+  timing: CallTiming;
+}) {
   return (
-    <ToolCallInfoProvider value={{ key: call.toolCallId, timing }}>
+    <ToolCallInfoProvider value={{ key: disclosureKey, timing }}>
       <ToolCallView
         name={call.name}
         args={call.args}
@@ -174,24 +202,20 @@ function ToolRow({ call, timing }: { call: Cue; timing: CallTiming }) {
 function GroupRow({
   groupKey,
   calls,
+  keyOf,
   timingFor,
 }: {
   groupKey: string;
   calls: Cue[];
+  keyOf: (id: string) => string;
   timingFor: (call: Cue) => CallTiming;
 }) {
   const [open, setOpen] = useDisclosure(groupKey);
   const bodyId = useId();
   const range = cueRange(calls.map((call) => call.cue));
-  const tones = calls.map(cueTone);
-  const failed = tones.filter((tone) => tone === "failed").length;
-  const running = tones.filter((tone) => tone === "running").length;
-  const tone: CardTone = running ? "running" : failed ? "failed" : "done";
-  const word = running
-    ? `${running} running`
-    : failed
-      ? `${failed} failed`
-      : "All done";
+  const summary = groupSummary(calls);
+  const tone = STATE_TONE[summary.state];
+  const word = summary.word.charAt(0).toUpperCase() + summary.word.slice(1);
 
   // Total time spent in the tools, when every call was timed.
   const timed = calls.map(timingFor);
@@ -239,7 +263,7 @@ function GroupRow({
                 <CueMark label={`Q${call.cue}`} tone={cueTone(call)} />
               </span>
               <div className="pb-content">
-                <ToolRow call={call} timing={timingFor(call)} />
+                <ToolRow call={call} disclosureKey={keyOf(call.toolCallId)} timing={timingFor(call)} />
               </div>
             </li>
           ))}

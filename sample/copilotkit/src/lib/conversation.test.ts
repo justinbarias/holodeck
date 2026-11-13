@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Message } from "@ag-ui/client";
-import { buildConversation, cueRange, toolNameSummary } from "./conversation.ts";
+import {
+  buildConversation,
+  cueRange,
+  cueState,
+  groupSummary,
+  toolNameSummary,
+  type Cue,
+} from "./conversation.ts";
 
 function call(id: string, name: string, args = "{}") {
   return { id, type: "function" as const, function: { name, arguments: args } };
@@ -90,4 +97,47 @@ test("tool names are counted in first-seen order", () => {
     "memory_timeline, memory_search ×2, family_assistance_act_search ×2",
   );
   assert.equal(toolNameSummary(["a"]), "a");
+});
+
+test("a call from an earlier turn stays stopped while a later turn runs", () => {
+  const messages: Message[] = [
+    { id: "u1", role: "user", content: "first" },
+    { id: "a1", role: "assistant", toolCalls: [call("old", "lookup")] },
+    { id: "u2", role: "user", content: "second" },
+    { id: "a2", role: "assistant", toolCalls: [call("new", "lookup")] },
+  ];
+  const tools = buildConversation(messages, true).rows.flatMap((row) =>
+    row.kind === "tool" ? [row.call] : [],
+  );
+  assert.equal(tools[0].toolCallId, "old");
+  assert.equal(tools[0].stopped, true);
+  assert.equal(cueState(tools[0]), "stopped");
+  assert.equal(tools[1].status, "executing");
+  assert.equal(cueState(tools[1]), "running");
+});
+
+function cue(toolCallId: string, extra: Partial<Cue>): Cue {
+  return {
+    cue: 1,
+    toolCallId,
+    name: "x",
+    args: {},
+    status: "complete",
+    result: "ok",
+    error: null,
+    stopped: false,
+    ...extra,
+  };
+}
+
+test("a group of stopped calls does not say all done", () => {
+  const stopped = [1, 2, 3, 4].map((n) => cue(`s${n}`, { result: undefined, stopped: true }));
+  assert.deepEqual(groupSummary(stopped), { state: "stopped", word: "4 stopped" });
+  const mixed = [cue("a", {}), cue("b", { result: "Error: boom" }), ...stopped.slice(0, 2)];
+  assert.deepEqual(groupSummary(mixed), { state: "failed", word: "1 failed" });
+  assert.deepEqual(groupSummary([cue("a", {}), cue("b", {})]), { state: "done", word: "All done" });
+});
+
+test("serve's Error: content marks the cue failed", () => {
+  assert.equal(cueState(cue("e", { result: "Error: Permission denied" })), "failed");
 });
