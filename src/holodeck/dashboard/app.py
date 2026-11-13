@@ -288,10 +288,12 @@ def restore_from_url(search, state):
 
     ``sync_url`` writes the address from the state, which fires this callback
     again; when the address already matches the state there is nothing to do,
-    so the two never loop.
+    so the two never loop. Run references resolve to loaded run ids first.
     """
     state = state or state_mod.default_state()
-    restored = state_mod.state_from_url_search(search or "")
+    restored = state_mod.resolve_run_refs(
+        state_mod.state_from_url_search(search or ""), get_runs()
+    )
     if state_mod.url_search_from_state(restored) == state_mod.url_search_from_state(
         state
     ):

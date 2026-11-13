@@ -200,15 +200,23 @@ class CaseDetail:
 # --------------------------------------------------------------------------- #
 
 
-def select_run(runs: list[LoadedRun], run_id: str | None) -> LoadedRun | None:
-    """Return the run whose :attr:`LoadedRun.run_id` is ``run_id``.
+def select_run(runs: list[LoadedRun], ref: str | None) -> LoadedRun | None:
+    """Return the run that ``ref`` names.
 
-    Returns ``None`` when no run matches or when ``run_id`` is ``None``.
+    ``ref`` is a :attr:`LoadedRun.run_id`. Links copied before runs had ids
+    carry the saved timestamp instead, so a ``ref`` that matches no id
+    resolves to the one run with that timestamp. Returns ``None`` when
+    ``ref`` is empty, matches nothing, or is a timestamp several runs share:
+    callers must not put a different run in its place.
     """
 
-    if not run_id:
+    if not ref:
         return None
-    return next((run for run in runs if run.run_id == run_id), None)
+    by_id = next((run for run in runs if run.run_id == ref), None)
+    if by_id is not None:
+        return by_id
+    by_time = [run for run in runs if run.report.timestamp == ref]
+    return by_time[0] if len(by_time) == 1 else None
 
 
 def _geval_score(case: TestResult) -> float | None:

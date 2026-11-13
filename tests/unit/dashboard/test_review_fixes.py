@@ -11,6 +11,7 @@ import json
 from collections.abc import Iterator
 from csv import DictReader
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 from dash import html
@@ -316,3 +317,64 @@ def test_rendered_chips_keep_unfiltered_colours(
     assert set(seen) == set(versions)
     for version, tint in seen.items():
         assert tint == full[version].tint, version
+
+
+# ---------- run-id review: links that name a missing or old run ----------
+
+
+@pytest.mark.unit
+def test_old_explorer_link_opens_its_run_or_says_not_found(
+    seed: list[LoadedRun], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a = _copy(seed[0], "2026-06-01T09:00:00Z")
+    b = _copy(seed[23], "2026-06-02T09:00:00Z")
+    runs = [a, b]
+    monkeypatch.setattr(app_mod, "get_runs", lambda: runs)
+    case = a.report.results[0].test_name or ""
+
+    # A link copied before runs had ids carries A's timestamp: it opens A.
+    old = "?" + urlencode({"tab": "explorer", "run": a.report.timestamp})
+    restored = app_mod.restore_from_url(f"{old}&case={case}", default_state())
+    assert restored["explorer_run_id"] == a.run_id
+    rows = _run_rows(render_explorer(restored, runs), "explorer-run-row")
+    assert rows[a.run_id] == "list-row on"
+
+    # A run that is no longer loaded (renamed file): say so, open nothing.
+    missing = {
+        **default_state(),
+        "tab": "explorer",
+        "explorer_run_id": "renamed-run",
+        "explorer_case_name": case,
+    }
+    tree = render_explorer(missing, runs)
+    assert "Run not found" in _json(tree)
+    assert "list-row on" not in _run_rows(tree, "explorer-run-row").values()
+
+    # A timestamp two runs share names neither of them.
+    twin = _copy(seed[1], a.report.timestamp, "-c4d5")
+    assert select_run([a, b, twin], a.report.timestamp) is None
+
+
+@pytest.mark.unit
+def test_compare_link_keeps_run_ids_with_commas(
+    seed: list[LoadedRun], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alpha = seed[0].model_copy(update={"run_id": "alpha,beta"})
+    gamma = seed[23].model_copy(update={"run_id": "gamma"})
+    monkeypatch.setattr(app_mod, "get_runs", lambda: [alpha, gamma])
+    state = {
+        **default_state(),
+        "tab": "compare",
+        "compare_queue": ["alpha,beta", "gamma"],
+    }
+
+    search = url_search_from_state(state)
+    assert state_from_url_search(search)["compare_queue"] == ["alpha,beta", "gamma"]
+    restored = app_mod.restore_from_url(search, default_state())
+    assert restored["compare_queue"] == ["alpha,beta", "gamma"]
+
+    # Old links: a saved timestamp resolves to its run; an unknown id drops.
+    old = "?" + urlencode([("cmp", alpha.report.timestamp), ("cmp", "gone")])
+    assert app_mod.restore_from_url(old, default_state())["compare_queue"] == [
+        "alpha,beta"
+    ]

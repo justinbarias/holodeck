@@ -87,6 +87,27 @@ def _empty_no_runs() -> html.Section:
     )
 
 
+def _run_not_found_panel(ref: str) -> html.Div:
+    return html.Div(
+        html.Section(
+            [
+                html.H1("Run not found"),
+                html.P(
+                    [
+                        "This link names run ",
+                        html.Span(ref, className="cue"),
+                        ", which is not in the loaded results. The file may "
+                        "have been renamed or deleted. Pick a run from the list.",
+                    ]
+                ),
+            ],
+            className="sheet empty",
+            role="status",
+        ),
+        className="detail hd-explorer-detail",
+    )
+
+
 def _placeholder_case_panel() -> html.Div:
     return html.Div(
         html.Section(
@@ -941,10 +962,32 @@ def render_explorer(state: dict[str, Any], runs: list[LoadedRun]) -> html.Div:
     numbers = run_numbers(runs)
     colours = revision_colour_map(runs)
 
-    # Resolve selection with sensible defaults.
-    run_id = state.get("explorer_run_id")
-    run = select_run(runs, run_id) if run_id else None
-    if run is None:
+    runs_collapsed = bool(state.get("explorer_runs_collapsed", False))
+    queue = list(state.get("compare_queue") or [])
+    grid_cls = "hd-explorer-grid"
+    if runs_collapsed:
+        grid_cls += " hd-explorer-grid--collapsed"
+
+    def runs_column(active_run_id: str | None) -> html.Div:
+        if runs_collapsed:
+            return _runs_column_collapsed(runs)
+        return _runs_column_expanded(runs, active_run_id, queue, numbers, colours)
+
+    # No selection opens the latest run. A selection that names no loaded
+    # run says so; it never shows a different run in its place.
+    ref = state.get("explorer_run_id")
+    if ref:
+        run = select_run(runs, str(ref))
+        if run is None:
+            return html.Div(
+                [
+                    runs_column(None),
+                    _cases_column([], None),
+                    _run_not_found_panel(str(ref)),
+                ],
+                className=grid_cls,
+            )
+    else:
         run = chronological(runs)[-1]
     label = run_label(run, numbers)
     version = run.metadata.prompt_version.version
@@ -954,15 +997,7 @@ def render_explorer(state: dict[str, Any], runs: list[LoadedRun]) -> html.Div:
     if case_name is None or not any(c.name == case_name for c in cases):
         case_name = cases[0].name if cases else None
 
-    runs_collapsed = bool(state.get("explorer_runs_collapsed", False))
-    queue = list(state.get("compare_queue") or [])
-
-    col_runs: html.Div
-    if runs_collapsed:
-        col_runs = _runs_column_collapsed(runs)
-    else:
-        col_runs = _runs_column_expanded(runs, run.run_id, queue, numbers, colours)
-
+    col_runs = runs_column(run.run_id)
     col_cases = _cases_column(cases, case_name, label)
 
     if case_name is None:
@@ -975,9 +1010,5 @@ def render_explorer(state: dict[str, Any], runs: list[LoadedRun]) -> html.Div:
             col_detail = _detail_panel(
                 run, detail, label, revision_colour(version, colours)
             )
-
-    grid_cls = "hd-explorer-grid"
-    if runs_collapsed:
-        grid_cls += " hd-explorer-grid--collapsed"
 
     return html.Div([col_runs, col_cases, col_detail], className=grid_cls)
