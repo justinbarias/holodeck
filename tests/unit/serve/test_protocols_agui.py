@@ -4,7 +4,7 @@ Tests for:
 - T015: AG-UI event mapping (lifecycle, text message, tool call events)
 - T016: RunAgentInput to HoloDeck request mapping
 - T017: AG-UI protocol error mapping (BackendSessionError, capacity exceeded)
-- T029a: Unit tests for AG-UI BinaryInputContent parsing
+- T029a: Unit tests for AG-UI 1.0 media part parsing
 - T029b: Unit tests for AG-UI multimodal content to FileInput conversion
 """
 
@@ -1051,158 +1051,347 @@ class TestAGUIProtocolHandleRequest:
 
 
 # =============================================================================
-# T029a: Unit tests for AG-UI BinaryInputContent parsing
+# T029a: Unit tests for AG-UI 1.0 media part parsing
 # =============================================================================
 
 
-class TestBinaryInputContentParsing:
-    """Tests for extracting binary content parts from AG-UI message content."""
+def _run_input_with_content(content: list[Any]) -> Any:
+    """Build a validated RunAgentInput with one user message of content parts."""
+    from ag_ui.core.events import RunAgentInput
+
+    return RunAgentInput(
+        thread_id="thread-123",
+        run_id="run-456",
+        messages=[UserMessage(id="msg-1", role="user", content=content)],
+        state=None,
+        tools=[],
+        context=[],
+        forwarded_props=None,
+    )
+
+
+class TestMediaPartParsing:
+    """Tests for converting AG-UI 1.0 media parts into binary content dicts."""
 
     def test_extract_binary_parts_empty_content(self) -> None:
-        """Test extracting binary parts from empty content list."""
+        """Empty content yields no parts."""
         from holodeck.serve.protocols.agui import extract_binary_parts_from_content
 
-        result = extract_binary_parts_from_content([])
-        assert result == []
+        assert extract_binary_parts_from_content([]) == []
 
     def test_extract_binary_parts_text_only(self) -> None:
-        """Test extracting binary parts when content only has text."""
+        """Text parts are not media parts."""
+        from ag_ui.core import TextPart
+
         from holodeck.serve.protocols.agui import extract_binary_parts_from_content
 
-        content: list[dict[str, Any]] = [
-            {"type": "text", "text": "Hello world"},
-            {"type": "text", "text": "More text"},
+        content = [TextPart(text="Hello world"), TextPart(text="More text")]
+        assert extract_binary_parts_from_content(content) == []
+
+    def test_image_data_source_accepted(self) -> None:
+        """Image part with a supported DataSource maps to an inline-data dict."""
+        from ag_ui.core import DataSource, ImagePart
+
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content = [
+            ImagePart(
+                id="part-1",
+                source=DataSource(value=MINIMAL_PNG_BASE64, mime_type="image/png"),
+                metadata={"filename": "test.png"},
+            )
         ]
         result = extract_binary_parts_from_content(content)
-        assert result == []
 
-    def test_extract_binary_parts_with_base64_image(self) -> None:
-        """Test extracting binary parts with inline base64 image data."""
-        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
-
-        content: list[dict[str, Any]] = [
-            {"type": "text", "text": "What's in this image?"},
+        assert result == [
             {
-                "type": "binary",
+                "type": "image",
                 "mimeType": "image/png",
                 "data": MINIMAL_PNG_BASE64,
+                "url": None,
                 "filename": "test.png",
-            },
+            }
+        ]
+
+    def test_document_data_source_pdf_accepted(self) -> None:
+        """Document part with an application/pdf DataSource is accepted."""
+        from ag_ui.core import DataSource, DocumentPart
+
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content = [
+            DocumentPart(
+                source=DataSource(
+                    value=MINIMAL_PDF_BASE64, mime_type="application/pdf"
+                ),
+            )
         ]
         result = extract_binary_parts_from_content(content)
 
-        assert len(result) == 1
-        assert result[0]["type"] == "binary"
-        assert result[0]["mimeType"] == "image/png"
-        assert result[0]["data"] == MINIMAL_PNG_BASE64
-        assert result[0]["filename"] == "test.png"
-
-    def test_extract_binary_parts_with_url_reference(self) -> None:
-        """Test extracting binary parts with URL reference."""
-        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
-
-        content: list[dict[str, Any]] = [
-            {"type": "text", "text": "Describe this image"},
+        assert result == [
             {
-                "type": "binary",
-                "mimeType": "image/jpeg",
-                "url": "https://example.com/image.jpg",
-            },
-        ]
-        result = extract_binary_parts_from_content(content)
-
-        assert len(result) == 1
-        assert result[0]["type"] == "binary"
-        assert result[0]["mimeType"] == "image/jpeg"
-        assert result[0]["url"] == "https://example.com/image.jpg"
-
-    def test_extract_binary_parts_with_file_id(self) -> None:
-        """Test extracting binary parts with file ID reference."""
-        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
-
-        content: list[dict[str, Any]] = [
-            {"type": "text", "text": "Process this file"},
-            {
-                "type": "binary",
-                "mimeType": "application/pdf",
-                "id": "file-12345",
-            },
-        ]
-        result = extract_binary_parts_from_content(content)
-
-        assert len(result) == 1
-        assert result[0]["type"] == "binary"
-        assert result[0]["mimeType"] == "application/pdf"
-        assert result[0]["id"] == "file-12345"
-
-    def test_extract_binary_parts_mixed_content(self) -> None:
-        """Test extracting multiple binary parts from mixed content."""
-        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
-
-        content: list[dict[str, Any]] = [
-            {"type": "text", "text": "Look at these files:"},
-            {
-                "type": "binary",
-                "mimeType": "image/png",
-                "data": MINIMAL_PNG_BASE64,
-            },
-            {"type": "text", "text": "And also:"},
-            {
-                "type": "binary",
+                "type": "document",
                 "mimeType": "application/pdf",
                 "data": MINIMAL_PDF_BASE64,
-            },
+                "url": None,
+                "filename": None,
+            }
+        ]
+
+    def test_url_source_with_mime_accepted(self) -> None:
+        """UrlSource with a supported MIME type maps to a url dict."""
+        from ag_ui.core import ImagePart, UrlSource
+
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content = [
+            ImagePart(
+                source=UrlSource(
+                    value="https://example.com/image.jpg", mime_type="image/jpeg"
+                ),
+            )
         ]
         result = extract_binary_parts_from_content(content)
 
-        assert len(result) == 2
-        assert result[0]["mimeType"] == "image/png"
-        assert result[1]["mimeType"] == "application/pdf"
+        assert result == [
+            {
+                "type": "image",
+                "mimeType": "image/jpeg",
+                "data": None,
+                "url": "https://example.com/image.jpg",
+                "filename": None,
+            }
+        ]
 
-    def test_extract_binary_parts_skips_unsupported_mime(self, caplog, capsys) -> None:
-        """Test that unsupported MIME types are skipped with warning."""
+    def test_url_source_without_mime_skipped(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """UrlSource without a MIME type is skipped with a warning."""
         import logging
 
+        from ag_ui.core import ImagePart, UrlSource
+
         from holodeck.serve.protocols.agui import extract_binary_parts_from_content
 
-        content: list[dict[str, Any]] = [
-            {
-                "type": "binary",
-                "mimeType": "video/mp4",  # Not supported
-                "data": "somebase64data",
-            },
-            {
-                "type": "binary",
-                "mimeType": "image/png",  # Supported
-                "data": MINIMAL_PNG_BASE64,
-            },
+        content = [ImagePart(source=UrlSource(value="https://example.com/x"))]
+        logger = logging.getLogger("holodeck.serve.file_utils")
+        logger.addHandler(caplog.handler)
+        try:
+            with caplog.at_level(logging.WARNING):
+                result = extract_binary_parts_from_content(content)
+        finally:
+            logger.removeHandler(caplog.handler)
+
+        assert result == []
+        assert "no MIME type" in caplog.text
+
+    def test_file_source_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
+        """FileSource (provider file handle) is skipped with a warning."""
+        import logging
+
+        from ag_ui.core import DocumentPart, FileSource
+
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content = [
+            DocumentPart(
+                source=FileSource(
+                    value="file-12345",
+                    provider="openai",
+                    mime_type="application/pdf",
+                ),
+            )
         ]
+        logger = logging.getLogger("holodeck.serve.file_utils")
+        logger.addHandler(caplog.handler)
+        try:
+            with caplog.at_level(logging.WARNING):
+                result = extract_binary_parts_from_content(content)
+        finally:
+            logger.removeHandler(caplog.handler)
 
-        with caplog.at_level(logging.WARNING):
-            result = extract_binary_parts_from_content(content)
+        assert result == []
+        assert "file source" in caplog.text
 
-        # Only the supported MIME type should be returned
-        assert len(result) == 1
-        assert result[0]["mimeType"] == "image/png"
+    def test_unsupported_mime_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Unsupported MIME types are skipped; supported siblings are kept."""
+        import logging
 
-        # Warning should be logged for unsupported MIME type
-        # Check both caplog.text and stdout (logging handler timing)
-        captured_stdout = capsys.readouterr().out
-        log_output = caplog.text + captured_stdout
-        assert "video/mp4" in log_output or "unsupported" in log_output.lower()
+        from ag_ui.core import DataSource, ImagePart, VideoPart
 
-    def test_extract_binary_parts_with_string_parts(self) -> None:
-        """Test extracting binary parts ignores plain string parts."""
         from holodeck.serve.protocols.agui import extract_binary_parts_from_content
 
-        content: list[Any] = [
-            "Plain string content",
-            {"type": "binary", "mimeType": "image/png", "data": MINIMAL_PNG_BASE64},
+        content = [
+            VideoPart(source=DataSource(value="c29tZQ==", mime_type="video/mp4")),
+            ImagePart(
+                source=DataSource(value=MINIMAL_PNG_BASE64, mime_type="image/png")
+            ),
+        ]
+        logger = logging.getLogger("holodeck.serve.file_utils")
+        logger.addHandler(caplog.handler)
+        try:
+            with caplog.at_level(logging.WARNING):
+                result = extract_binary_parts_from_content(content)
+        finally:
+            logger.removeHandler(caplog.handler)
+
+        assert [part["mimeType"] for part in result] == ["image/png"]
+        assert "video/mp4" in caplog.text
+
+    def test_non_string_metadata_filename_ignored(self) -> None:
+        """Only a string metadata filename is used."""
+        from ag_ui.core import DataSource, ImagePart
+
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content = [
+            ImagePart(
+                source=DataSource(value=MINIMAL_PNG_BASE64, mime_type="image/png"),
+                metadata={"filename": 42},
+            ),
+            ImagePart(
+                source=DataSource(value=MINIMAL_PNG_BASE64, mime_type="image/png"),
+                metadata="not-a-dict",
+            ),
         ]
         result = extract_binary_parts_from_content(content)
 
-        assert len(result) == 1
-        assert result[0]["mimeType"] == "image/png"
+        assert [part["filename"] for part in result] == [None, None]
+
+    def test_text_and_image_mixed_message(self) -> None:
+        """Mixed text + image message yields joined text and one media part."""
+        from ag_ui.core import DataSource, ImagePart, TextPart
+
+        from holodeck.serve.protocols.agui import (
+            extract_message_and_files_from_input,
+        )
+
+        input_data = _run_input_with_content(
+            [
+                TextPart(text="I have two questions."),
+                ImagePart(
+                    source=DataSource(value=MINIMAL_PNG_BASE64, mime_type="image/png")
+                ),
+                TextPart(text="What color is it?"),
+            ]
+        )
+        text, parts = extract_message_and_files_from_input(input_data)
+
+        assert text == "I have two questions. What color is it?"
+        assert len(parts) == 1
+        assert parts[0]["mimeType"] == "image/png"
+        assert parts[0]["data"] == MINIMAL_PNG_BASE64
+
+    def test_wire_json_parts_validate_and_extract(self) -> None:
+        """Camel-case 1.0 wire JSON validates into typed parts and extracts."""
+        from ag_ui.core.events import RunAgentInput
+
+        from holodeck.serve.protocols.agui import (
+            extract_message_and_files_from_input,
+        )
+
+        input_data = RunAgentInput.model_validate(
+            {
+                "threadId": "t",
+                "runId": "r",
+                "messages": [
+                    {
+                        "id": "m",
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Summarize"},
+                            {
+                                "type": "document",
+                                "source": {
+                                    "type": "data",
+                                    "value": MINIMAL_PDF_BASE64,
+                                    "mimeType": "application/pdf",
+                                },
+                                "metadata": {"filename": "doc.pdf"},
+                            },
+                        ],
+                    }
+                ],
+                "state": None,
+                "tools": [],
+                "context": [],
+                "forwardedProps": None,
+            }
+        )
+        text, parts = extract_message_and_files_from_input(input_data)
+
+        assert text == "Summarize"
+        assert parts[0]["mimeType"] == "application/pdf"
+        assert parts[0]["filename"] == "doc.pdf"
+
+    def test_only_unsupported_parts_raises_no_content(self) -> None:
+        """A message with only skipped media parts raises 'No content found'."""
+        from ag_ui.core import DataSource, DocumentPart, FileSource, ImagePart
+
+        from holodeck.serve.protocols.agui import (
+            extract_message_and_files_from_input,
+        )
+
+        input_data = _run_input_with_content(
+            [
+                ImagePart(source=DataSource(value="c29tZQ==", mime_type="image/bmp")),
+                DocumentPart(source=FileSource(value="file-1")),
+            ]
+        )
+        with pytest.raises(ValueError, match="No content found"):
+            extract_message_and_files_from_input(input_data)
+
+    def test_extract_message_from_input_typed_parts(self) -> None:
+        """extract_message_from_input reads typed text parts, skips media."""
+        from ag_ui.core import DataSource, ImagePart, TextPart
+
+        from holodeck.serve.protocols.agui import extract_message_from_input
+
+        input_data = _run_input_with_content(
+            [
+                TextPart(text="Hello"),
+                ImagePart(
+                    source=DataSource(value=MINIMAL_PNG_BASE64, mime_type="image/png")
+                ),
+            ]
+        )
+        assert extract_message_from_input(input_data) == "Hello"
+
+    def test_media_parts_flow_into_file_pipeline(self) -> None:
+        """Extracted dicts are consumable by process_multimodal_files."""
+        from unittest.mock import patch
+
+        from ag_ui.core import DataSource, DocumentPart
+
+        from holodeck.serve.file_utils import (
+            cleanup_temp_files,
+            process_multimodal_files,
+        )
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        parts = extract_binary_parts_from_content(
+            [
+                DocumentPart(
+                    source=DataSource(
+                        value=base64.b64encode(b"hello file").decode(),
+                        mime_type="text/plain",
+                    ),
+                    metadata={"filename": "notes.txt"},
+                )
+            ]
+        )
+        mock_result = MagicMock(error=None, markdown_content="hello file")
+        with patch("holodeck.lib.file_processor.FileProcessor") as processor_cls:
+            processor_cls.return_value.process_file.return_value = mock_result
+            content, file_inputs = process_multimodal_files(
+                files=parts, is_agui_format=True
+            )
+        try:
+            assert content == "## File: notes.txt\n\nhello file"
+            assert len(file_inputs) == 1
+            assert Path(file_inputs[0].path or "").read_bytes() == b"hello file"
+        finally:
+            cleanup_temp_files(file_inputs)
 
 
 # =============================================================================

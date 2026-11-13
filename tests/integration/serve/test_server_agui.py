@@ -541,10 +541,13 @@ class TestAGUIMultimodalImage:
                                 "content": [
                                     {"type": "text", "text": "What's in this image?"},
                                     {
-                                        "type": "binary",
-                                        "mimeType": "image/png",
-                                        "data": MINIMAL_PNG_BASE64,
-                                        "filename": "test.png",
+                                        "type": "image",
+                                        "source": {
+                                            "type": "data",
+                                            "value": MINIMAL_PNG_BASE64,
+                                            "mimeType": "image/png",
+                                        },
+                                        "metadata": {"filename": "test.png"},
                                     },
                                 ],
                             },
@@ -617,9 +620,12 @@ class TestAGUIMultimodalImage:
                                 "content": [
                                     {"type": "text", "text": "Describe this image"},
                                     {
-                                        "type": "binary",
-                                        "mimeType": "image/png",
-                                        "url": "https://example.com/test.png",
+                                        "type": "image",
+                                        "source": {
+                                            "type": "url",
+                                            "value": "https://example.com/test.png",
+                                            "mimeType": "image/png",
+                                        },
                                     },
                                 ],
                             },
@@ -683,9 +689,12 @@ class TestAGUIMultimodalImage:
                                 "content": [
                                     {"type": "text", "text": "I have two questions."},
                                     {
-                                        "type": "binary",
-                                        "mimeType": "image/png",
-                                        "data": MINIMAL_PNG_BASE64,
+                                        "type": "image",
+                                        "source": {
+                                            "type": "data",
+                                            "value": MINIMAL_PNG_BASE64,
+                                            "mimeType": "image/png",
+                                        },
                                     },
                                     {"type": "text", "text": "What color is it?"},
                                 ],
@@ -756,10 +765,13 @@ class TestAGUIMultimodalDocument:
                                 "content": [
                                     {"type": "text", "text": "Summarize this document"},
                                     {
-                                        "type": "binary",
-                                        "mimeType": "application/pdf",
-                                        "data": MINIMAL_PDF_BASE64,
-                                        "filename": "document.pdf",
+                                        "type": "document",
+                                        "source": {
+                                            "type": "data",
+                                            "value": MINIMAL_PDF_BASE64,
+                                            "mimeType": "application/pdf",
+                                        },
+                                        "metadata": {"filename": "document.pdf"},
                                     },
                                 ],
                             },
@@ -822,10 +834,13 @@ class TestAGUIMultimodalDocument:
                                 "content": [
                                     {"type": "text", "text": "Review this document"},
                                     {
-                                        "type": "binary",
-                                        "mimeType": WORD_MIME,
-                                        "data": docx_data,
-                                        "filename": "report.docx",
+                                        "type": "document",
+                                        "source": {
+                                            "type": "data",
+                                            "value": docx_data,
+                                            "mimeType": WORD_MIME,
+                                        },
+                                        "metadata": {"filename": "report.docx"},
                                     },
                                 ],
                             },
@@ -885,16 +900,22 @@ class TestAGUIMultimodalDocument:
                                 "content": [
                                     {"type": "text", "text": "Compare these files:"},
                                     {
-                                        "type": "binary",
-                                        "mimeType": "image/png",
-                                        "data": MINIMAL_PNG_BASE64,
-                                        "filename": "image.png",
+                                        "type": "image",
+                                        "source": {
+                                            "type": "data",
+                                            "value": MINIMAL_PNG_BASE64,
+                                            "mimeType": "image/png",
+                                        },
+                                        "metadata": {"filename": "image.png"},
                                     },
                                     {
-                                        "type": "binary",
-                                        "mimeType": "application/pdf",
-                                        "data": MINIMAL_PDF_BASE64,
-                                        "filename": "document.pdf",
+                                        "type": "document",
+                                        "source": {
+                                            "type": "data",
+                                            "value": MINIMAL_PDF_BASE64,
+                                            "mimeType": "application/pdf",
+                                        },
+                                        "metadata": {"filename": "document.pdf"},
                                     },
                                 ],
                             },
@@ -916,7 +937,7 @@ class TestAGUIMultimodalDocument:
         mock_agent_config: MagicMock,
         mock_agent_executor: MagicMock,
     ) -> None:
-        """Test /awp handles file ID references (unsupported, skipped)."""
+        """Test /awp skips FileSource provider file references."""
         from holodeck.serve.models import ProtocolType
         from holodeck.serve.server import AgentServer
 
@@ -954,9 +975,12 @@ class TestAGUIMultimodalDocument:
                                 "content": [
                                     {"type": "text", "text": "Process this file"},
                                     {
-                                        "type": "binary",
-                                        "mimeType": "application/pdf",
-                                        "id": "file-12345",  # File ID - not supported
+                                        "type": "document",
+                                        "source": {
+                                            "type": "file",
+                                            "value": "file-12345",  # provider handle
+                                            "mimeType": "application/pdf",
+                                        },
                                     },
                                 ],
                             },
@@ -968,8 +992,8 @@ class TestAGUIMultimodalDocument:
                     },
                 )
 
-                # Should still succeed - file ID is skipped with warning
+                # Should still succeed - the file source is skipped with a warning
                 assert response.status_code == 200
                 content = response.text
-                # Request should complete (file ID skipped)
+                # Request should complete (file source skipped)
                 assert "RUN_FINISHED" in content or "run_finished" in content.lower()

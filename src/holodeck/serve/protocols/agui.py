@@ -13,6 +13,7 @@ import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
+from ag_ui.core import AudioPart, DocumentPart, ImagePart, TextPart, VideoPart
 from ag_ui.core.events import (
     BaseEvent,
     EventType,
@@ -120,11 +121,9 @@ def extract_message_and_files_from_input(
                         part_type = part.get("type", "unknown")
                         if part_type == "text":
                             text_parts.append(part.get("text", ""))
-                    # Handle AG-UI Pydantic object (TextInputContent)
-                    elif (
-                        hasattr(part, "type") and getattr(part, "type", None) == "text"
-                    ):
-                        text_parts.append(getattr(part, "text", ""))
+                    # Handle AG-UI 1.0 text part
+                    elif isinstance(part, TextPart):
+                        text_parts.append(part.text)
                     # Handle plain string
                     elif isinstance(part, str):
                         text_parts.append(part)
@@ -203,6 +202,16 @@ def extract_message_from_input(input_data: RunAgentInput) -> str:
                             )
                     elif isinstance(part, str):
                         text_parts.append(part)
+                    elif isinstance(part, TextPart):
+                        text_parts.append(part.text)
+                    elif isinstance(
+                        part, ImagePart | AudioPart | VideoPart | DocumentPart
+                    ):
+                        logger.warning(
+                            "Skipping non-text content part (type: %s). "
+                            "Only 'text' content parts are supported.",
+                            part.type,
+                        )
 
                 # Validate that we have at least some text content
                 if not text_parts:

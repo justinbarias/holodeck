@@ -295,7 +295,11 @@ def _agui_message_content(message: AguiMessage) -> str:
     if isinstance(message, AguiAssistantMessage):
         return str(message.content or "")
     if isinstance(message, AguiToolMessage):
-        return str(message.content)
+        # AG-UI 1.0 lets tool results carry content parts, like user messages.
+        tool_content = message.content
+        if isinstance(tool_content, str):
+            return tool_content
+        return " ".join(block.text for block in tool_content if block.type == "text")
     if isinstance(message, AguiUserMessage):
         user_content = message.content
         if isinstance(user_content, str):

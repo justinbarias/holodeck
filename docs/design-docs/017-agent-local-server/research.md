@@ -460,6 +460,11 @@ Per clarification: RFC 7807 Problem Details
 
 ### AG-UI Multimodal Support
 
+> **Superseded by AG-UI 1.0.** `holodeck serve` now uses `ag-ui-protocol` 1.x.
+> The flat `binary` part below is rejected with HTTP 422. Clients send
+> `image`, `audio`, `video` or `document` parts with a `source` instead. See
+> the [serve guide](../../guides/serve.md#multimodal-content-ag-ui-10).
+
 AG-UI supports multimodal inputs through `BinaryInputContent`:
 
 ```python

@@ -1613,6 +1613,20 @@ class TestClaudeSessionAGUI:
         )
         assert (
             _agui_message_content(
+                ToolMessage(
+                    id="t2",
+                    role="tool",
+                    content=[
+                        TextInputContent(type="text", text="first"),
+                        TextInputContent(type="text", text="second"),
+                    ],
+                    tool_call_id="toolu",
+                )
+            )
+            == "first second"
+        )
+        assert (
+            _agui_message_content(
                 UserMessage(
                     id="u",
                     role="user",

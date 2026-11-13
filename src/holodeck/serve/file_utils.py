@@ -13,8 +13,18 @@ from __future__ import annotations
 import base64
 import binascii
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from ag_ui.core import (
+    AudioPart,
+    DataSource,
+    DocumentPart,
+    ImagePart,
+    UrlSource,
+    VideoPart,
+)
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.models.test_case import FileInput
@@ -345,81 +355,111 @@ def process_multimodal_files(
 
 
 # =============================================================================
-# AG-UI Binary Content Extraction
+# AG-UI Media Part Extraction
 # =============================================================================
 
 
-def extract_binary_parts_from_content(
-    content: list[dict[str, Any] | Any],
-) -> list[dict[str, Any]]:
-    """Extract binary content parts from AG-UI message content list.
+def _part_filename(metadata: object) -> str | None:
+    """Return ``metadata["filename"]`` when it is a string, else None.
 
-    Filters the content list for binary type parts and validates MIME types.
-    Handles both dict format and AG-UI Pydantic objects (BinaryInputContent).
+    AG-UI 1.0 media parts have no filename field; clients that want one
+    shown carry it in the part's free-form metadata.
+    """
+    if isinstance(metadata, dict):
+        filename = metadata.get("filename")
+        if isinstance(filename, str):
+            return filename
+    return None
+
+
+def extract_binary_parts_from_content(
+    content: Sequence[object],
+) -> list[dict[str, Any]]:
+    """Extract media parts from an AG-UI 1.0 message content list.
+
+    Converts image, audio, video and document parts into the binary content
+    dicts that ``process_multimodal_files`` consumes::
+
+        {"type": <part type>, "mimeType": str, "data": str | None,
+         "url": str | None, "filename": str | None}
+
+    Rules:
+    - ``DataSource``: kept when ``mime_type`` is supported (``data`` set).
+    - ``UrlSource``: kept when it declares a supported ``mime_type``
+      (``url`` set; the file pipeline refuses URL fetches for SSRF safety).
+      Skipped when ``mime_type`` is missing, because the type is not guessed.
+    - ``FileSource``: skipped, because provider file handles cannot be
+      resolved by this server.
+
+    Text parts and anything that is not a 1.0 media part are ignored. The
+    legacy ``binary`` part is rejected earlier, at ``RunAgentInput``
+    validation.
 
     Args:
-        content: List of content parts (text, binary, or strings).
+        content: Content parts of a user message.
 
     Returns:
-        List of binary content dicts with type, mimeType, and data/url/id fields.
+        List of binary content dicts.
     """
     binary_parts: list[dict[str, Any]] = []
 
     logger.debug(
-        "Scanning content list for binary parts (total items: %d)",
+        "Scanning content list for media parts (total items: %d)",
         len(content),
     )
 
     for idx, part in enumerate(content):
-        # Handle dict format
-        if isinstance(part, dict):
-            if part.get("type") != "binary":
-                continue
+        if not isinstance(part, ImagePart | AudioPart | VideoPart | DocumentPart):
+            continue
 
-            mime_type = part.get("mimeType", "")
-            if mime_type not in SUPPORTED_MIME_TYPES:
+        source = part.source
+        data: str | None = None
+        url: str | None = None
+        if isinstance(source, DataSource):
+            mime_type = source.mime_type
+            data = source.value
+        elif isinstance(source, UrlSource):
+            if source.mime_type is None:
                 logger.warning(
-                    "Skipping binary content with unsupported MIME type: %s",
-                    mime_type,
+                    "Skipping %s part with a url source and no MIME type",
+                    part.type,
                 )
                 continue
+            mime_type = source.mime_type
+            url = source.value
+        else:
+            logger.warning(
+                "Skipping %s part with a file source: provider file "
+                "references are not supported. Send inline data instead.",
+                part.type,
+            )
+            continue
 
-            logger.debug(
-                "Found binary content (dict): idx=%d, mime=%s, filename=%s",
-                idx,
+        if mime_type not in SUPPORTED_MIME_TYPES:
+            logger.warning(
+                "Skipping %s content with unsupported MIME type: %s",
+                part.type,
                 mime_type,
-                part.get("filename"),
             )
-            binary_parts.append(part)
+            continue
 
-        # Handle AG-UI Pydantic object (BinaryInputContent)
-        elif hasattr(part, "type") and getattr(part, "type", None) == "binary":
-            # AG-UI uses 'mime_type' attribute (snake_case), not 'mimeType'
-            mime_type = getattr(part, "mime_type", "")
-            if mime_type not in SUPPORTED_MIME_TYPES:
-                logger.warning(
-                    "Skipping binary content with unsupported MIME type: %s",
-                    mime_type,
-                )
-                continue
+        filename = _part_filename(part.metadata)
+        binary_parts.append(
+            {
+                "type": part.type,
+                "mimeType": mime_type,
+                "data": data,
+                "url": url,
+                "filename": filename,
+            }
+        )
+        logger.debug(
+            "Found %s content: idx=%d, mime=%s, filename=%s",
+            part.type,
+            idx,
+            mime_type,
+            filename,
+        )
 
-            # Convert Pydantic object to dict for consistent handling
-            binary_parts.append(
-                {
-                    "type": "binary",
-                    "mimeType": mime_type,
-                    "data": getattr(part, "data", None),
-                    "url": getattr(part, "url", None),
-                    "id": getattr(part, "id", None),
-                    "filename": getattr(part, "filename", None),
-                }
-            )
-            logger.debug(
-                "Found binary content (Pydantic): idx=%d, mime=%s, filename=%s",
-                idx,
-                mime_type,
-                getattr(part, "filename", None),
-            )
-
-    logger.debug("Extracted %d binary parts from content", len(binary_parts))
+    logger.debug("Extracted %d media parts from content", len(binary_parts))
     return binary_parts
