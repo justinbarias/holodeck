@@ -1,6 +1,6 @@
 # Graphiti evidence for spec 043
 
-Measured facts that the [spec](../../product-specs/043-temporal-memory/spec.md) and the [execution plan](../../exec-plans/active/043-temporal-memory/2026-11-11-temporal-memory-graphiti.md) depend on. Each entry gives the command and what it returned.
+Measured facts that the [spec](../../product-specs/043-temporal-memory/spec.md) and the [execution plan](../../exec-plans/completed/043-temporal-memory/2026-11-11-temporal-memory-graphiti.md) depend on. Each entry gives the command and what it returned.
 
 ## T0: dependency resolution (2026-11-11)
 
