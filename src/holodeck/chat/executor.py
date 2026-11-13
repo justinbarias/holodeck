@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
@@ -31,6 +32,10 @@ logger = get_logger(__name__)
 _SENTINEL = object()
 
 _T = TypeVar("_T")
+
+# One item of an ordered turn stream: a text delta, a tool event, or the
+# completed turn's result (always last).
+_TurnItem = str | ToolEvent | ExecutionResult
 
 
 @runtime_checkable
@@ -62,8 +67,12 @@ class _EventStreamSession(Protocol):
     ``tool_events`` side queue.
     """
 
-    def send_events(self, message: str) -> AsyncGenerator[str | ToolEvent, None]:
-        """Stream ``str`` text deltas and ``ToolEvent`` records in run order."""
+    def send_events(self, message: str) -> AsyncGenerator[_TurnItem, None]:
+        """Stream text deltas and ``ToolEvent`` records in run order.
+
+        The last item is the turn's ``ExecutionResult`` (final output, tool
+        calls, token usage), built as the non-streaming ``send`` builds it.
+        """
         ...
 
 
@@ -302,14 +311,14 @@ class _TaskBoundSession:
                 # Streaming mode — push chunks (text, or text and tool events
                 # in run order) to the caller's queue
                 try:
-                    stream: AsyncGenerator[str | ToolEvent, None] = (
-                        _require_event_session(session).send_events(message)
-                        if events
-                        else session.send_streaming(message)
-                    )
-                    async for chunk in stream:
-                        await chunk_queue.put(chunk)
-                    await chunk_queue.put(_SENTINEL)
+                    if events:
+                        await self._stream_events_turn(
+                            session, turn_no, message, future, chunk_queue
+                        )
+                    else:
+                        async for chunk in session.send_streaming(message):
+                            await chunk_queue.put(chunk)
+                        await chunk_queue.put(_SENTINEL)
                 except Exception as e:
                     await chunk_queue.put(e)
                 if not future.done():
@@ -338,6 +347,50 @@ class _TaskBoundSession:
             if not future.done():
                 future.set_exception(e)
 
+    async def _stream_events_turn(
+        self,
+        session: AgentSession,
+        turn_no: int,
+        message: str,
+        future: asyncio.Future[Any],
+        chunk_queue: asyncio.Queue[Any],
+    ) -> None:
+        """Run one event-stream turn; stop it if the caller abandons it.
+
+        The caller cancels *future* when it stops reading (``llm_timeout``,
+        client disconnect). That reschedules a timeout scope to "now", which
+        cancels the inner stream in this task: the SDK cancels its run, and the
+        actor stays alive for the next turn. A cancel scope from
+        ``asyncio.timeout`` (not ``wait_for``) keeps the stream in this task,
+        so cancel scopes the SDK entered here are exited here.
+        """
+        loop = asyncio.get_running_loop()
+        scope: asyncio.Timeout | None = None
+
+        def _on_abandoned(fut: asyncio.Future[Any]) -> None:
+            if fut.cancelled() and scope is not None:
+                scope.reschedule(loop.time())
+
+        future.add_done_callback(_on_abandoned)
+        try:
+            async with asyncio.timeout(None) as scope:
+                async with contextlib.aclosing(
+                    _require_event_session(session).send_events(message)
+                ) as stream:
+                    async for item in stream:
+                        await chunk_queue.put(item)
+                await chunk_queue.put(_SENTINEL)
+        except TimeoutError:
+            if scope is None or not scope.expired():
+                raise
+            logger.debug(
+                "[trace] _TaskBoundSession._loop turn=%d: caller abandoned the "
+                "turn; stream cancelled",
+                turn_no,
+            )
+        finally:
+            future.remove_done_callback(_on_abandoned)
+
     async def prepare(self) -> None:
         """No-op. The inner session is prepared during ``start()``."""
         return None
@@ -351,19 +404,25 @@ class _TaskBoundSession:
 
     async def send_streaming(self, message: str) -> AsyncGenerator[str, None]:
         """Stream a message via the actor task, yielding chunks."""
-        async for item in self._stream_via_actor(message, events=False):
-            if isinstance(item, str):
-                yield item
+        async with contextlib.aclosing(
+            self._stream_via_actor(message, events=False)
+        ) as items:
+            async for item in items:
+                if isinstance(item, str):
+                    yield item
 
-    async def send_events(self, message: str) -> AsyncGenerator[str | ToolEvent, None]:
+    async def send_events(self, message: str) -> AsyncGenerator[_TurnItem, None]:
         """Stream text deltas and tool events via the actor task, in run order.
 
         Raises:
             AttributeError: If the wrapped session lacks ``send_events``
                 (check ``supports_events`` first).
         """
-        async for item in self._stream_via_actor(message, events=True):
-            yield item
+        async with contextlib.aclosing(
+            self._stream_via_actor(message, events=True)
+        ) as items:
+            async for item in items:
+                yield item
 
     @property
     def supports_events(self) -> bool:
@@ -372,19 +431,32 @@ class _TaskBoundSession:
 
     async def _stream_via_actor(
         self, message: str, *, events: bool
-    ) -> AsyncGenerator[str | ToolEvent, None]:
-        """Queue a streaming turn on the actor and yield what it produces."""
+    ) -> AsyncGenerator[_TurnItem, None]:
+        """Queue a streaming turn on the actor and yield what it produces.
+
+        If the caller stops early (``llm_timeout``, client disconnect,
+        ``aclose``), the turn's future is cancelled, as ``send`` does when its
+        caller times out: a still-queued turn is skipped, and a running
+        event-stream turn is cancelled (see ``_stream_events_turn``).
+        """
         loop = asyncio.get_running_loop()
         future: asyncio.Future[None] = loop.create_future()
         chunk_queue: asyncio.Queue[Any] = asyncio.Queue()
         await self._queue.put((message, future, chunk_queue, events))
-        while True:
-            item = await chunk_queue.get()
-            if item is _SENTINEL:
-                break
-            if isinstance(item, Exception):
-                raise item
-            yield item
+        finished = False
+        try:
+            while True:
+                item = await chunk_queue.get()
+                if item is _SENTINEL:
+                    finished = True
+                    break
+                if isinstance(item, Exception):
+                    finished = True
+                    raise item
+                yield item
+        finally:
+            if not finished:
+                future.cancel()
 
     async def send_agui(
         self,
@@ -633,52 +705,7 @@ class AgentExecutor:
                 )
             else:
                 result = await self._session.send(message)  # type: ignore[union-attr]
-            elapsed = time.time() - start_time
-
-            # Extract content from execution result
-            content = result.response
-
-            # Backends report runtime failures as ``is_error`` results rather
-            # than raising (so multi-turn test runs can record them). A turn
-            # with no content is a failed turn for chat/serve callers; a
-            # partial response (budget cap, FR-032) is returned with the
-            # reason logged so the caller still sees what the model produced.
-            if result.is_error:
-                reason = result.error_reason or "unknown backend error"
-                if not content:
-                    raise BackendSessionError(f"Agent turn failed: {reason}")
-                logger.warning(
-                    "Agent turn ended with error after partial response: %s", reason
-                )
-
-            # Convert tool calls to ToolExecution models
-            tool_executions = self._convert_tool_calls(result.tool_calls)
-
-            # Extract token usage (always a TokenUsage, never None)
-            tokens_used = result.token_usage
-
-            logger.debug(
-                f"Turn executed successfully: content={len(content)} chars, "
-                f"tools={len(tool_executions)}, time={elapsed:.2f}s"
-            )
-
-            # Track history
-            self._history.append({"role": "user", "content": message})
-            self._history.append({"role": "assistant", "content": content})
-
-            response = AgentResponse(
-                content=content,
-                tool_executions=tool_executions,
-                tokens_used=tokens_used,
-                execution_time=elapsed,
-                thinking=result.thinking,
-            )
-
-            # Call post-execution callback
-            if self.on_execution_complete:
-                self.on_execution_complete(response)
-
-            return response
+            return self._complete_turn(message, result, time.time() - start_time)
 
         except BackendSessionError:
             raise
@@ -698,6 +725,53 @@ class AgentExecutor:
         except Exception as e:
             logger.error(f"Agent execution failed: {e}", exc_info=True)
             raise RuntimeError(f"Agent execution failed: {e}") from e
+
+    def _complete_turn(
+        self, message: str, result: ExecutionResult, elapsed: float
+    ) -> AgentResponse:
+        """Record a finished turn in history and build its ``AgentResponse``.
+
+        Shared by ``execute_turn`` and ``execute_turn_events`` so both record
+        the same final answer and token usage.
+
+        Raises:
+            BackendSessionError: If the result is an error with no content.
+        """
+        content = result.response
+
+        # Backends report runtime failures as ``is_error`` results rather
+        # than raising (so multi-turn test runs can record them). A turn
+        # with no content is a failed turn for chat/serve callers; a
+        # partial response (budget cap, FR-032) is returned with the
+        # reason logged so the caller still sees what the model produced.
+        if result.is_error:
+            reason = result.error_reason or "unknown backend error"
+            if not content:
+                raise BackendSessionError(f"Agent turn failed: {reason}")
+            logger.warning(
+                "Agent turn ended with error after partial response: %s", reason
+            )
+
+        tool_executions = self._convert_tool_calls(result.tool_calls)
+        logger.debug(
+            f"Turn executed successfully: content={len(content)} chars, "
+            f"tools={len(tool_executions)}, time={elapsed:.2f}s"
+        )
+
+        self._history.append({"role": "user", "content": message})
+        self._history.append({"role": "assistant", "content": content})
+
+        response = AgentResponse(
+            content=content,
+            tool_executions=tool_executions,
+            # Always a TokenUsage, never None.
+            tokens_used=result.token_usage,
+            execution_time=elapsed,
+            thinking=result.thinking,
+        )
+        if self.on_execution_complete:
+            self.on_execution_complete(response)
+        return response
 
     async def execute_turn_streaming(self, message: str) -> AsyncGenerator[str, None]:
         """Stream agent response token by token.
@@ -729,28 +803,35 @@ class AgentExecutor:
 
     async def execute_turn_events(
         self, message: str
-    ) -> AsyncGenerator[str | ToolEvent, None]:
+    ) -> AsyncGenerator[str | ToolEvent | AgentResponse, None]:
         """Stream one turn as text deltas and tool events, in run order.
 
-        Requires ``streams_turn_events``. Failures match ``execute_turn`` for
-        serve callers: a budget trip after partial text ends the stream with a
-        warning; one with no text, or any backend failure, raises
-        ``BackendSessionError``.
+        Requires ``streams_turn_events``. The final item is the turn's
+        ``AgentResponse``, built and recorded in history exactly as
+        ``execute_turn`` does (the run's final output, not the joined deltas,
+        plus tool executions and token usage). Failures match
+        ``execute_turn`` for serve callers: a budget trip with a partial
+        response ends the turn with a warning; one with no response, or any
+        backend failure, raises ``BackendSessionError``.
 
         Args:
             message: User message to send to the agent.
 
         Yields:
             ``str`` text deltas and ``ToolEvent`` records as the run produces
-            them.
+            them, then one ``AgentResponse``.
 
         Raises:
             BackendSessionError: If the turn fails.
             TimeoutError: If the turn exceeds ``llm_timeout``.
             RuntimeError: If backend initialization fails.
         """
+        start_time = time.time()
         collected: list[str] = []
+        result: ExecutionResult | None = None
         try:
+            if self.on_execution_start:
+                self.on_execution_start(message)
             await self._ensure_backend_and_session()
             session = self._session
             stream = (
@@ -758,17 +839,22 @@ class AgentExecutor:
                 if isinstance(session, _TaskBoundSession)
                 else _require_event_session(session).send_events(message)
             )
-            async for item in self._with_deadline(stream):
-                if isinstance(item, str):
-                    collected.append(item)
-                yield item
+            async with contextlib.aclosing(self._with_deadline(stream)) as items:
+                async for item in items:
+                    if isinstance(item, ExecutionResult):
+                        result = item
+                        continue
+                    if isinstance(item, str):
+                        collected.append(item)
+                    yield item
         except BackendBudgetExceededError as exc:
-            # Mirrors execute_turn: a partial response is returned with the
-            # reason logged; no response at all is a failed turn (FR-032).
-            if not collected:
-                raise BackendSessionError(f"Agent turn failed: {exc}") from exc
-            logger.warning(
-                "Agent turn ended with error after partial response: %s", exc
+            # Mirrors the non-streaming ``send`` (FR-032): the partial
+            # response becomes an error result that ``_complete_turn`` accepts
+            # with a warning, or fails when nothing was produced.
+            result = ExecutionResult(
+                response=exc.partial_response or "".join(collected),
+                is_error=True,
+                error_reason=str(exc),
             )
         except (BackendSessionError, TimeoutError):
             raise
@@ -781,8 +867,10 @@ class AgentExecutor:
             raise BackendSessionError(
                 f"Agent turn failed: {type(e).__name__}: {e}"
             ) from e
-        self._history.append({"role": "user", "content": message})
-        self._history.append({"role": "assistant", "content": "".join(collected)})
+        if result is None:
+            # The session reported no final result; fall back to the text.
+            result = ExecutionResult(response="".join(collected))
+        yield self._complete_turn(message, result, time.time() - start_time)
 
     async def _with_deadline(
         self, stream: AsyncGenerator[_T, None]
@@ -810,8 +898,9 @@ class AgentExecutor:
 
             timer = loop.call_later(self._llm_timeout, _on_deadline)
         try:
-            async for item in stream:
-                yield item
+            async with contextlib.aclosing(stream) as items:
+                async for item in items:
+                    yield item
         except asyncio.CancelledError:
             if timed_out:
                 raise TimeoutError(

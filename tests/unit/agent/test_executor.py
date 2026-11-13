@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest import mock
 from unittest.mock import AsyncMock
 
@@ -496,15 +497,21 @@ class TestExecuteTurnEvents:
         ToolEvent(kind="end", tool_name="lookup", tool_use_id="c1", tool_response="4"),
         "Four.",
     ]
+    _RESULT = ExecutionResult(
+        response="Four.",
+        tool_calls=[{"name": "lookup", "arguments": {}}],
+        token_usage=TokenUsage(prompt_tokens=3, completion_tokens=2, total_tokens=5),
+    )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("task_bound", [False, True])
-    async def test_yields_items_in_order_and_records_history(
+    async def test_yields_items_in_order_and_records_final_result(
         self, make_agent, task_bound: bool
     ) -> None:
+        """History and usage come from the run's result, not the joined deltas."""
         executor = AgentExecutor(
             make_agent(),
-            backend=_event_backend(_EventSession(list(self._ITEMS))),
+            backend=_event_backend(_EventSession([*self._ITEMS, self._RESULT])),
             release_transport_after_turn=task_bound,
         )
         await executor._ensure_backend_and_session()
@@ -513,11 +520,27 @@ class TestExecuteTurnEvents:
         items = [item async for item in executor.execute_turn_events("q")]
         await executor.shutdown()
 
-        assert items == self._ITEMS
+        *streamed, response = items
+        assert streamed == self._ITEMS
+        assert isinstance(response, AgentResponse)
+        assert response.content == "Four."
+        assert response.tokens_used == self._RESULT.token_usage
+        assert [t.tool_name for t in response.tool_executions] == ["lookup"]
         assert executor.get_history() == [
             {"role": "user", "content": "q"},
-            {"role": "assistant", "content": "Let me Four."},
+            {"role": "assistant", "content": "Four."},
         ]
+
+    @pytest.mark.asyncio
+    async def test_session_without_result_falls_back_to_streamed_text(
+        self, make_agent
+    ) -> None:
+        executor = AgentExecutor(
+            make_agent(), backend=_event_backend(_EventSession(list(self._ITEMS)))
+        )
+        items = [item async for item in executor.execute_turn_events("q")]
+        assert isinstance(items[-1], AgentResponse)
+        assert items[-1].content == "Let me Four."
 
     @pytest.mark.asyncio
     async def test_streams_turn_events_false_without_capability(
@@ -537,7 +560,10 @@ class TestExecuteTurnEvents:
             backend=_event_backend(_EventSession(["partial"], error=error)),
         )
         items = [item async for item in executor.execute_turn_events("q")]
-        assert items == ["partial"]
+        assert items[0] == "partial"
+        assert isinstance(items[1], AgentResponse)
+        assert items[1].content == "partial"
+        assert len(items) == 2
 
     @pytest.mark.asyncio
     async def test_budget_trip_without_text_fails_turn(self, make_agent) -> None:
@@ -581,3 +607,99 @@ class TestExecuteTurnEvents:
                 async for _ in executor.execute_turn_events("q"):
                     pass
         await executor.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Abandoned streamed turns (caller timeout / disconnect) — Codex P1
+# ---------------------------------------------------------------------------
+
+
+class _GatedEventSession:
+    """Event session whose turn ``"A"`` blocks on a gate after its first delta."""
+
+    def __init__(self) -> None:
+        self.gate = asyncio.Event()
+        self.cancelled = asyncio.Event()
+        self.started: list[str] = []
+        self.tool_events = None
+
+    async def prepare(self) -> None:
+        return None
+
+    async def send(self, message: str) -> ExecutionResult:
+        raise AssertionError("send must not be used")
+
+    async def send_streaming(self, message: str):  # type: ignore[no-untyped-def]
+        raise AssertionError("send_streaming must not be used")
+        yield ""  # pragma: no cover
+
+    async def send_events(self, message: str):  # type: ignore[no-untyped-def]
+        self.started.append(message)
+        yield f"{message}-1"
+        if message == "A":
+            try:
+                await self.gate.wait()
+            except asyncio.CancelledError:
+                self.cancelled.set()
+                raise
+        yield ExecutionResult(response=f"{message}-done")
+
+    async def close(self) -> None:
+        return None
+
+
+class TestAbandonedStreamedTurn:
+    """A caller that stops reading must not leave its turn running or queued."""
+
+    async def _actor_executor(
+        self, make_agent, session: _GatedEventSession, llm_timeout: float | None
+    ) -> AgentExecutor:
+        executor = AgentExecutor(
+            make_agent(),
+            backend=_event_backend(session),  # type: ignore[arg-type]
+            release_transport_after_turn=True,
+            llm_timeout=llm_timeout,
+        )
+        await executor._ensure_backend_and_session()
+        return executor
+
+    @pytest.mark.asyncio
+    async def test_timed_out_queued_turn_is_skipped(self, make_agent) -> None:
+        """Turn B times out while queued behind A; the actor must not run B."""
+        session = _GatedEventSession()
+        executor = await self._actor_executor(make_agent, session, llm_timeout=0.2)
+        actor = executor._session
+        assert actor is not None
+        turn_a = actor.send_events("A")  # type: ignore[attr-defined]
+        assert await anext(turn_a) == "A-1"  # A is now blocked on the gate
+
+        with pytest.raises(TimeoutError, match="llm_timeout"):
+            async for _ in executor.execute_turn_events("B"):
+                pass
+
+        session.gate.set()
+        rest_a = [item async for item in turn_a]
+        assert rest_a == [ExecutionResult(response="A-done")]
+        items_c = [item async for item in executor.execute_turn_events("C")]
+        await executor.shutdown()
+
+        assert items_c[0] == "C-1"
+        assert session.started == ["A", "C"]
+
+    @pytest.mark.asyncio
+    async def test_abandoned_running_turn_is_cancelled(self, make_agent) -> None:
+        """A consumer that disconnects mid-turn cancels the running stream."""
+        session = _GatedEventSession()
+        executor = await self._actor_executor(make_agent, session, llm_timeout=None)
+        stream = executor.execute_turn_events("A")
+        assert await anext(stream) == "A-1"
+
+        await stream.aclose()  # the HTTP client went away
+        await asyncio.wait_for(session.cancelled.wait(), 5)
+
+        # The actor survives and serves the next turn.
+        items = [item async for item in executor.execute_turn_events("C")]
+        await executor.shutdown()
+        assert items[0] == "C-1"
+        assert isinstance(items[-1], AgentResponse)
+        assert session.started == ["A", "C"]

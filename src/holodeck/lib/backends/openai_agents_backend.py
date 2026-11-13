@@ -41,8 +41,9 @@ from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
-    from agents import ModelSettings, OpenAIResponsesModel, RunConfig, RunResult
+    from agents import ModelSettings, OpenAIResponsesModel, RunConfig
     from agents.models.interface import Model
+    from agents.result import RunResultBase
     from openai import AsyncOpenAI
     from openai.types.shared import Reasoning
     from openai.types.shared.reasoning_effort import ReasoningEffort
@@ -545,7 +546,7 @@ def _parse_tool_arguments(raw: Any) -> dict[str, Any]:
     return {}
 
 
-def _extract_thinking(result: RunResult) -> str:
+def _extract_thinking(result: RunResultBase) -> str:
     """Join reasoning-summary texts from a run's ``ReasoningItem``s (FR-004).
 
     Each ``ReasoningItem`` carries a ``summary`` list whose entries expose
@@ -554,7 +555,7 @@ def _extract_thinking(result: RunResult) -> str:
     models or runs without summaries yield an empty string.
 
     Args:
-        result: A ``RunResult`` from ``Runner.run``.
+        result: A completed run from ``Runner.run`` or ``Runner.run_streamed``.
 
     Returns:
         The reasoning summaries joined with a blank-line separator, or ``""``.
@@ -603,7 +604,7 @@ def _coerce_structured_output(final: object) -> dict[str, Any] | None:
 
 
 def _to_execution_result(
-    result: RunResult, *, structured: bool = False
+    result: RunResultBase, *, structured: bool = False
 ) -> ExecutionResult:
     """Map an SDK run result onto a provider-agnostic ``ExecutionResult``.
 
@@ -612,7 +613,7 @@ def _to_execution_result(
     ``thinking``, and — when *structured* — the parsed ``structured_output``.
 
     Args:
-        result: A ``RunResult`` from ``Runner.run``.
+        result: A completed run from ``Runner.run`` or ``Runner.run_streamed``.
         structured: Whether an output schema was set on the agent. When ``True``
             ``final_output`` is coerced into ``structured_output``; when ``False``
             ``structured_output`` stays ``None`` (the default behavior).
@@ -902,7 +903,7 @@ class OpenAIAgentsSession:
             async for item in self._stream_turn(message, tracker):
                 if isinstance(item, str):
                     yield item
-                else:
+                elif isinstance(item, ToolEvent):
                     self._publish([item])
         except BackendBudgetExceededError as exc:
             # The budget tripped mid-stream; the deltas produced so far have
@@ -915,7 +916,9 @@ class OpenAIAgentsSession:
             self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
             raise
 
-    async def send_events(self, message: str) -> AsyncGenerator[str | ToolEvent, None]:
+    async def send_events(
+        self, message: str
+    ) -> AsyncGenerator[str | ToolEvent | ExecutionResult, None]:
         """Stream one turn as text deltas and tool events in SDK order.
 
         The AG-UI bridge consumes this so tool cards and text reach the client
@@ -927,7 +930,9 @@ class OpenAIAgentsSession:
 
         Yields:
             ``str`` text deltas and ``ToolEvent`` records, in the order the
-            SDK produced them.
+            SDK produced them, then one ``ExecutionResult`` built from the
+            completed run exactly as ``send`` builds it (final output, tool
+            calls, token usage).
 
         Raises:
             BackendBudgetExceededError: The run tripped ``max_budget_usd``.
@@ -948,21 +953,24 @@ class OpenAIAgentsSession:
 
     async def _stream_turn(
         self, message: str, tracker: HandoffTracker
-    ) -> AsyncGenerator[str | ToolEvent, None]:
+    ) -> AsyncGenerator[str | ToolEvent | ExecutionResult, None]:
         """Run one streamed turn, yielding text deltas and tool events in order.
 
         Text deltas surface as raw-response events carrying a
         ``ResponseTextDeltaEvent``; run-item and agent-updated events map to
         ``ToolEvent`` records through *tracker*. On a clean finish, open
-        handoffs are ended (they stay active until the run ends). Failures
-        propagate; callers close *tracker* with the error.
+        handoffs are ended (they stay active until the run ends) and the
+        completed run is yielded as an ``ExecutionResult``. Failures
+        propagate; callers close *tracker* with the error. Cancelling the
+        consumer cancels the SDK run (``stream_events`` handles that).
 
         Args:
             message: The user message to send to the agent.
             tracker: The run's handoff state.
 
         Yields:
-            ``str`` text deltas and ``ToolEvent`` records in SDK order.
+            ``str`` text deltas and ``ToolEvent`` records in SDK order, then
+            the turn's ``ExecutionResult``.
         """
         from agents import Runner
         from openai.types.responses import ResponseTextDeltaEvent
@@ -993,6 +1001,7 @@ class OpenAIAgentsSession:
                 yield data.delta
         for tool_event in tracker.close():
             yield tool_event
+        yield _to_execution_result(result, structured=self._structured_output)
 
     async def close(self) -> None:
         """Release the SQLite session connection, if any."""

@@ -9,6 +9,7 @@ See: https://github.com/ag-ui-protocol/ag-ui for protocol specification.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
@@ -657,7 +658,9 @@ async def _stream_turn_events(
     Text deltas become ``TEXT_MESSAGE_CONTENT`` events on an assistant message
     opened at the first delta. A tool or reasoning event closes that message,
     so text after a tool call starts a new message and the client renders
-    text, tool card, text in run order.
+    text, tool card, text in run order. If the turn fails, the open text
+    message and any open tool call are closed before the error propagates,
+    so the caller's ``RUN_ERROR`` never leaves a message unterminated.
 
     Args:
         executor: Executor whose session supports ``execute_turn_events``.
@@ -671,20 +674,38 @@ async def _stream_turn_events(
     """
     text_message_id: str | None = None
     next_message_id: str | None = first_message_id
-    async for item in executor.execute_turn_events(message):
-        if isinstance(item, str):
-            if text_message_id is None:
-                text_message_id = next_message_id or str(ULID())
-                next_message_id = None
-                yield create_text_message_start(text_message_id)
-            yield create_text_message_content(text_message_id, item)
-            continue
-        agui_events = _tool_event_to_agui(item, tool_msg_ids)
-        if agui_events and text_message_id is not None:
+    try:
+        async with contextlib.aclosing(executor.execute_turn_events(message)) as items:
+            async for item in items:
+                if isinstance(item, str):
+                    if text_message_id is None:
+                        text_message_id = next_message_id or str(ULID())
+                        next_message_id = None
+                        yield create_text_message_start(text_message_id)
+                    yield create_text_message_content(text_message_id, item)
+                    continue
+                if not isinstance(item, ToolEvent):
+                    # The final AgentResponse: already streamed, nothing to emit.
+                    continue
+                agui_events = _tool_event_to_agui(item, tool_msg_ids)
+                if agui_events and text_message_id is not None:
+                    yield create_text_message_end(text_message_id)
+                    text_message_id = None
+                for agui_evt in agui_events:
+                    yield agui_evt
+    except Exception as exc:
+        if text_message_id is not None:
             yield create_text_message_end(text_message_id)
-            text_message_id = None
-        for agui_evt in agui_events:
-            yield agui_evt
+        for tool_use_id in list(tool_msg_ids):
+            failed = ToolEvent(
+                kind="error",
+                tool_name="",
+                tool_use_id=tool_use_id,
+                error=f"run failed: {type(exc).__name__}",
+            )
+            for agui_evt in _tool_event_to_agui(failed, tool_msg_ids):
+                yield agui_evt
+        raise
     if text_message_id is not None:
         yield create_text_message_end(text_message_id)
 

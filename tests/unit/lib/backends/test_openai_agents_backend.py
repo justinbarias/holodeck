@@ -914,6 +914,10 @@ class TestSession:
 
         streamed = MagicMock()
         streamed.stream_events = _stream_events
+        streamed.final_output = "Hello world"
+        streamed.new_items = []
+        streamed.raw_responses = []
+        streamed.context_wrapper = MagicMock(usage=None)
         with patch("agents.Runner") as runner:
             runner.run_streamed = MagicMock(return_value=streamed)
             chunks = [c async for c in session.send_streaming("hi")]
