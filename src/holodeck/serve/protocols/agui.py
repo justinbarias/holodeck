@@ -50,6 +50,7 @@ from holodeck.serve.file_utils import (
 from holodeck.serve.protocols.base import Protocol
 
 if TYPE_CHECKING:
+    from holodeck.chat.executor import AgentExecutor
     from holodeck.models.config import ExecutionConfig
     from holodeck.models.tool_execution import ToolExecution
     from holodeck.serve.session_store import ServerSession
@@ -645,6 +646,49 @@ def _reasoning_events(
     ]
 
 
+async def _stream_turn_events(
+    executor: AgentExecutor,
+    message: str,
+    first_message_id: str,
+    tool_msg_ids: dict[str, str],
+) -> AsyncGenerator[BaseEvent, None]:
+    """Translate one ordered turn stream into AG-UI events as they arrive.
+
+    Text deltas become ``TEXT_MESSAGE_CONTENT`` events on an assistant message
+    opened at the first delta. A tool or reasoning event closes that message,
+    so text after a tool call starts a new message and the client renders
+    text, tool card, text in run order.
+
+    Args:
+        executor: Executor whose session supports ``execute_turn_events``.
+        message: The user message for this turn.
+        first_message_id: Id for the first text message.
+        tool_msg_ids: Mutable ``tool_use_id`` → parent message id mapping
+            shared with ``_tool_event_to_agui``.
+
+    Yields:
+        AG-UI events, excluding ``RUN_STARTED`` / ``RUN_FINISHED``.
+    """
+    text_message_id: str | None = None
+    next_message_id: str | None = first_message_id
+    async for item in executor.execute_turn_events(message):
+        if isinstance(item, str):
+            if text_message_id is None:
+                text_message_id = next_message_id or str(ULID())
+                next_message_id = None
+                yield create_text_message_start(text_message_id)
+            yield create_text_message_content(text_message_id, item)
+            continue
+        agui_events = _tool_event_to_agui(item, tool_msg_ids)
+        if agui_events and text_message_id is not None:
+            yield create_text_message_end(text_message_id)
+            text_message_id = None
+        for agui_evt in agui_events:
+            yield agui_evt
+    if text_message_id is not None:
+        yield create_text_message_end(text_message_id)
+
+
 # =============================================================================
 # T024-T025: AGUIProtocol class with AgentExecutor integration
 # =============================================================================
@@ -851,6 +895,17 @@ class AGUIProtocol(Protocol):
                 session.session_id,
             )
             tool_msg_ids: dict[str, str] = {}
+
+            if executor.streams_turn_events is True:
+                # Live path (OpenAI Agents): text deltas and tool events arrive
+                # on one ordered stream, so each is emitted as it happens.
+                async for agui_evt in _stream_turn_events(
+                    executor, full_message, message_id, tool_msg_ids
+                ):
+                    yield encoder.encode(agui_evt)
+                yield encoder.encode(create_run_finished_event(thread_id, run_id))
+                logger.debug("Completed streamed request for run %s", run_id)
+                return
 
             if isinstance(tool_queue, asyncio.Queue):
                 # Real-time path: run execute_turn as a task, drain events

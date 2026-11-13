@@ -6,11 +6,12 @@ import asyncio
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast, runtime_checkable
 
 from holodeck.lib.backends.base import (
     AgentBackend,
     AgentSession,
+    BackendBudgetExceededError,
     BackendInitError,
     BackendSessionError,
     ExecutionResult,
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SENTINEL = object()
+
+_T = TypeVar("_T")
 
 
 @runtime_checkable
@@ -48,6 +51,27 @@ def _require_agui_session(session: AgentSession | None) -> _AGUISession:
     if session is None or not isinstance(session, _AGUISession):
         raise AttributeError("Backend session does not support AG-UI streaming")
     return cast(_AGUISession, session)
+
+
+@runtime_checkable
+class _EventStreamSession(Protocol):
+    """Session capability: one turn as ordered text deltas and tool events.
+
+    Implemented by the OpenAI Agents session so the AG-UI bridge can emit tool
+    cards and text live and correctly interleaved, without the bounded
+    ``tool_events`` side queue.
+    """
+
+    def send_events(self, message: str) -> AsyncGenerator[str | ToolEvent, None]:
+        """Stream ``str`` text deltas and ``ToolEvent`` records in run order."""
+        ...
+
+
+def _require_event_session(session: AgentSession | None) -> _EventStreamSession:
+    """Return *session* as event-stream-capable or raise a clear error."""
+    if session is None or not isinstance(session, _EventStreamSession):
+        raise AttributeError("Backend session does not support event streaming")
+    return cast(_EventStreamSession, session)
 
 
 @dataclass
@@ -115,8 +139,10 @@ class _TaskBoundSession:
         self._session: AgentSession | None = session
         self._session_factory = session_factory
         self._teardown = teardown
+        # (message, future, chunk_queue, events). ``chunk_queue`` is None for
+        # ``send``; ``events`` selects ``send_events`` over ``send_streaming``.
         self._queue: asyncio.Queue[
-            tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None] | None
+            tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None, bool] | None
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
         self._ready: asyncio.Event = asyncio.Event()
@@ -218,13 +244,15 @@ class _TaskBoundSession:
         self,
         session: AgentSession,
         turn_no: int,
-        item: tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None],
+        item: tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None, bool],
     ) -> None:
         """Execute one queued turn inside the actor task."""
-        message, future, chunk_queue = item
+        message, future, chunk_queue, events = item
         self._current = future
         try:
-            await self._execute_item(session, turn_no, message, future, chunk_queue)
+            await self._execute_item(
+                session, turn_no, message, future, chunk_queue, events=events
+            )
         except asyncio.CancelledError:
             # The actor was cancelled mid-turn (see ``close``): the caller of
             # this turn must not wait forever.
@@ -246,6 +274,8 @@ class _TaskBoundSession:
         message: str,
         future: asyncio.Future[Any],
         chunk_queue: asyncio.Queue[Any] | None,
+        *,
+        events: bool = False,
     ) -> None:
         logger.debug(
             "[trace] _TaskBoundSession._loop turn=%d: dequeued, "
@@ -269,9 +299,15 @@ class _TaskBoundSession:
 
         try:
             if chunk_queue is not None:
-                # Streaming mode — push chunks to the caller's queue
+                # Streaming mode — push chunks (text, or text and tool events
+                # in run order) to the caller's queue
                 try:
-                    async for chunk in session.send_streaming(message):
+                    stream: AsyncGenerator[str | ToolEvent, None] = (
+                        _require_event_session(session).send_events(message)
+                        if events
+                        else session.send_streaming(message)
+                    )
+                    async for chunk in stream:
                         await chunk_queue.put(chunk)
                     await chunk_queue.put(_SENTINEL)
                 except Exception as e:
@@ -310,15 +346,38 @@ class _TaskBoundSession:
         """Send a message via the actor task and await the result."""
         loop = asyncio.get_running_loop()
         future: asyncio.Future[ExecutionResult] = loop.create_future()
-        await self._queue.put((message, future, None))
+        await self._queue.put((message, future, None, False))
         return await future
 
     async def send_streaming(self, message: str) -> AsyncGenerator[str, None]:
         """Stream a message via the actor task, yielding chunks."""
+        async for item in self._stream_via_actor(message, events=False):
+            if isinstance(item, str):
+                yield item
+
+    async def send_events(self, message: str) -> AsyncGenerator[str | ToolEvent, None]:
+        """Stream text deltas and tool events via the actor task, in run order.
+
+        Raises:
+            AttributeError: If the wrapped session lacks ``send_events``
+                (check ``supports_events`` first).
+        """
+        async for item in self._stream_via_actor(message, events=True):
+            yield item
+
+    @property
+    def supports_events(self) -> bool:
+        """Whether the wrapped session implements ``send_events``."""
+        return isinstance(self._session, _EventStreamSession)
+
+    async def _stream_via_actor(
+        self, message: str, *, events: bool
+    ) -> AsyncGenerator[str | ToolEvent, None]:
+        """Queue a streaming turn on the actor and yield what it produces."""
         loop = asyncio.get_running_loop()
         future: asyncio.Future[None] = loop.create_future()
         chunk_queue: asyncio.Queue[Any] = asyncio.Queue()
-        await self._queue.put((message, future, chunk_queue))
+        await self._queue.put((message, future, chunk_queue, events))
         while True:
             item = await chunk_queue.get()
             if item is _SENTINEL:
@@ -380,7 +439,7 @@ class _TaskBoundSession:
                 break
             if item is None:
                 continue
-            _message, future, chunk_queue = item
+            _message, future, chunk_queue, _events = item
             if not future.done():
                 future.set_exception(error)
             if chunk_queue is not None:
@@ -471,6 +530,18 @@ class AgentExecutor:
         if self._session is not None:
             return getattr(self._session, "tool_events", None)
         return None
+
+    @property
+    def streams_turn_events(self) -> bool:
+        """Whether ``execute_turn_events`` is available for the current session.
+
+        ``False`` until the session exists (call ``_ensure_backend_and_session``
+        first) or when the backend session lacks ``send_events``.
+        """
+        session = self._session
+        if isinstance(session, _TaskBoundSession):
+            return session.supports_events
+        return isinstance(session, _EventStreamSession)
 
     async def _ensure_backend_and_session(self) -> None:
         """Lazily initialize backend and session on first use.
@@ -643,39 +714,11 @@ class AgentExecutor:
         try:
             await self._ensure_backend_and_session()
             collected: list[str] = []
-            # Enforce llm_timeout via a single deadline timer that cancels the
-            # current task. Per-chunk ``asyncio.wait_for`` would wrap each
-            # ``__anext__`` in a fresh task and break the SDK's anyio cancel
-            # scope ownership ("Attempted to exit cancel scope in a different
-            # task than it was entered in"). call_later runs on the current
-            # task, so the SDK's scope stays bound to a single task.
-            timed_out = False
-            timer: asyncio.TimerHandle | None = None
-            if self._llm_timeout is not None:
-                loop = asyncio.get_running_loop()
-                current = asyncio.current_task()
-
-                def _on_deadline() -> None:
-                    nonlocal timed_out
-                    timed_out = True
-                    if current is not None:
-                        current.cancel()
-
-                timer = loop.call_later(self._llm_timeout, _on_deadline)
-            try:
-                async for chunk in self._session.send_streaming(message):  # type: ignore[union-attr]
-                    collected.append(chunk)
-                    yield chunk
-            except asyncio.CancelledError:
-                if timed_out:
-                    raise TimeoutError(
-                        f"streaming response exceeded llm_timeout="
-                        f"{self._llm_timeout}s"
-                    ) from None
-                raise
-            finally:
-                if timer is not None:
-                    timer.cancel()
+            async for chunk in self._with_deadline(
+                self._session.send_streaming(message)  # type: ignore[union-attr]
+            ):
+                collected.append(chunk)
+                yield chunk
             # Update history after stream completes
             self._history.append({"role": "user", "content": message})
             self._history.append({"role": "assistant", "content": "".join(collected)})
@@ -683,6 +726,101 @@ class AgentExecutor:
             raise
         except BackendInitError as e:
             raise RuntimeError(f"Agent streaming failed: {e}") from e
+
+    async def execute_turn_events(
+        self, message: str
+    ) -> AsyncGenerator[str | ToolEvent, None]:
+        """Stream one turn as text deltas and tool events, in run order.
+
+        Requires ``streams_turn_events``. Failures match ``execute_turn`` for
+        serve callers: a budget trip after partial text ends the stream with a
+        warning; one with no text, or any backend failure, raises
+        ``BackendSessionError``.
+
+        Args:
+            message: User message to send to the agent.
+
+        Yields:
+            ``str`` text deltas and ``ToolEvent`` records as the run produces
+            them.
+
+        Raises:
+            BackendSessionError: If the turn fails.
+            TimeoutError: If the turn exceeds ``llm_timeout``.
+            RuntimeError: If backend initialization fails.
+        """
+        collected: list[str] = []
+        try:
+            await self._ensure_backend_and_session()
+            session = self._session
+            stream = (
+                session.send_events(message)
+                if isinstance(session, _TaskBoundSession)
+                else _require_event_session(session).send_events(message)
+            )
+            async for item in self._with_deadline(stream):
+                if isinstance(item, str):
+                    collected.append(item)
+                yield item
+        except BackendBudgetExceededError as exc:
+            # Mirrors execute_turn: a partial response is returned with the
+            # reason logged; no response at all is a failed turn (FR-032).
+            if not collected:
+                raise BackendSessionError(f"Agent turn failed: {exc}") from exc
+            logger.warning(
+                "Agent turn ended with error after partial response: %s", exc
+            )
+        except (BackendSessionError, TimeoutError):
+            raise
+        except BackendInitError as e:
+            raise RuntimeError(f"Agent execution failed: {e}") from e
+        except Exception as e:
+            # Backend runtime failures surface as BackendSessionError, as the
+            # non-streaming ``send`` path does via ``is_error`` results.
+            logger.warning("Agent turn failed: %s: %s", type(e).__name__, e)
+            raise BackendSessionError(
+                f"Agent turn failed: {type(e).__name__}: {e}"
+            ) from e
+        self._history.append({"role": "user", "content": message})
+        self._history.append({"role": "assistant", "content": "".join(collected)})
+
+    async def _with_deadline(
+        self, stream: AsyncGenerator[_T, None]
+    ) -> AsyncGenerator[_T, None]:
+        """Yield from *stream*, raising ``TimeoutError`` past ``llm_timeout``.
+
+        Enforces the timeout via a single deadline timer that cancels the
+        current task. Per-chunk ``asyncio.wait_for`` would wrap each
+        ``__anext__`` in a fresh task and break the SDK's anyio cancel scope
+        ownership ("Attempted to exit cancel scope in a different task than it
+        was entered in"). call_later runs on the current task, so the SDK's
+        scope stays bound to a single task.
+        """
+        timed_out = False
+        timer: asyncio.TimerHandle | None = None
+        if self._llm_timeout is not None:
+            loop = asyncio.get_running_loop()
+            current = asyncio.current_task()
+
+            def _on_deadline() -> None:
+                nonlocal timed_out
+                timed_out = True
+                if current is not None:
+                    current.cancel()
+
+            timer = loop.call_later(self._llm_timeout, _on_deadline)
+        try:
+            async for item in stream:
+                yield item
+        except asyncio.CancelledError:
+            if timed_out:
+                raise TimeoutError(
+                    f"streaming response exceeded llm_timeout={self._llm_timeout}s"
+                ) from None
+            raise
+        finally:
+            if timer is not None:
+                timer.cancel()
 
     async def execute_turn_agui(
         self,

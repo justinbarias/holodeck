@@ -9,8 +9,10 @@ import pytest
 
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.lib.backends.base import (
+    BackendBudgetExceededError,
     BackendSessionError,
     ExecutionResult,
+    ToolEvent,
 )
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
@@ -443,3 +445,139 @@ class TestBackendExecutorExecution:
 
         with pytest.raises(BackendSessionError, match="Connection lost"):
             await executor.execute_turn("Hello")
+
+
+# ---------------------------------------------------------------------------
+# execute_turn_events — ordered text + tool event stream (AG-UI live path)
+# ---------------------------------------------------------------------------
+
+
+class _EventSession:
+    """Session exposing ``send_events`` with a scripted item sequence."""
+
+    def __init__(self, items: list[object], error: Exception | None = None) -> None:
+        self._items = items
+        self._error = error
+        self.tool_events = None
+
+    async def prepare(self) -> None:
+        return None
+
+    async def send(self, message: str) -> ExecutionResult:
+        raise AssertionError("send must not be used")
+
+    async def send_streaming(self, message: str):  # type: ignore[no-untyped-def]
+        raise AssertionError("send_streaming must not be used")
+        yield ""  # pragma: no cover
+
+    async def send_events(self, message: str):  # type: ignore[no-untyped-def]
+        for item in self._items:
+            yield item
+        if self._error is not None:
+            raise self._error
+
+    async def close(self) -> None:
+        return None
+
+
+def _event_backend(session: _EventSession) -> mock.MagicMock:
+    backend = mock.MagicMock()
+    backend.create_session = AsyncMock(return_value=session)
+    backend.teardown = AsyncMock()
+    return backend
+
+
+class TestExecuteTurnEvents:
+    """``execute_turn_events`` forwards the ordered stream with serve semantics."""
+
+    _ITEMS: list[object] = [
+        "Let me ",
+        ToolEvent(kind="start", tool_name="lookup", tool_use_id="c1"),
+        ToolEvent(kind="end", tool_name="lookup", tool_use_id="c1", tool_response="4"),
+        "Four.",
+    ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("task_bound", [False, True])
+    async def test_yields_items_in_order_and_records_history(
+        self, make_agent, task_bound: bool
+    ) -> None:
+        executor = AgentExecutor(
+            make_agent(),
+            backend=_event_backend(_EventSession(list(self._ITEMS))),
+            release_transport_after_turn=task_bound,
+        )
+        await executor._ensure_backend_and_session()
+        assert executor.streams_turn_events is True
+
+        items = [item async for item in executor.execute_turn_events("q")]
+        await executor.shutdown()
+
+        assert items == self._ITEMS
+        assert executor.get_history() == [
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "Let me Four."},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_streams_turn_events_false_without_capability(
+        self, make_agent, make_mock_backend
+    ) -> None:
+        mock_backend, _ = make_mock_backend()
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
+        assert executor.streams_turn_events is False  # no session yet
+        await executor._ensure_backend_and_session()
+        assert executor.streams_turn_events is False
+
+    @pytest.mark.asyncio
+    async def test_budget_trip_after_text_ends_gracefully(self, make_agent) -> None:
+        error = BackendBudgetExceededError("partial", 1.0, 0.5)
+        executor = AgentExecutor(
+            make_agent(),
+            backend=_event_backend(_EventSession(["partial"], error=error)),
+        )
+        items = [item async for item in executor.execute_turn_events("q")]
+        assert items == ["partial"]
+
+    @pytest.mark.asyncio
+    async def test_budget_trip_without_text_fails_turn(self, make_agent) -> None:
+        error = BackendBudgetExceededError("", 1.0, 0.5)
+        executor = AgentExecutor(
+            make_agent(), backend=_event_backend(_EventSession([], error=error))
+        )
+        with pytest.raises(BackendSessionError, match="Agent turn failed"):
+            async for _ in executor.execute_turn_events("q"):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_runtime_failure_raises_backend_session_error(
+        self, make_agent
+    ) -> None:
+        executor = AgentExecutor(
+            make_agent(),
+            backend=_event_backend(
+                _EventSession(["x"], error=RuntimeError("upstream exploded"))
+            ),
+        )
+        with pytest.raises(BackendSessionError, match="upstream exploded"):
+            async for _ in executor.execute_turn_events("q"):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_actor_send_events_without_capability_raises(
+        self, make_agent, make_mock_backend
+    ) -> None:
+        """The actor reports a missing ``send_events`` instead of hanging."""
+        import asyncio
+
+        mock_backend, _ = make_mock_backend()
+        executor = AgentExecutor(
+            make_agent(), backend=mock_backend, release_transport_after_turn=True
+        )
+        await executor._ensure_backend_and_session()
+        assert executor.streams_turn_events is False
+        with pytest.raises(BackendSessionError, match="event streaming"):
+            async with asyncio.timeout(5):
+                async for _ in executor.execute_turn_events("q"):
+                    pass
+        await executor.shutdown()

@@ -48,6 +48,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
     from openai.types.shared.reasoning_effort import ReasoningEffort
     from pydantic import SecretStr
 
+    from holodeck.lib.backends.openai_agents_events import HandoffTracker
     from holodeck.lib.backends.openai_agents_tracing import TracingPolicy
 
 logger = logging.getLogger(__name__)
@@ -884,9 +885,9 @@ class OpenAIAgentsSession:
         """Stream the agent response token by token.
 
         Runs the SDK agent loop via ``Runner.run_streamed`` and forwards each
-        model text delta as it arrives. Text deltas surface as raw-response
-        events carrying a ``ResponseTextDeltaEvent``; tool-call and lifecycle
-        events are ignored for the streamed text channel.
+        model text delta as it arrives. Tool, handoff, and reasoning events
+        are published to ``tool_events`` in SDK order (FR-006); only text is
+        yielded.
 
         Args:
             message: The user message to send to the agent.
@@ -894,16 +895,83 @@ class OpenAIAgentsSession:
         Yields:
             String chunks of the agent response as the model produces them.
         """
+        from holodeck.lib.backends.openai_agents_events import HandoffTracker
+
+        tracker = HandoffTracker()
+        try:
+            async for item in self._stream_turn(message, tracker):
+                if isinstance(item, str):
+                    yield item
+                else:
+                    self._publish([item])
+        except BackendBudgetExceededError as exc:
+            # The budget tripped mid-stream; the deltas produced so far have
+            # already been yielded, so end the stream gracefully (FR-032).
+            # Open tool / handoff entries are closed as errors so the panel
+            # does not show them running forever.
+            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
+            return
+        except BaseException as exc:
+            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
+            raise
+
+    async def send_events(self, message: str) -> AsyncGenerator[str | ToolEvent, None]:
+        """Stream one turn as text deltas and tool events in SDK order.
+
+        The AG-UI bridge consumes this so tool cards and text reach the client
+        live and correctly interleaved. Tool events are yielded, not published
+        to the bounded ``tool_events`` queue, so a long run cannot drop any.
+
+        Args:
+            message: The user message to send to the agent.
+
+        Yields:
+            ``str`` text deltas and ``ToolEvent`` records, in the order the
+            SDK produced them.
+
+        Raises:
+            BackendBudgetExceededError: The run tripped ``max_budget_usd``.
+                Open tool / handoff entries are yielded as ``error`` events
+                first; the caller decides whether the partial text suffices.
+            Exception: Any SDK failure, re-raised after the same close-out.
+        """
+        from holodeck.lib.backends.openai_agents_events import HandoffTracker
+
+        tracker = HandoffTracker()
+        try:
+            async for item in self._stream_turn(message, tracker):
+                yield item
+        except Exception as exc:
+            for event in tracker.close(error=f"{type(exc).__name__}: {exc}"):
+                yield event
+            raise
+
+    async def _stream_turn(
+        self, message: str, tracker: HandoffTracker
+    ) -> AsyncGenerator[str | ToolEvent, None]:
+        """Run one streamed turn, yielding text deltas and tool events in order.
+
+        Text deltas surface as raw-response events carrying a
+        ``ResponseTextDeltaEvent``; run-item and agent-updated events map to
+        ``ToolEvent`` records through *tracker*. On a clean finish, open
+        handoffs are ended (they stay active until the run ends). Failures
+        propagate; callers close *tracker* with the error.
+
+        Args:
+            message: The user message to send to the agent.
+            tracker: The run's handoff state.
+
+        Yields:
+            ``str`` text deltas and ``ToolEvent`` records in SDK order.
+        """
         from agents import Runner
         from openai.types.responses import ResponseTextDeltaEvent
 
         from holodeck.lib.backends.openai_agents_events import (
-            HandoffTracker,
             tool_events_for_stream_event,
         )
         from holodeck.lib.backends.openai_agents_tracing import active_tracing_policy
 
-        tracker = HandoffTracker()
         # The streamed run executes on a task created inside this scope, so it
         # inherits the policy id for spans opened outside HoloDeck's RunConfig.
         with active_tracing_policy(self._tracing_policy_id):
@@ -915,29 +983,16 @@ class OpenAIAgentsSession:
                 run_config=self._run_config(),
                 hooks=self._hooks(),
             )
-        try:
-            async for event in result.stream_events():
-                if event.type != "raw_response_event":
-                    # Tool, handoff, and reasoning items feed the event queue
-                    # in SDK order (FR-006); only text deltas are yielded.
-                    self._publish(tool_events_for_stream_event(event, tracker))
-                    continue
-                data = event.data
-                if isinstance(data, ResponseTextDeltaEvent) and data.delta:
-                    yield data.delta
-        except BackendBudgetExceededError as exc:
-            # The budget tripped mid-stream; the deltas produced so far have
-            # already been yielded, so end the stream gracefully (FR-032).
-            # Open tool / handoff entries are closed as errors so the panel
-            # does not show them running forever.
-            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
-            return
-        except BaseException as exc:
-            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
-            raise
-        # Handoffs stay "active" until the run ends (the target agent keeps
-        # the conversation), so their ``end`` events are emitted here.
-        self._publish(tracker.close())
+        async for event in result.stream_events():
+            if event.type != "raw_response_event":
+                for tool_event in tool_events_for_stream_event(event, tracker):
+                    yield tool_event
+                continue
+            data = event.data
+            if isinstance(data, ResponseTextDeltaEvent) and data.delta:
+                yield data.delta
+        for tool_event in tracker.close():
+            yield tool_event
 
     async def close(self) -> None:
         """Release the SQLite session connection, if any."""
