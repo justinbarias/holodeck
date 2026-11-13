@@ -49,10 +49,16 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 from ag_ui.core import (
+    ContentPart as AguiContentPart,
+)
+from ag_ui.core import (
     FunctionCall as AguiFunctionCall,
 )
 from ag_ui.core import (
     Message as AguiMessage,
+)
+from ag_ui.core import (
+    TextPart as AguiTextPart,
 )
 from ag_ui.core import (
     Tool as AguiTool,
@@ -290,6 +296,29 @@ def _agui_tool_names(tools: list[AguiTool] | None) -> list[str]:
     return [tool_def.name for tool_def in tools or [] if tool_def.name]
 
 
+def _agui_parts_text(parts: list[AguiContentPart], owner: str) -> str:
+    """Render AG-UI 1.0 content parts as transcript text.
+
+    Text parts keep their text. Media parts are not decoded; each becomes an
+    explicit ``[<type> part omitted: <mime>]`` marker so the model can see
+    that something was attached. *owner* names the message in the warning.
+    """
+    rendered: list[str] = []
+    for part in parts:
+        if isinstance(part, AguiTextPart):
+            rendered.append(part.text)
+            continue
+        mime_type = part.source.mime_type or "unknown"
+        logger.warning(
+            "AG-UI %s: %s part omitted from the transcript (mime=%s)",
+            owner,
+            part.type,
+            mime_type,
+        )
+        rendered.append(f"[{part.type} part omitted: {mime_type}]")
+    return " ".join(rendered)
+
+
 def _agui_message_content(message: AguiMessage) -> str:
     """Extract plain text content from an AG-UI message object."""
     if isinstance(message, AguiAssistantMessage):
@@ -299,12 +328,14 @@ def _agui_message_content(message: AguiMessage) -> str:
         tool_content = message.content
         if isinstance(tool_content, str):
             return tool_content
-        return " ".join(block.text for block in tool_content if block.type == "text")
+        return _agui_parts_text(
+            tool_content, f"tool message tool_call_id={message.tool_call_id}"
+        )
     if isinstance(message, AguiUserMessage):
         user_content = message.content
         if isinstance(user_content, str):
             return user_content
-        return " ".join(block.text for block in user_content if block.type == "text")
+        return _agui_parts_text(user_content, f"user message id={message.id}")
     other_content = message.content
     if isinstance(other_content, str):
         return other_content

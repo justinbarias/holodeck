@@ -4148,3 +4148,82 @@ class TestClaudeSessionP4Fields:
             "expected lock to serialise concurrent sends, "
             f"got max_concurrent={max_concurrent}"
         )
+
+
+class TestAguiMediaPartMarkers:
+    """AG-UI 1.0 media parts render as explicit markers in the transcript."""
+
+    def test_tool_message_document_part_marker(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from ag_ui.core import DataSource, DocumentPart, TextPart, ToolMessage
+
+        message = ToolMessage(
+            id="t",
+            role="tool",
+            tool_call_id="toolu_1",
+            content=[
+                TextPart(text="Status:"),
+                DocumentPart(
+                    source=DataSource(
+                        value="U3RhdHVzOiBmYWlsZWQ=", mime_type="text/plain"
+                    )
+                ),
+            ],
+        )
+        with caplog.at_level(
+            logging.WARNING, logger="holodeck.lib.backends.claude_backend"
+        ):
+            result = _agui_message_content(message)
+
+        assert result == "Status: [document part omitted: text/plain]"
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "toolu_1" in warnings[0].getMessage()
+
+    def test_tool_message_url_image_without_mime(self) -> None:
+        from ag_ui.core import ImagePart, ToolMessage, UrlSource
+
+        message = ToolMessage(
+            id="t",
+            role="tool",
+            tool_call_id="toolu_2",
+            content=[ImagePart(source=UrlSource(value="https://example.com/x"))],
+        )
+
+        assert _agui_message_content(message) == "[image part omitted: unknown]"
+
+    def test_user_message_media_part_marker_in_resume_transcript(self) -> None:
+        from ag_ui.core import (
+            DataSource,
+            ImagePart,
+            RunAgentInput,
+            TextPart,
+            ToolMessage,
+            UserMessage,
+        )
+
+        input_data = RunAgentInput(
+            thread_id="t",
+            run_id="r",
+            messages=[
+                UserMessage(
+                    id="u1",
+                    content=[
+                        TextPart(text="Look at"),
+                        ImagePart(
+                            source=DataSource(value="aGk=", mime_type="image/png")
+                        ),
+                    ],
+                ),
+                ToolMessage(id="t1", tool_call_id="toolu_3", content="done"),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        prompt = _agui_prompt_from_input(input_data)
+
+        assert "user: Look at [image part omitted: image/png]" in prompt
