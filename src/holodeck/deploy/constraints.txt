@@ -62,14 +62,14 @@ flatbuffers==25.12.19
 fqdn==1.6.0
 frozenlist==1.8.0
 fsspec==2026.6.0
-google-api-core==2.25.2
+google-api-core==2.44.0
 google-auth==2.62.1
-google-cloud-run==0.16.1
+google-cloud-run==0.16.2
 googleapis-common-protos==1.75.0
 graphiti-core==0.31.2
 griffelib==2.4.1
 grpc-google-iam-v1==0.14.4
-grpcio-status==1.71.2
+grpcio-status==1.78.2
 grpcio==1.78.2 ; python_full_version < '4' or sys_platform != 'emscripten'
 grpcio==1.85.1 ; python_full_version >= '4' and sys_platform == 'emscripten'
 h11==0.16.0
@@ -167,7 +167,7 @@ prometheus-client==0.26.0
 prompt-toolkit==3.0.53
 propcache==0.5.4
 proto-plus==1.28.2
-protobuf==5.29.6
+protobuf==6.33.6
 psutil==7.2.2
 psycopg-binary==3.3.8 ; implementation_name != 'pypy'
 psycopg-pool==3.3.3
@@ -176,9 +176,9 @@ pyasn1-modules==0.4.2
 pyasn1==0.6.5
 pybase64==1.5.1
 pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
-pydantic-core==2.46.5
+pydantic-core==2.50.4
 pydantic-settings==2.16.2
-pydantic==2.13.5
+pydantic==2.14.3
 pyfiglet==1.0.4
 pygments==2.21.0
 pyjwt==2.15.1
@@ -203,7 +203,7 @@ pyyaml==6.0.3
 qdrant-client==1.20.0
 questionary==2.1.1
 rank-bm25==0.2.2
-referencing==0.36.2
+referencing==0.37.0
 regex==2026.11.9
 requests-oauthlib==2.0.0
 requests==2.34.2
