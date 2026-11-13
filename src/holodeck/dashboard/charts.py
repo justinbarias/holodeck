@@ -50,6 +50,27 @@ SERIES_DASH = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"]
 PALETTE = SERIES
 ACCENT = HOUSE
 
+# Time axes pick their tick format from the tick spacing: runs saved minutes
+# apart show clock times with the date under them; runs days apart show dates.
+DAY_MS = 86_400_000
+TIME_TICK_FORMATS = [
+    {"dtickrange": [None, DAY_MS], "value": "%H:%M<br>%-d %b"},
+    {"dtickrange": [DAY_MS, None], "value": "%-d %b"},
+]
+
+# A band is labelled only when its version name fits inside it. The plot
+# area is assumed no wider than this (the Summary chart at a narrow desktop),
+# and a 12 px Courier Prime character is about 7.2 px wide.
+BAND_LABEL_PLOT_PX = 480
+BAND_LABEL_CHAR_PX = 7.2
+BAND_LABEL_PAD_PX = 12
+
+
+def band_label_fits(band_fraction: float, label: str) -> bool:
+    """True when ``label`` fits in a band ``band_fraction`` of the axis wide."""
+    needed = len(label) * BAND_LABEL_CHAR_PX + BAND_LABEL_PAD_PX
+    return band_fraction * BAND_LABEL_PLOT_PX >= needed
+
 
 def _apply_theme(fig: go.Figure, *, show_legend: bool = False) -> go.Figure:
     fig.update_layout(
@@ -134,9 +155,16 @@ def pass_rate_chart(
     times = list(df["timestamp"])
     edges = _edges(times)
     labels = [run_label(run, numbers) for run in ordered]
+    span = edges[-1] - edges[0]
 
     for first, last, version in _version_segments(df):
         colour = revision_colour(version, colours)
+        # Runs saved at one instant give a zero-width axis; share it by run count.
+        band_fraction = (
+            (edges[last + 1] - edges[first]) / span
+            if span > pd.Timedelta(0)
+            else (last - first + 1) / len(times)
+        )
         fig.add_shape(
             type="rect",
             xref="x",
@@ -150,18 +178,25 @@ def pass_rate_chart(
             line={"width": 0},
             layer="below",
         )
+        # A narrow band keeps its colour and its version in the hover; a label
+        # that does not fit would print over its neighbours.
+        if not band_label_fits(band_fraction, version):
+            continue
+        # The label is a revision tab above the plot, so a 100% pass rate line
+        # never runs through it.
         fig.add_annotation(
             xref="x",
             yref="paper",
             x=edges[first],
             y=1,
             xanchor="left",
-            yanchor="top",
-            xshift=4,
-            yshift=-2,
+            yanchor="bottom",
+            yshift=2,
             text=f"<b>{version}</b>",
             showarrow=False,
-            font={"size": 12, "color": INK, "family": MONO},
+            bgcolor=colour.tint,
+            borderpad=2,
+            font={"size": 12, "color": colour.ink, "family": MONO},
         )
 
     custom = [
@@ -221,7 +256,7 @@ def pass_rate_chart(
         tickvals=[0, 0.25, 0.5, 0.75, 1.0],
         tickformat=".0%",
     )
-    fig.update_xaxes(tickformat="%-d %b", showgrid=False)
+    fig.update_xaxes(tickformatstops=TIME_TICK_FORMATS, showgrid=False)
     return _apply_theme(fig)
 
 
@@ -248,7 +283,9 @@ def metric_trend_chart(
                 mode="lines",
                 name=col,
                 line={"color": color, "width": 2, "dash": dash},
-                hovertemplate=f"<b>{col}</b><br>%{{x|%-d %b}}: %{{y:.2f}}<extra></extra>",
+                hovertemplate=(
+                    f"<b>{col}</b><br>%{{x|%-d %b %H:%M}}: %{{y:.2f}}<extra></extra>"
+                ),
             )
         )
 
@@ -264,7 +301,7 @@ def metric_trend_chart(
         )
 
     fig.update_yaxes(range=[0, 1.02], tickformat=".2f", tickvals=[0, 0.5, 1.0])
-    fig.update_xaxes(tickformat="%-d %b", showgrid=False)
+    fig.update_xaxes(tickformatstops=TIME_TICK_FORMATS, showgrid=False)
     fig = _apply_theme(fig, show_legend=True)
     fig.update_layout(margin={"l": 48, "r": 16, "t": 16, "b": 72})
     return fig
