@@ -100,15 +100,20 @@ export function buildConversation(
   const rows: Row[] = [];
   let cueCount = 0;
   let run: Cue[] = [];
+  // True while the run's calls belong to the turn that is still running.
+  let runLive = false;
   let unanswered: number[] = [];
 
+  // A run collapses into a group only once its turn has finished, so calls
+  // still arriving stay visible one by one instead of disappearing into it.
   const flush = () => {
-    if (run.length > GROUP_THRESHOLD) {
+    if (run.length > GROUP_THRESHOLD && !runLive) {
       rows.push({ kind: "group", key: `group:${run[0].toolCallId}`, calls: run });
     } else {
       for (const call of run) rows.push({ kind: "tool", key: `tool:${call.toolCallId}`, call });
     }
     run = [];
+    runLive = false;
   };
 
   // Only the turn after the last user message can still be running: a call
@@ -140,9 +145,11 @@ export function buildConversation(
       });
       unanswered = [];
     }
+    const live = isRunning && index > lastUser;
     for (const call of assistant.toolCalls ?? []) {
       cueCount += 1;
-      run.push(toCue(call, cueCount, results.get(call.id), isRunning && index > lastUser));
+      if (live) runLive = true;
+      run.push(toCue(call, cueCount, results.get(call.id), live));
       unanswered = [...unanswered, cueCount];
     }
   }

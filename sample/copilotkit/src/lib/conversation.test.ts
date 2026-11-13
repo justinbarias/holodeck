@@ -69,7 +69,7 @@ test("streaming arguments are in progress; a stopped run marks the call stopped"
   if (stopped.kind === "tool") assert.equal(stopped.call.stopped, true);
 });
 
-test("more than three calls in a run form one group", () => {
+test("more than three calls in a finished run form one group", () => {
   const many: Message[] = [
     { id: "u", role: "user", content: "q" },
     {
@@ -78,11 +78,32 @@ test("more than three calls in a run form one group", () => {
       toolCalls: [call("1", "a"), call("2", "b"), call("3", "c"), call("4", "d")],
     },
   ];
-  const { rows } = buildConversation(many, true);
+  const { rows } = buildConversation(many, false);
   assert.deepEqual(rows.map((row) => row.kind), ["user", "group"]);
   const group = rows[1];
   if (group.kind === "group") assert.equal(cueRange(group.calls.map((c) => c.cue)), "Q1–Q4");
   assert.equal(cueRange([3]), "Q3");
+});
+
+test("calls in the running turn stay ungrouped until the turn ends", () => {
+  const four = (prefix: string) =>
+    [1, 2, 3, 4].map((n) => call(`${prefix}${n}`, "lookup"));
+  const messages: Message[] = [
+    { id: "u1", role: "user", content: "first" },
+    { id: "a1", role: "assistant", toolCalls: four("old") },
+    { id: "r1", role: "assistant", content: "First answer." },
+    { id: "u2", role: "user", content: "second" },
+    { id: "a2", role: "assistant", toolCalls: four("new") },
+  ];
+  const kinds = (running: boolean) =>
+    buildConversation(messages, running).rows.map((row) => row.kind);
+  // While the second turn runs, its calls show one by one; the first turn,
+  // already finished, stays collapsed.
+  assert.deepEqual(kinds(true), [
+    "user", "group", "answer", "user", "tool", "tool", "tool", "tool",
+  ]);
+  // Once it ends, the second turn collapses too.
+  assert.deepEqual(kinds(false), ["user", "group", "answer", "user", "group"]);
 });
 
 test("tool names are counted in first-seen order", () => {
