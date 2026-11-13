@@ -1,0 +1,88 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;font-family:"Public Sans",system-ui,sans-serif;color:#16181f;background:#f7f8fa;display:grid;grid-template-columns:272px 1fr}
+.mono{font-family:"Courier Prime",ui-monospace,monospace}
+.rail{background:#1d2347;color:#e9ecf7;padding:22px 18px;display:flex;flex-direction:column;gap:22px}
+.brand{font-weight:600;font-size:19px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.brand i{width:22px;height:22px;border:2px solid #e9ecf7;border-radius:3px;background:repeating-linear-gradient(90deg,transparent 0 5px,rgba(233,236,247,.35) 5px 6px)}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9aa2c7;margin-bottom:8px}
+.agent{background:#262d5a;border-radius:8px;padding:12px}
+.agent b{display:block;font-size:15px}.agent span{font-size:13px;color:#b9c0e0}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#cfe9d8;margin-top:8px}
+.live:before{content:"";width:8px;height:8px;border-radius:50%;background:#3fbf6f}
+.threads a{display:block;padding:9px 10px;border-radius:6px;font-size:14px;color:#cdd2ec;text-decoration:none}
+.threads a.on{background:#2f3768;color:#fff}
+.threads small{display:block;font-size:12px;color:#8f97bf}
+main{display:grid;grid-template-rows:64px 1fr 96px;min-width:0}
+header{display:flex;align-items:center;justify-content:space-between;padding:0 40px;border-bottom:1px solid #dfe2ea;background:#fff}
+header h1{font-size:17px;font-weight:600}
+header p{font-size:13px;color:#5b6070}
+.tabs{display:flex;gap:6px;font-size:12px}
+.tab{padding:4px 9px;border-radius:4px;border:1px solid rgba(0,0,0,.12)}
+.conv{overflow:hidden;padding:28px 40px 0;display:grid;grid-template-columns:84px 1fr;column-gap:20px;align-content:start}
+.margin{border-right:1px solid #c9cdd8;position:relative}
+.cue{position:absolute;right:12px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px}
+.cue:after{content:"";position:absolute;right:-13px;width:10px;border-top:1px solid #1d2347;top:50%}
+.dot{width:9px;height:9px;border-radius:50%}
+.bracket{position:absolute;right:-1px;width:6px;border:2px solid #1d2347;border-right:0}
+.user{justify-self:end;background:#1d2347;color:#fff;padding:12px 16px;border-radius:12px 12px 2px 12px;max-width:620px;font-size:15px;line-height:1.5;margin-bottom:22px}
+.tool{background:#fff;border:1px solid #dfe2ea;border-radius:8px;margin-bottom:12px;overflow:hidden}
+.th{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #eceef3;font-size:13px}
+.th .mono{font-size:14px;font-weight:700}
+.dur{margin-left:auto;display:flex;align-items:center;gap:8px;color:#5b6070;font-variant-numeric:tabular-nums}
+.bar{height:6px;background:#1d2347;border-radius:1px}
+.track{width:160px;height:6px;background:#eceef3;border-radius:1px}
+.tl{padding:12px 14px;display:grid;grid-template-columns:150px 1fr;row-gap:8px;font-size:14px}
+.rev{font-size:12px;padding:3px 8px;border-radius:3px;border-left:4px solid;font-weight:600;align-self:start}
+.blue{background:#dce8fa;border-color:#3d6fc4}.pink{background:#fbe1eb;border-color:#c44a7c}
+.fact{line-height:1.45}.fact s{color:#7a7f8e}
+.stamp{display:inline-block;margin-left:8px;font-size:11px;font-family:"Courier Prime";border:1.5px solid #d6332f;color:#d6332f;padding:0 5px;border-radius:2px;transform:rotate(-2deg)}
+.ans{font-size:15.5px;line-height:1.6;max-width:760px;padding:6px 0 0}
+.ans b{font-weight:600}
+.src{font-size:12.5px;color:#5b6070;margin-top:6px}
+.input{border-top:1px solid #dfe2ea;background:#fff;padding:18px 40px;display:flex;gap:12px;align-items:center}
+.box{flex:1;border:1px solid #c9cdd8;border-radius:10px;padding:14px 16px;color:#7a7f8e;font-size:15px;display:flex;justify-content:space-between}
+.send{background:#1d2347;color:#fff;border-radius:8px;padding:12px 18px;font-weight:600;font-size:14px}
+</style></head><body>
+<aside class="rail">
+  <div class="brand"><i></i>HoloDeck</div>
+  <div><div class="lbl">Agent</div>
+    <div class="agent"><b>Family Assistance memory</b><span>Family Assistance law as it stood on a date</span><div class="live">Live · holodeck serve /awp</div></div></div>
+  <div class="threads"><div class="lbl">Threads</div>
+    <a class="on" href="#">CCS lowest band, 2020 vs 2026<small>4 cues · today 14:02</small></a>
+    <a href="#">Internal review deadline<small>2 cues · today 13:40</small></a>
+    <a href="#">Shared care at 50%<small>3 cues · yesterday</small></a></div>
+</aside>
+<main>
+  <header><div><h1>CCS lowest band, 2020 vs 2026</h1><p>Thread 7f3a · OpenAI Agents backend · gpt-6-luna</p></div>
+    <div class="tabs"><span class="tab blue">Rev. blue · 1 Jul 2020</span><span class="tab pink">Rev. pink · 1 Jul 2026</span></div></header>
+  <section class="conv">
+    <div class="margin">
+      <div class="cue mono" style="top:92px"><span class="dot" style="background:#1f8a4c"></span>Q1</div>
+      <div class="cue mono" style="top:336px"><span class="dot" style="background:#1f8a4c"></span>Q2</div>
+      <div class="bracket" style="top:430px;height:74px"></div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:flex-end"><div class="user">How did the child care subsidy applicable percentage for the lowest income band change between the 2020 and 2026 compilations?</div></div>
+      <div class="tool">
+        <div class="th"><span class="mono">memory_timeline</span><span>child care subsidy applicable percentage · lowest band</span>
+          <span class="dur"><span class="track"><span class="bar" style="display:block;width:58%"></span></span>2.31 s</span></div>
+        <div class="tl">
+          <span class="rev blue">1 Jul 2020</span><div class="fact"><s>Applicable percentage 85% at or below the lower income threshold of $65,710.</s><span class="stamp">CLOSED 1 JUL 2026</span></div>
+          <span class="rev pink">1 Jul 2026</span><div class="fact">Applicable percentage 90% at or below the lower income threshold; base $80,000, indexed (cl. 3(4)).</div>
+        </div>
+      </div>
+      <div class="tool">
+        <div class="th"><span class="mono">family_assistance_act_search</span><span>Schedule 2, clause 3(1), table item 1</span>
+          <span class="dur"><span class="track"><span class="bar" style="display:block;width:22%"></span></span>0.88 s</span></div>
+      </div>
+      <div class="ans">It rose by <b>5 percentage points</b>: from <b>85%</b> in the compilation in force from 1 July 2020 to <b>90%</b> in the compilation in force from 1 July 2026.
+        <div class="src">Family Assistance Act 1999, Schedule 2, clause 3(1), table item 1 · Q1, Q2</div></div>
+    </div>
+  </section>
+  <div class="input"><div class="box">Ask about Family Assistance law as at a date…<span class="mono">⏎</span></div><span class="send">Send</span></div>
+</main>
+</body></html>

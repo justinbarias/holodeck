@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HoloDeck test view · Summary</title>
+</head>
+<body>
+
+
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&amp;family=Courier+Prime:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f6f9}
+a{color:#1d2347}a:hover{color:#3d4a99}
+.cue{font-family:"Courier Prime",ui-monospace,monospace}
+.rv{font-size:12px;font-weight:600;padding:4px 8px;border-radius:3px;white-space:nowrap;border:0;font-family:"Public Sans",sans-serif}
+.rv-blue{background:#cfe0f8;color:#234f99}.rv-pink{background:#f9d6e4;color:#93305e}.rv-yellow{background:#f7e8a6;color:#6b5200}.rv-green{background:#d2ecd9;color:#1d6337}.rv-gold{background:#f1d7a4;color:#6e4700}.rv-buff{background:#e8dcc4;color:#5b4a2a}
+.rl{font-size:12px;font-weight:600;color:#a9b0d4;margin-bottom:8px;display:flex;justify-content:space-between}
+.rchip{font:13px "Public Sans",sans-serif;padding:5px 9px;border-radius:5px;border:1px solid #4a5390;background:transparent;color:#d3d7ee;min-height:32px}
+.rchip.on{background:#eef0f9;color:#1d2347;border-color:#eef0f9;font-weight:600}
+.din{font:13px "Public Sans",sans-serif;background:#283063;border:1px solid #4a5390;color:#eef0f9;border-radius:6px;padding:8px 10px;min-height:36px;width:100%;box-sizing:border-box}
+.panel{background:#fff;border:1px solid #dde0e8;border-radius:8px;padding:16px 18px}
+.panel h2{margin:0;font-size:15px;font-weight:600}
+.sub{font-size:12.5px;color:#555b6b;margin:3px 0 12px;line-height:1.45}
+.seg{display:inline-flex;border:1px solid #8a90a3;border-radius:6px;overflow:hidden}
+.seg button{font:13px "Public Sans",sans-serif;border:0;background:#fff;color:#555b6b;padding:0 12px;min-height:32px;border-right:1px solid #dde0e8}
+.seg button:last-child{border-right:0}.seg button.on{background:#1d2347;color:#fff;font-weight:600}
+.bar{display:grid;grid-template-columns:minmax(0,1fr) 120px 44px;gap:10px;align-items:center;font-size:13px;padding:5px 0}
+.bt{height:8px;background:#eceef3;border-radius:1px;position:relative}.bt span{position:absolute;inset:0 auto 0 0;background:#1d2347;border-radius:1px}
+.bt i{position:absolute;left:70%;top:-3px;bottom:-3px;border-left:1.5px dashed #c2312a}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:600;font-size:12px;color:#555b6b;padding:8px;border-bottom:1px solid #dde0e8;white-space:nowrap}
+td{padding:8px;border-bottom:1px solid #eceef3;white-space:nowrap}
+.btn{font:600 13px "Public Sans",sans-serif;border-radius:6px;padding:0 12px;min-height:36px;border:1px solid #8a90a3;background:#fff;color:#15171e;display:inline-flex;align-items:center;gap:6px}
+.add{width:30px;height:30px;border-radius:5px;border:1px solid #8a90a3;background:#fff;color:#1d2347;display:inline-flex;align-items:center;justify-content:center}
+.add.on{background:#1d2347;color:#fff;border-color:#1d2347}
+</style>
+
+<div style="font-family: 'Public Sans', system-ui, sans-serif; color: #15171e; background: #f5f6f9; display: flex; flex-wrap: wrap; min-height: 1900px; position: relative">
+  <aside style="flex: 1 1 280px; max-width: 280px; background: #1d2347; color: #eef0f9; padding: 20px 18px; display: flex; flex-direction: column; gap: 22px; box-sizing: border-box">
+    <div style="display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 18px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="3" stroke="#eef0f9" stroke-width="1.6"></rect><path d="M7 2v20M12 2v20M17 2v20" stroke="#eef0f9" stroke-opacity=".35"></path><path d="M2 15h20" stroke="#eef0f9" stroke-width="1.6"></path></svg>HoloDeck <span style="font-weight: 400; color: #a9b0d4; font-size: 14px">test view</span></div>
+    <div style="background: #283063; border-radius: 8px; padding: 12px">
+      <div style="font-size: 14.5px; font-weight: 600">customer-support</div>
+      <div class="cue" style="font-size: 12.5px; color: #c6cbe8; margin-top: 3px">results/customer-support/</div>
+      <div style="display: flex; align-items: center; gap: 7px; font-size: 12px; color: #c6cbe8; margin-top: 10px"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="2" width="9" height="8" rx="1" stroke="currentColor" stroke-width="1.3" fill="none"></rect><path d="M1.5 5h9" stroke="currentColor" stroke-width="1.3"></path></svg>Saved results · nothing runs here</div>
+    </div>
+    <nav aria-label="Views" style="display: flex; flex-direction: column; gap: 2px">
+      <a href="#" style="display: flex; justify-content: space-between; padding: 9px 10px; border-radius: 6px; background: #323a74; color: #fff; text-decoration: none; font-size: 14px; font-weight: 600">Summary <span class="cue" style="font-weight: 400">24</span></a>
+      <a href="#" style="display: flex; justify-content: space-between; padding: 9px 10px; border-radius: 6px; color: #d3d7ee; text-decoration: none; font-size: 14px">Explorer <span class="cue">24</span></a>
+      <a href="#" style="display: flex; justify-content: space-between; padding: 9px 10px; border-radius: 6px; color: #d3d7ee; text-decoration: none; font-size: 14px">Compare <span class="cue">2</span></a>
+    </nav>
+    <div style="border-top: 1px solid #3a4278; padding-top: 18px; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; justify-content: space-between; align-items: center"><span style="font-size: 14px; font-weight: 600">Filters</span><button style="font: 600 13px 'Public Sans'; background: none; border: 0; color: #c6cbe8; min-height: 32px">Reset</button></div>
+      <div><div class="rl"><label for="from">Date range</label></div><div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><input id="from" class="din" value="7 Mar 2026"><input aria-label="To" class="din" value="18 Apr 2026"></div></div>
+      <div><div class="rl">Prompt version <span style="font-weight: 400">any</span></div><div style="display: flex; flex-wrap: wrap; gap: 6px"><button class="rv rv-blue">v1.0</button><button class="rv rv-pink">v1.1</button><button class="rv rv-yellow">v1.2</button><button class="rv rv-green">v1.2.1</button><button class="rv rv-gold">v1.3</button><button class="rv rv-buff">v1.4</button></div></div>
+      <div><div class="rl">Model <span style="font-weight: 400">any</span></div><div style="display: flex; flex-wrap: wrap; gap: 6px"><button class="rchip on">claude-sonnet-4.5</button><button class="rchip">gpt-4o</button></div></div>
+      <div><div class="rl"><label for="thr">Pass-rate threshold</label><span class="cue" style="font-weight: 400">≥ 75%</span></div><input id="thr" type="range" min="0" max="100" value="75" style="width: 100%; accent-color: #eef0f9"></div>
+      <div><div class="rl">Tags <span style="font-weight: 400">any</span></div><div style="display: flex; flex-wrap: wrap; gap: 6px"><button class="rchip">#baseline</button><button class="rchip">#concise</button><button class="rchip on">#rag-tuning</button><button class="rchip">#rewrite</button><button class="rchip">#experimental</button></div></div>
+      <div style="background: #283063; border-radius: 8px; padding: 10px 12px; font-size: 12.5px; color: #c6cbe8; line-height: 1.5">3 filters active<br><button style="margin-top: 6px; font: 600 13px 'Public Sans'; background: #eef0f9; color: #1d2347; border: 0; border-radius: 6px; padding: 0 12px; min-height: 34px">Copy link to this view</button></div>
+    </div>
+  </aside>
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 14px 32px; background: #fff; border-bottom: 1px solid #dde0e8">
+      <div><h1 style="margin: 0; font-size: 18px; font-weight: 600">Summary</h1><div style="font-size: 12.5px; color: #555b6b; margin-top: 2px">16 of 24 runs match · 7 Mar – 18 Apr 2026</div></div>
+      <div style="margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap"><span class="cue" style="font-size: 12.5px; color: #555b6b">holodeck test view agent.yaml</span><button class="btn"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 2v7M4 6.5 7 9.5l3-3M2.5 12h9" stroke="currentColor" stroke-width="1.5"></path></svg>Download latest run</button></div>
+    </header>
+    <div style="padding: 24px 32px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px">
+      <section style="grid-column: 1 / -1; background: #fff; border: 1px solid #dde0e8; border-radius: 8px; padding: 18px 20px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px"><div><h2 style="margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.35">R24 passes 11 of 12 cases, the same as R23.</h2><p style="margin: 8px 0 0; font-size: 14px; line-height: 1.55; color: #2b2e38; max-width: 60ch"><b>billing_dispute</b> has failed in every run since R14 (policy_compliance 0.64 against 0.70). Median duration is 1.9 s slower than R23.</p><a href="#" style="display: inline-block; margin-top: 10px; font-size: 13.5px; font-weight: 600">Open billing_dispute in Explorer</a></div><div><h2 style="margin: 0 0 8px; font-size: 15px; font-weight: 600">Regressions in range · 3</h2><ol style="margin: 0; padding: 0; list-style: none; font-size: 13.5px"><li style="display: grid; grid-template-columns: 22px 48px 64px minmax(0, 1fr); gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid #eceef3"><b class="cue" style="color: #c2312a">1</b><b class="cue">R5</b><span class="rv rv-pink">v1.1</span><span>58% → 50% · refund_outside_window failed</span></li><li style="display: grid; grid-template-columns: 22px 48px 64px minmax(0, 1fr); gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid #eceef3"><b class="cue" style="color: #c2312a">2</b><b class="cue">R10</b><span class="rv rv-yellow">v1.2</span><span>75% → 67% · escalate_to_human failed</span></li><li style="display: grid; grid-template-columns: 22px 48px 64px minmax(0, 1fr); gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid #eceef3"><b class="cue" style="color: #c2312a">3</b><b class="cue">R14</b><span class="rv rv-green">v1.2.1</span><span>83% → 75% · multi_item_return failed</span></li></ol></div></section><dl style="grid-column: 1 / -1; margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #fff; border: 1px solid #dde0e8; border-radius: 8px">
+        <div style="padding: 14px 18px; border-right: 1px solid #eceef3"><dt style="font-size: 12.5px; color: #555b6b">Latest pass rate · <span class="rv rv-buff" style="padding: 1px 6px">v1.4</span></dt><dd style="margin: 6px 0 0; font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums">91.7%<span style="font-size: 13px; font-weight: 600; color: #17703c; margin-left: 8px">± 0.0 pp vs R23</span></dd></div>
+        <div style="padding: 14px 18px; border-right: 1px solid #eceef3"><dt style="font-size: 12.5px; color: #555b6b">Runs in view</dt><dd style="margin: 6px 0 0; font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums">16<span style="font-size: 13px; font-weight: 400; color: #555b6b; margin-left: 8px">of 24 · 6 weeks</span></dd></div>
+        <div style="padding: 14px 18px; border-right: 1px solid #eceef3"><dt style="font-size: 12.5px; color: #555b6b">Mean G-Eval</dt><dd style="margin: 6px 0 0; font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums">0.92<span style="font-size: 13px; font-weight: 400; color: #555b6b; margin-left: 8px">threshold 0.70</span></dd></div>
+        <div style="padding: 14px 18px"><dt style="font-size: 12.5px; color: #555b6b">Median duration</dt><dd style="margin: 6px 0 0; font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums">20.8 s<span style="font-size: 13px; font-weight: 600; color: #c2312a; margin-left: 8px">+1.9 s vs R23</span></dd></div>
+      </dl>
+      <div class="panel" style="grid-column: 1 / -1">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px"><div><h2>Pass rate by run</h2><p class="sub">Bands are prompt versions in revision-colour order. Numbered red rings are the regressions listed above.</p></div>
+          <div style="display: flex; gap: 14px; font-size: 12.5px; color: #555b6b; align-items: center"><span style="display: inline-flex; gap: 6px; align-items: center"><span style="width: 18px; border-top: 2.2px solid #1d2347"></span>pass rate</span><span style="display: inline-flex; gap: 6px; align-items: center"><span style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid #c2312a"></span>regression</span></div></div>
+        <svg viewBox="0 0 1000 260" width="100%" height="260" font-family="Public Sans" font-size="11" role="img" aria-label="Pass rate by run, rising from 58% at v1.0 to 92% at v1.4 with two regressions">
+          <rect x="40" y="10" width="150" height="210" fill="#cfe0f8" opacity=".6"></rect><rect x="190" y="10" width="170" height="210" fill="#f9d6e4" opacity=".6"></rect><rect x="360" y="10" width="120" height="210" fill="#f7e8a6" opacity=".6"></rect><rect x="480" y="10" width="130" height="210" fill="#d2ecd9" opacity=".6"></rect><rect x="610" y="10" width="170" height="210" fill="#f1d7a4" opacity=".6"></rect><rect x="780" y="10" width="210" height="210" fill="#e8dcc4" opacity=".6"></rect>
+          <g stroke="#dde0e8"><line x1="40" y1="10" x2="990" y2="10"></line><line x1="40" y1="62" x2="990" y2="62"></line><line x1="40" y1="115" x2="990" y2="115"></line><line x1="40" y1="168" x2="990" y2="168"></line><line x1="40" y1="220" x2="990" y2="220"></line></g>
+          <g fill="#555b6b"><text x="4" y="14">100%</text><text x="10" y="66">75%</text><text x="10" y="119">50%</text><text x="10" y="172">25%</text><text x="18" y="224">0%</text></g>
+          <g font-family="Courier Prime" font-weight="700" fill="#15171e" font-size="12"><text x="48" y="26">v1.0</text><text x="198" y="26">v1.1</text><text x="368" y="26">v1.2</text><text x="488" y="26">v1.2.1</text><text x="618" y="26">v1.3</text><text x="788" y="26">v1.4</text></g>
+          <polyline fill="none" stroke="#1d2347" stroke-width="2.2" points="60,108 100,108 140,108 180,108 220,126 260,100 300,74 340,74 380,74 420,92 460,74 500,74 540,62 580,92 620,62 660,62 700,62 740,50 780,50 820,28 860,28 900,28 940,28 980,28"></polyline>
+          <g fill="#1d2347"><circle cx="980" cy="28" r="4"></circle></g>
+          <circle cx="220" cy="126" r="6.5" fill="#fff" stroke="#c2312a" stroke-width="2"></circle><circle cx="420" cy="92" r="6.5" fill="#fff" stroke="#c2312a" stroke-width="2"></circle><circle cx="580" cy="92" r="6.5" fill="#fff" stroke="#c2312a" stroke-width="2"></circle><g font-family="Courier Prime" font-weight="700" font-size="12" fill="#c2312a"><text x="211" y="146">1</text><text x="411" y="112">2</text><text x="571" y="112">3</text></g>
+          <g fill="#555b6b"><text x="50" y="242">7 Mar</text><text x="290" y="242">21 Mar</text><text x="560" y="242">4 Apr</text><text x="940" y="242">18 Apr</text></g>
+        </svg>
+      </div>
+      <div class="panel" style="grid-column: 1 / -1">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px"><div><h2>Metric trends</h2><p class="sub">Mean score per run for one metric kind. Dashed line is the 0.70 threshold.</p></div>
+          <div class="seg" role="group" aria-label="Metric kind"><button class="on">RAG</button><button>G-Eval</button><button>NLP</button><button>Code</button></div></div>
+        <svg viewBox="0 0 1000 200" width="100%" height="200" font-family="Public Sans" font-size="11" role="img" aria-label="RAG metric trends">
+          <g stroke="#eceef3"><line x1="40" y1="10" x2="990" y2="10"></line><line x1="40" y1="95" x2="990" y2="95"></line><line x1="40" y1="180" x2="990" y2="180"></line></g>
+          <line x1="40" y1="61" x2="990" y2="61" stroke="#c2312a" stroke-dasharray="5 4"></line>
+          <g fill="#555b6b"><text x="10" y="14">1.00</text><text x="10" y="99">0.50</text><text x="10" y="184">0.00</text><text x="994" y="58" text-anchor="end" fill="#c2312a">0.70</text></g>
+          <polyline fill="none" stroke="#1d2347" stroke-width="2" points="60,60 200,52 340,44 480,40 620,34 760,28 900,24 980,22"></polyline>
+          <polyline fill="none" stroke="#3d6fc4" stroke-width="2" points="60,70 200,64 340,58 480,50 620,46 760,40 900,36 980,34"></polyline>
+          <polyline fill="none" stroke="#b07300" stroke-width="2" stroke-dasharray="1 0" points="60,82 200,76 340,66 480,62 620,52 760,48 900,44 980,40"></polyline>
+        </svg>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 12.5px; color: #555b6b"><span><span style="display: inline-block; width: 16px; border-top: 2px solid #1d2347; vertical-align: middle"></span> faithfulness</span><span><span style="display: inline-block; width: 16px; border-top: 2px solid #3d6fc4; vertical-align: middle"></span> answer_relevancy</span><span><span style="display: inline-block; width: 16px; border-top: 2px solid #b07300; vertical-align: middle"></span> contextual_precision</span></div>
+      </div>
+      <div class="panel"><h2>RAG · retrieval and grounding</h2><p class="sub">Averaged across the last 6 runs.</p>
+        <div class="bar"><span class="cue">contextual_relevancy</span><span class="bt"><span style="width: 98%"></span><i></i></span><b style="font-variant-numeric: tabular-nums">0.98</b></div>
+        <div class="bar"><span class="cue">contextual_recall</span><span class="bt"><span style="width: 96%"></span><i></i></span><b>0.96</b></div>
+        <div class="bar"><span class="cue">answer_relevancy</span><span class="bt"><span style="width: 90%"></span><i></i></span><b>0.90</b></div>
+        <div class="bar"><span class="cue">faithfulness</span><span class="bt"><span style="width: 86%"></span><i></i></span><b>0.86</b></div></div>
+      <div class="panel"><h2>G-Eval · custom judges</h2><p class="sub">Rubrics defined in agent.yaml.</p>
+        <div class="bar"><span class="cue">escalation_appropriateness</span><span class="bt"><span style="width: 90%"></span><i></i></span><b>0.90</b></div>
+        <div class="bar"><span class="cue">tone_of_voice</span><span class="bt"><span style="width: 90%"></span><i></i></span><b>0.90</b></div>
+        <div class="bar"><span class="cue">policy_compliance</span><span class="bt"><span style="width: 66%; background: #c2312a"></span><i></i></span><b style="color: #c2312a">0.66</b></div></div>
+      <div class="panel"><h2>NLP · overlap metrics</h2><p class="sub">BLEU, ROUGE and METEOR; no model calls.</p>
+        <div class="bar"><span class="cue">bleu</span><span class="bt"><span style="width: 81%"></span><i></i></span><b>0.81</b></div>
+        <div class="bar"><span class="cue">rouge</span><span class="bt"><span style="width: 81%"></span><i></i></span><b>0.81</b></div>
+        <div class="bar"><span class="cue">meteor</span><span class="bt"><span style="width: 79%"></span><i></i></span><b>0.79</b></div></div>
+      <div class="panel"><h2>Code graders</h2><p class="sub">Python graders from agent.yaml.</p>
+        <div style="border: 1px dashed #8a90a3; border-radius: 6px; padding: 18px; font-size: 13.5px; color: #555b6b; line-height: 1.5">No code graders in these runs. Add a <span class="cue">type: code</span> metric to agent.yaml to see results here.</div></div>
+      <div class="panel" style="grid-column: 1 / -1; padding: 0">
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 18px"><h2>Runs</h2><span style="font-size: 12.5px; color: #555b6b">16 in view</span>
+          <label style="margin-left: auto; display: flex; align-items: center; gap: 8px; border: 1px solid #8a90a3; border-radius: 6px; padding: 0 10px; min-height: 36px; font-size: 13.5px; color: #6b7080"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.3" stroke="currentColor" stroke-width="1.4"></circle><path d="m9.3 9.3 3 3" stroke="currentColor" stroke-width="1.4"></path></svg><input placeholder="Search commit, model, tag" style="border: 0; outline: 0; font: 13.5px 'Public Sans'; width: 200px"></label>
+          <button class="btn">Export CSV</button></div>
+        <div style="overflow-x: auto"><table><thead><tr><th style="width: 40px"><span style="position: absolute; left: -9999px">Compare</span></th><th>Run</th><th>When</th><th>Pass rate</th><th>Δ vs previous</th><th>Cases</th><th>Revision</th><th>Model</th><th>Duration</th><th>Commit</th></tr></thead><tbody>
+          <tr style="background: #f2f4fb"><td><button class="add on" aria-label="Remove R24 from compare"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-5.5" stroke="currentColor" stroke-width="1.7" fill="none"></path></svg></button></td><td class="cue"><b>R24</b></td><td>16 Apr 22:59</td><td style="color: #17703c; font-weight: 600"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="vertical-align:-1px"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg> 91.7%</td><td>± 0.0</td><td>11 / 12</td><td><span class="rv rv-buff">v1.4</span></td><td class="cue">claude-sonnet-4.5</td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 80px; height: 5px; background: #eceef3; display: inline-block"><span style="display: block; width: 72%; height: 100%; background: #1d2347"></span></span>20.5 s</span></td><td class="cue">a3f9622</td></tr>
+          <tr><td><button class="add" aria-label="Add R23 to compare"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5v7M2.5 6h7" stroke="currentColor" stroke-width="1.6"></path></svg></button></td><td class="cue"><b>R23</b></td><td>15 Apr 03:46</td><td style="color: #17703c; font-weight: 600"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="vertical-align:-1px"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg> 91.7%</td><td>± 0.0</td><td>11 / 12</td><td><span class="rv rv-buff">v1.4</span></td><td class="cue">claude-sonnet-4.5</td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 80px; height: 5px; background: #eceef3; display: inline-block"><span style="display: block; width: 70%; height: 100%; background: #1d2347"></span></span>20.0 s</span></td><td class="cue">a3f9885</td></tr>
+          <tr><td><button class="add" aria-label="Add R18 to compare"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5v7M2.5 6h7" stroke="currentColor" stroke-width="1.6"></path></svg></button></td><td class="cue"><b>R18</b></td><td>6 Apr 04:41</td><td style="color: #9a6400; font-weight: 600"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="vertical-align:-1px"><path d="M6 1.5 11 10.5H1Z" stroke="currentColor" stroke-width="1.5" fill="none"></path></svg> 83.3%</td><td>± 0.0</td><td>10 / 12</td><td><span class="rv rv-gold">v1.3</span></td><td class="cue">claude-sonnet-4.5</td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 80px; height: 5px; background: #eceef3; display: inline-block"><span style="display: block; width: 93%; height: 100%; background: #1d2347"></span></span>26.5 s</span></td><td class="cue">a3f9139</td></tr>
+          <tr style="background: #f2f4fb"><td><button class="add on" aria-label="Remove R14 from compare"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-5.5" stroke="currentColor" stroke-width="1.7" fill="none"></path></svg></button></td><td class="cue"><b>R14</b></td><td>1 Apr 03:02</td><td style="color: #c2312a; font-weight: 600"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="vertical-align:-1px"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.8"></path></svg> 75.0% · regression</td><td style="color: #c2312a; font-weight: 600">−8.3</td><td>9 / 12</td><td><span class="rv rv-green">v1.2.1</span></td><td class="cue">claude-sonnet-4.5</td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 80px; height: 5px; background: #eceef3; display: inline-block"><span style="display: block; width: 88%; height: 100%; background: #1d2347"></span></span>25.0 s</span></td><td class="cue">a3f9607</td></tr>
+        </tbody></table></div>
+      </div>
+    </div>
+  </main>
+  <div role="region" aria-label="Compare queue" style="position: absolute; right: 32px; bottom: 28px; background: #1d2347; color: #eef0f9; border-radius: 10px; padding: 10px 10px 10px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 12px 30px rgba(20,24,40,.3); font-size: 13.5px">
+    <span style="font-weight: 600">Compare</span>
+    <span class="rv rv-buff">R24 · v1.4</span><span class="rv rv-green">R14 · v1.2.1</span>
+    <button style="font: 600 13px 'Public Sans'; background: none; border: 0; color: #c6cbe8; min-height: 36px">Clear</button>
+    <button style="font: 600 13px 'Public Sans'; background: #eef0f9; color: #1d2347; border: 0; border-radius: 6px; padding: 0 14px; min-height: 36px">Open compare</button>
+  </div>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
