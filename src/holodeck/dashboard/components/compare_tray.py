@@ -12,18 +12,18 @@ from dash import html
 
 from holodeck.dashboard.components.compare_add_button import MAX_QUEUE
 from holodeck.dashboard.components.ui import icon
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import (
     revision_colour,
     revision_colour_map,
     run_label,
     run_numbers,
 )
-from holodeck.models.eval_run import EvalRun
 
 
-def render_tray(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
+def render_tray(state: dict[str, Any], runs: list[LoadedRun]) -> html.Div:
     queue_ids = list(state.get("compare_queue") or [])
-    runs_by_id = {r.report.timestamp: r for r in runs}
+    runs_by_id = {r.run_id: r for r in runs}
     items = [runs_by_id[rid] for rid in queue_ids if rid in runs_by_id]
     colours = revision_colour_map(runs)
     numbers = run_numbers(runs)
@@ -43,7 +43,7 @@ def render_tray(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
                         icon("x"),
                         id={
                             "type": "compare-slot-remove",
-                            "run_id": run.report.timestamp,
+                            "run_id": run.run_id,
                         },
                         className="tray-remove",
                         n_clicks=0,

@@ -22,6 +22,7 @@ from typing import Literal
 import pandas as pd
 
 from holodeck.config.context import STORED_SNAPSHOT
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import chronological, run_time
 from holodeck.dashboard.seed_data import build_seed_runs
 from holodeck.models.eval_run import EvalRun
@@ -43,9 +44,11 @@ def _pass_rate_fraction(run: EvalRun) -> float:
     return (s.passed / s.total_tests) if s.total_tests > 0 else 0.0
 
 
-def load_all(results_dir: Path) -> list[EvalRun]:
-    """Load every `*.json` file under `results_dir` as an EvalRun.
+def load_all(results_dir: Path) -> list[LoadedRun]:
+    """Load every `*.json` file under `results_dir` as a LoadedRun.
 
+    Each run's id is its file name without ``.json`` (unique in the
+    directory), so runs saved with the same timestamp stay distinct.
     Corrupt or schema-violating files are logged and skipped (FR-024, R6).
     Missing directory returns [] without error (FR-023).
     Results sorted oldest first by parsed run time (`revisions.chronological`).
@@ -53,23 +56,22 @@ def load_all(results_dir: Path) -> list[EvalRun]:
     if not results_dir.exists() or not results_dir.is_dir():
         return []
 
-    runs: list[EvalRun] = []
+    runs: list[LoadedRun] = []
     for path in sorted(results_dir.glob("*.json")):
         try:
-            runs.append(
-                EvalRun.model_validate_json(
-                    path.read_text(encoding="utf-8"),
-                    # A stored run may be opened away from its agent's files.
-                    context={STORED_SNAPSHOT: True},
-                )
+            run = EvalRun.model_validate_json(
+                path.read_text(encoding="utf-8"),
+                # A stored run may be opened away from its agent's files.
+                context={STORED_SNAPSHOT: True},
             )
+            runs.append(LoadedRun.from_run(run, path.stem))
         except Exception as exc:
             logger.warning("Skipping %s — failed to load EvalRun: %s", path.name, exc)
             continue
     return chronological(runs)
 
 
-def load_runs_for_app() -> list[EvalRun]:
+def load_runs_for_app() -> list[LoadedRun]:
     """Load runs according to env vars.
 
     - `HOLODECK_DASHBOARD_USE_SEED=1` → seed dataset.
@@ -104,8 +106,11 @@ def _tags_list(run: EvalRun) -> list[str]:
     return list(run.metadata.prompt_version.tags or [])
 
 
-def to_summary_dataframe(runs: list[EvalRun]) -> pd.DataFrame:
-    """One row per run, sorted newest-first; pass_rate on 0..1 scale."""
+def to_summary_dataframe(runs: list[LoadedRun]) -> pd.DataFrame:
+    """One row per run, sorted newest-first; pass_rate on 0..1 scale.
+
+    ``id`` is the run id, so runs with the same timestamp keep their own row.
+    """
     if not runs:
         return pd.DataFrame(
             columns=[
@@ -128,7 +133,7 @@ def to_summary_dataframe(runs: list[EvalRun]) -> pd.DataFrame:
         pr = _pass_rate_fraction(run)
         rows.append(
             {
-                "id": run.report.timestamp,
+                "id": run.run_id,
                 "timestamp": pd.Timestamp(run_time(run)).tz_convert("UTC"),
                 "pass_rate": pr,
                 "passed": run.report.summary.passed,

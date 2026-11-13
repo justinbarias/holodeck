@@ -25,11 +25,11 @@ from holodeck.dashboard.components.rail import render_rail
 from holodeck.dashboard.data_loader import load_runs_for_app, to_summary_dataframe
 from holodeck.dashboard.filters import Filters
 from holodeck.dashboard.filters import apply as apply_filters
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import chronological
 from holodeck.dashboard.views import render_compare, render_explorer, render_summary
 from holodeck.dashboard.views.compare import render_compare_header
 from holodeck.dashboard.views.summary import render_summary_header
-from holodeck.models.eval_run import EvalRun
 
 AGENT_DISPLAY_NAME = os.environ.get(
     "HOLODECK_DASHBOARD_AGENT_DISPLAY_NAME", "customer-support"
@@ -49,7 +49,7 @@ app = dash.Dash(
 # Keyed on the env-var pair that determines the source; value is
 # ``(fingerprint, runs)``. Seed mode pins the fingerprint to 0.0 so the cache
 # never busts (deterministic fixture).
-_runs_memo: dict[str, tuple[float, list[EvalRun]]] = {}
+_runs_memo: dict[str, tuple[float, list[LoadedRun]]] = {}
 
 
 def _cache_key() -> str:
@@ -74,7 +74,7 @@ def _results_dir_fingerprint() -> float:
     return max((p.stat().st_mtime for p in candidates), default=0.0)
 
 
-def get_runs() -> list:
+def get_runs() -> list[LoadedRun]:
     key = _cache_key()
     fp = _results_dir_fingerprint()
     cached = _runs_memo.get(key)
@@ -89,7 +89,7 @@ def _seed_mode() -> bool:
     return os.environ.get("HOLODECK_DASHBOARD_USE_SEED") == "1"
 
 
-def _rail(state: dict, runs: list[EvalRun], tab: str, n_filtered: int) -> html.Aside:
+def _rail(state: dict, runs: list[LoadedRun], tab: str, n_filtered: int) -> html.Aside:
     return render_rail(
         state,
         runs,
@@ -105,7 +105,7 @@ def _rail(state: dict, runs: list[EvalRun], tab: str, n_filtered: int) -> html.A
     )
 
 
-def _page_header(state: dict, runs: list[EvalRun], tab: str) -> html.Header | None:
+def _page_header(state: dict, runs: list[LoadedRun], tab: str) -> html.Header | None:
     if tab == "summary":
         return render_summary_header(state, runs)
     if tab == "compare":
@@ -505,7 +505,7 @@ def on_compare_variant(value, state):
     return {**state, "compare_variant": v}
 
 
-def quick_pick_queue(source: str, state: dict, runs: list[EvalRun]) -> list[str]:
+def quick_pick_queue(source: str, state: dict, runs: list[LoadedRun]) -> list[str]:
     """Run ids a quick-pick button queues; fewer than two means no pick."""
     if source == "compare-quick-best":
         # "In range" means the Summary filters; never fall back to all runs.
@@ -592,10 +592,9 @@ def on_download_latest(n_clicks):
     if not runs:
         raise dash.exceptions.PreventUpdate
     latest = chronological(runs)[-1]
-    stamp = latest.report.timestamp.replace(":", "-")
     return {
         "content": latest.model_dump_json(indent=2),
-        "filename": f"holodeck-run-{stamp}.json",
+        "filename": f"holodeck-run-{latest.run_id}.json",
     }
 
 

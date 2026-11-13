@@ -75,11 +75,11 @@ def test_palette_wraps_after_eight(runs: list[EvalRun]) -> None:
 @pytest.mark.unit
 def test_runs_are_numbered_chronologically(runs: list[EvalRun]) -> None:
     numbers = run_numbers(reversed(runs))
-    assert numbers.number("2026-03-07T09:00:09.812000Z") == 1
-    assert numbers.number("2026-04-16T22:59:09.812000Z") == 24
+    assert numbers.number("2026-03-07T09-00-09.812000Z") == 1
+    assert numbers.number("2026-04-16T22-59-09.812000Z") == 24
     assert run_label(runs[0], numbers) == "R1"
-    assert run_label("2026-04-01T03:02:09.812000Z", numbers) == "R15"
-    assert run_label("2026-05-01T00:00:00Z", numbers) == "2026-05-01T00:00"
+    assert run_label("2026-04-01T03-02-09.812000Z", numbers) == "R15"
+    assert run_label("2026-05-01T00-00-00Z", numbers) == "2026-05-01T00-00"
 
 
 # ---------- regressions + verdict ----------------------------------------
@@ -189,7 +189,7 @@ def test_quick_picks(runs: list[EvalRun]) -> None:
 def test_date_filter_is_inclusive_and_timezone_safe(runs: list[EvalRun]) -> None:
     f = Filters(date_from="2026-04-01", date_to="2026-04-16")
     numbers = run_numbers(runs)
-    picked = [run_label(r.report.timestamp, numbers) for r in apply(f, runs)]
+    picked = [run_label(r.run_id, numbers) for r in apply(f, runs)]
     assert picked[0] == "R15"
     assert picked[-1] == "R24"  # 16 Apr 22:59 is inside an inclusive end date
     assert len(picked) == 10
@@ -252,7 +252,7 @@ def test_r15_verdict_link_opens_the_persistent_failing_case(
     assert "R15 is a regression: it passes 9 of 12 cases, 1 fewer than R14." in rendered
     assert " has failed in every run since R13." in rendered
     assert (
-        '"id": {"type": "open-case", "run_id": "2026-04-01T03:02:09.812000Z", '
+        '"id": {"type": "open-case", "run_id": "2026-04-01T03-02-09.812000Z", '
         '"case_name": "greeting_smalltalk"}'
     ) in rendered
 
@@ -261,7 +261,7 @@ def test_r15_verdict_link_opens_the_persistent_failing_case(
 def test_tray_hides_open_compare_on_compare_view(runs: list[EvalRun]) -> None:
     from holodeck.dashboard.components.compare_tray import render_tray
 
-    queue = [r.report.timestamp for r in runs[-2:]]
+    queue = [r.run_id for r in runs[-2:]]
     for tab, hidden in (("summary", False), ("compare", True)):
         tray = render_tray({"tab": tab, "compare_queue": queue}, runs)
         button = next(

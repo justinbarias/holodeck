@@ -13,8 +13,8 @@ from typing import Any
 
 import pandas as pd
 
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import chronological, sorted_versions
-from holodeck.models.eval_run import EvalRun
 from holodeck.models.test_result import TestResult
 
 COMPARE_PALETTE: list[str] = ["#7bff5a", "#5ae0a6", "#ffcf5a"]
@@ -87,7 +87,7 @@ class Callout:
 # --------------------------------------------------------------------------- #
 
 
-def _iter_cases(run: EvalRun):
+def _iter_cases(run: LoadedRun):
     return run.report.results
 
 
@@ -99,7 +99,7 @@ def _rag_scores(case: TestResult) -> list[float]:
     return [float(m.score) for m in case.metric_results if m.kind == "rag"]
 
 
-def _collect_tokens(run: EvalRun) -> int | None:
+def _collect_tokens(run: LoadedRun) -> int | None:
     """Sum of prompt + completion tokens across cases, or ``None`` when any
     case lacks ``token_usage``.
     """
@@ -125,7 +125,7 @@ def _pricing_cost(model_name: str, prompt_tok: int, out_tok: int) -> float | Non
     return (prompt_tok * p_in + out_tok * p_out) / 1_000_000
 
 
-def run_stats(run: EvalRun) -> RunStats:
+def run_stats(run: LoadedRun) -> RunStats:
     cases = _iter_cases(run)
 
     geval_all: list[float] = []
@@ -192,14 +192,14 @@ def _case_score(case: TestResult) -> float | None:
     return 1.0 if case.passed else 0.0
 
 
-def _case_by_name(run: EvalRun, name: str) -> TestResult | None:
+def _case_by_name(run: LoadedRun, name: str) -> TestResult | None:
     return next((c for c in run.report.results if c.test_name == name), None)
 
 
-def compute_case_matrix(runs: list[EvalRun]) -> pd.DataFrame:
+def compute_case_matrix(runs: list[LoadedRun]) -> pd.DataFrame:
     """One row per (sorted) case union across runs.
 
-    Columns per run (id = ``report.timestamp``):
+    Columns per run (id = :attr:`LoadedRun.run_id`):
         * ``score::<id>``        — ``float | None``
         * ``passed::<id>``       — ``bool``
         * ``regression::<id>``   — ``bool`` (baseline-passed but this failed)
@@ -221,7 +221,7 @@ def compute_case_matrix(runs: list[EvalRun]) -> pd.DataFrame:
         base_passed = base_case.passed if base_case is not None else None
 
         for i, run in enumerate(runs):
-            rid = run.report.timestamp
+            rid = run.run_id
             case = _case_by_name(run, name)
             if case is None:
                 row[f"score::{rid}"] = None
@@ -249,14 +249,14 @@ def compute_case_matrix(runs: list[EvalRun]) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 
 
-def _ext_thinking(run: EvalRun) -> str:
+def _ext_thinking(run: LoadedRun) -> str:
     cfg = run.metadata.agent_config
     if cfg.claude is None or cfg.claude.extended_thinking is None:
         return "False"
     return str(bool(getattr(cfg.claude.extended_thinking, "enabled", False)))
 
 
-def compute_config_diff(runs: list[EvalRun]) -> list[ConfigRow]:
+def compute_config_diff(runs: list[LoadedRun]) -> list[ConfigRow]:
     getters: list[tuple[str, Any]] = [
         ("prompt_version", lambda r: r.metadata.prompt_version.version),
         ("model_name", lambda r: r.metadata.agent_config.model.name),
@@ -294,7 +294,7 @@ def compute_config_diff(runs: list[EvalRun]) -> list[ConfigRow]:
 # --------------------------------------------------------------------------- #
 
 
-def compute_compare_callouts(runs: list[EvalRun]) -> list[Callout]:
+def compute_compare_callouts(runs: list[LoadedRun]) -> list[Callout]:
     if len(runs) < 2:
         return []
     baseline = runs[0]
@@ -314,7 +314,7 @@ def compute_compare_callouts(runs: list[EvalRun]) -> list[Callout]:
                 improvements.append(case.test_name or "")
         out.append(
             Callout(
-                run_id=run.report.timestamp,
+                run_id=run.run_id,
                 prompt_version=run.metadata.prompt_version.version,
                 regressions=regressions[:3],
                 regressions_extra=max(0, len(regressions) - 3),
@@ -356,7 +356,7 @@ def _fmt_passed(st: RunStats) -> str:
     return f"{st.passed}/{st.total}"
 
 
-def compute_summary_rows(runs: list[EvalRun]) -> list[StatRow]:
+def compute_summary_rows(runs: list[LoadedRun]) -> list[StatRow]:
     stats = [run_stats(r) for r in runs]
     if not stats:
         return []
@@ -436,34 +436,34 @@ def delta_pill_class(value: float | None, *, invert: bool = False) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _run_rate(run: EvalRun) -> float:
+def _run_rate(run: LoadedRun) -> float:
     total = run.report.summary.total_tests
     return run.report.summary.passed / total if total > 0 else 0.0
 
 
-def quick_pick_latest(runs: list[EvalRun], n: int) -> list[str]:
+def quick_pick_latest(runs: list[LoadedRun], n: int) -> list[str]:
     """The ``n`` newest runs, oldest first so the older one is the baseline."""
     newest = chronological(runs)[-n:]
-    return [r.report.timestamp for r in newest]
+    return [r.run_id for r in newest]
 
 
-def quick_pick_best_worst(runs: list[EvalRun]) -> list[str]:
+def quick_pick_best_worst(runs: list[LoadedRun]) -> list[str]:
     """Worst then best pass rate; ties go to the most recent run."""
     if len(runs) < 2:
-        return [r.report.timestamp for r in runs]
+        return [r.run_id for r in runs]
     ordered = chronological(runs)
     worst = min(reversed(ordered), key=_run_rate)
     best = max(reversed(ordered), key=_run_rate)
     if worst is best:
-        return [ordered[0].report.timestamp, ordered[-1].report.timestamp]
-    return [worst.report.timestamp, best.report.timestamp]
+        return [ordered[0].run_id, ordered[-1].run_id]
+    return [worst.run_id, best.run_id]
 
 
-def quick_pick_latest_per_revision(runs: list[EvalRun], limit: int = 3) -> list[str]:
+def quick_pick_latest_per_revision(runs: list[LoadedRun], limit: int = 3) -> list[str]:
     """Latest run of each of the newest ``limit`` prompt versions, in revision
     order."""
-    latest: dict[str, EvalRun] = {}
+    latest: dict[str, LoadedRun] = {}
     for run in chronological(runs):
         latest[run.metadata.prompt_version.version] = run
     versions = sorted_versions(latest)[-limit:]
-    return [latest[v].report.timestamp for v in versions]
+    return [latest[v].run_id for v in versions]

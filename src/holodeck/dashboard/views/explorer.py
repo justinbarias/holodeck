@@ -46,6 +46,7 @@ from holodeck.dashboard.explorer_data import (
     list_case_summaries,
     select_run,
 )
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import (
     RevisionColour,
     RunNumbers,
@@ -57,7 +58,6 @@ from holodeck.dashboard.revisions import (
 )
 from holodeck.dashboard.seed_data import SEED_CONVERSATIONS
 from holodeck.dashboard.verdict import pass_rate
-from holodeck.models.eval_run import EvalRun
 
 KIND_LABELS: dict[str, str] = {
     "rag": "RAG",
@@ -120,7 +120,7 @@ _TIER_ICON = {"pass": "check", "warn": "warn", "fail": "x"}  # nosec B105
 
 
 def _runs_column_expanded(
-    runs: list[EvalRun],
+    runs: list[LoadedRun],
     active_run_id: str | None,
     queue: list[str],
     numbers: RunNumbers | None = None,
@@ -135,13 +135,13 @@ def _runs_column_expanded(
 
     rows: list[Any] = []
     for run in sorted_runs:
-        rid = run.report.timestamp
+        rid = run.run_id
         label = run_label(run, numbers)
         pr = pass_rate(run)
         tier = _tier(pr)
         version = run.metadata.prompt_version.version
         model = run.metadata.agent_config.model.name
-        when = fmt_when(parse_ts(rid))
+        when = fmt_when(parse_ts(run.report.timestamp))
         meta = when if model == usual_model else f"{when} · {model}"
         active = rid == active_run_id
         attrs: dict[str, Any] = {"aria-current": "true"} if active else {}
@@ -202,7 +202,7 @@ def _runs_column_expanded(
     )
 
 
-def _runs_column_collapsed(runs: list[EvalRun]) -> html.Div:
+def _runs_column_collapsed(runs: list[LoadedRun]) -> html.Div:
     return html.Div(
         html.Button(
             [
@@ -904,7 +904,7 @@ def _evaluations_section(
 
 
 def _detail_panel(
-    run: EvalRun,
+    run: LoadedRun,
     detail: CaseDetail,
     run_text: str | None = None,
     colour: RevisionColour | None = None,
@@ -934,7 +934,7 @@ def _detail_panel(
 # --------------------------------------------------------------------------- #
 
 
-def render_explorer(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
+def render_explorer(state: dict[str, Any], runs: list[LoadedRun]) -> html.Div:
     if not runs:
         return html.Div(_empty_no_runs(), className="page explorer-empty")
 
@@ -961,9 +961,7 @@ def render_explorer(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
     if runs_collapsed:
         col_runs = _runs_column_collapsed(runs)
     else:
-        col_runs = _runs_column_expanded(
-            runs, run.report.timestamp, queue, numbers, colours
-        )
+        col_runs = _runs_column_expanded(runs, run.run_id, queue, numbers, colours)
 
     col_cases = _cases_column(cases, case_name, label)
 

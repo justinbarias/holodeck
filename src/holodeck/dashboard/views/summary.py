@@ -36,6 +36,7 @@ from holodeck.dashboard.data_loader import (
     to_breakdown_dataframe,
 )
 from holodeck.dashboard.filters import apply as apply_filters
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import (
     RevisionColour,
     RunNumbers,
@@ -53,7 +54,6 @@ from holodeck.dashboard.verdict import (
     find_regressions,
     pass_rate,
 )
-from holodeck.models.eval_run import EvalRun
 
 KIND_LABELS: dict[str, str] = {
     "rag": "RAG",
@@ -65,11 +65,11 @@ KIND_LABELS: dict[str, str] = {
 BREAKDOWN_RECENT_N = 6
 
 
-def _chronological(runs: list[EvalRun]) -> list[EvalRun]:
+def _chronological(runs: list[LoadedRun]) -> list[LoadedRun]:
     return chronological(runs)
 
 
-def _geval_mean(run: EvalRun) -> float | None:
+def _geval_mean(run: LoadedRun) -> float | None:
     scores = [
         float(m.score)
         for case in run.report.results
@@ -96,7 +96,7 @@ def _open_case_button(
 # --------------------------------------------------------------------------- #
 
 
-def render_summary_header(state: dict[str, Any], runs: list[EvalRun]) -> html.Header:
+def render_summary_header(state: dict[str, Any], runs: list[LoadedRun]) -> html.Header:
     filtered = apply_filters(state_filters(state), runs)
     if filtered:
         ordered = _chronological(filtered)
@@ -269,7 +269,7 @@ def _delta_note(text: str, cls: str) -> html.Span:
 
 
 def _figures(
-    filtered: list[EvalRun],
+    filtered: list[LoadedRun],
     total_runs: int,
     numbers: RunNumbers,
     colours: dict[str, RevisionColour],
@@ -374,7 +374,7 @@ def _panel_head(title: str, sub: Any, right: Any = None) -> html.Div:
 
 
 def _pass_rate_panel(
-    filtered: list[EvalRun],
+    filtered: list[LoadedRun],
     numbers: RunNumbers,
     colours: dict[str, RevisionColour],
     regressions: list[Regression],
@@ -424,7 +424,7 @@ def _pass_rate_panel(
     )
 
 
-def _metric_trend_panel(filtered: list[EvalRun], kind: str) -> html.Section:
+def _metric_trend_panel(filtered: list[LoadedRun], kind: str) -> html.Section:
     threshold = shared_threshold(filtered, kind)  # type: ignore[arg-type]
     sub = "Mean score per run for one metric kind."
     if threshold is not None:
@@ -523,7 +523,7 @@ _BREAKDOWNS: tuple[tuple[str, str, str], ...] = (
 
 
 def _breakdown_panel(
-    kind: str, title: str, desc: str, runs: list[EvalRun]
+    kind: str, title: str, desc: str, runs: list[LoadedRun]
 ) -> html.Section:
     df = to_breakdown_dataframe(runs, kind, recent_n=BREAKDOWN_RECENT_N)  # type: ignore[arg-type]
     n_recent = min(len(runs), BREAKDOWN_RECENT_N)
@@ -581,7 +581,7 @@ _TIER_TEXT = {
 
 
 def _runs_table(
-    filtered: list[EvalRun],
+    filtered: list[LoadedRun],
     compare_queue: list[str],
     numbers: RunNumbers,
     colours: dict[str, RevisionColour],
@@ -612,7 +612,7 @@ def _runs_table(
 
     rows = []
     for run, prev in reversed(list(zip(ordered, previous_rates, strict=True))):
-        rid = run.report.timestamp
+        rid = run.run_id
         label = run_label(run, numbers)
         pr = pass_rate(run)
         tier = _tier(pr)
@@ -677,7 +677,7 @@ def _runs_table(
                             **{"aria-label": f"Open {label} in Explorer"},
                         )
                     ),
-                    nav("ts", fmt_when(parse_ts(rid))),
+                    nav("ts", fmt_when(parse_ts(run.report.timestamp))),
                     nav("pr", rate_cell),
                     nav("delta", delta_cell, "num"),
                     nav(
@@ -764,7 +764,7 @@ def _empty_state(title: str, body: Any) -> html.Section:
 
 def render_summary(
     state: dict[str, Any],
-    runs: list[EvalRun],
+    runs: list[LoadedRun],
     agent_display_name: str = "customer-support",
 ) -> html.Div:
     filters = state_filters(state)

@@ -31,7 +31,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from holodeck.models.eval_run import EvalRun
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.models.test_result import (
     MetricResult,
     TestResult,
@@ -200,20 +200,15 @@ class CaseDetail:
 # --------------------------------------------------------------------------- #
 
 
-def select_run(runs: list[EvalRun], run_id: str | None) -> EvalRun | None:
-    """Return the run whose id matches ``run_id``.
+def select_run(runs: list[LoadedRun], run_id: str | None) -> LoadedRun | None:
+    """Return the run whose :attr:`LoadedRun.run_id` is ``run_id``.
 
-    ``run_id`` is matched against ``report.timestamp`` (the id the dashboard
-    uses to address a run). Returns ``None`` when no match is found or when
-    ``run_id`` is ``None``.
+    Returns ``None`` when no run matches or when ``run_id`` is ``None``.
     """
 
     if not run_id:
         return None
-    for run in runs:
-        if run.report.timestamp == run_id:
-            return run
-    return None
+    return next((run for run in runs if run.run_id == run_id), None)
 
 
 def _geval_score(case: TestResult) -> float | None:
@@ -230,7 +225,7 @@ def _rag_avg(case: TestResult) -> float | None:
     return sum(scores) / len(scores)
 
 
-def list_case_summaries(run: EvalRun) -> list[CaseSummary]:
+def list_case_summaries(run: LoadedRun) -> list[CaseSummary]:
     """One row per case in the run's report, ready for the cases column."""
 
     out: list[CaseSummary] = []
@@ -506,7 +501,7 @@ def _code_metric_average(case: TestResult) -> tuple[float, int] | None:
     return sum(scores) / len(scores), len(scores)
 
 
-def _agent_snapshot(run: EvalRun) -> AgentSnapshot:
+def _agent_snapshot(run: LoadedRun) -> AgentSnapshot:
     cfg = run.metadata.agent_config
     pv = run.metadata.prompt_version
 
@@ -540,7 +535,7 @@ def _agent_snapshot(run: EvalRun) -> AgentSnapshot:
     )
 
 
-def _case_header(run: EvalRun, case: TestResult) -> CaseHeader:
+def _case_header(run: LoadedRun, case: TestResult) -> CaseHeader:
     cfg = run.metadata.agent_config
     return CaseHeader(
         case_name=case.test_name or "",
@@ -554,7 +549,7 @@ def _case_header(run: EvalRun, case: TestResult) -> CaseHeader:
 
 
 def build_case_detail(
-    run: EvalRun,
+    run: LoadedRun,
     case_name: str,
     conversations_map: dict[str, Any],
 ) -> CaseDetail | None:

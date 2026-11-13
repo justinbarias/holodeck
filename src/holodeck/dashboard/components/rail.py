@@ -15,6 +15,7 @@ from dash import dcc, html
 from holodeck.dashboard.components.ui import icon, sr_only
 from holodeck.dashboard.data_loader import distinct_values
 from holodeck.dashboard.filters import Filters
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import (
     revision_colour,
     revision_colour_map,
@@ -22,7 +23,6 @@ from holodeck.dashboard.revisions import (
     sorted_versions,
 )
 from holodeck.dashboard.state import state_filters
-from holodeck.models.eval_run import EvalRun
 
 _VIEWS: tuple[tuple[str, str, str], ...] = (
     ("summary", "Summary", "summary"),
@@ -130,7 +130,7 @@ def _chip(kind: str, value: str, text: str, on: bool, style: dict | None = None)
     )
 
 
-def _filters(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
+def _filters(state: dict[str, Any], runs: list[LoadedRun]) -> html.Div:
     filters = state_filters(state)
     colours = revision_colour_map(runs)
     versions = sorted_versions(r.metadata.prompt_version.version for r in runs)
@@ -270,7 +270,7 @@ def _human_date(iso_date: str) -> str:
 
 def render_rail(
     state: dict[str, Any],
-    runs: list[EvalRun],
+    runs: list[LoadedRun],
     *,
     active: str,
     counts: dict[str, int],
