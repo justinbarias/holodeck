@@ -1,6 +1,6 @@
 # Temporal Knowledge Graph Memory — specification
 
-Feature: `043-temporal-memory`. **Status:** approved for build 2026-11-11; plan in progress.
+Feature: `043-temporal-memory`. **Status:** shipped 2026-11-12 (stack #447 to #457); plan completed.
 
 ## Documents
 
@@ -10,7 +10,7 @@ Feature: `043-temporal-memory`. **Status:** approved for build 2026-11-11; plan 
 
 - [Design](../../design-docs/043-temporal-memory/design.md)
 - [Graphiti evidence](../../design-docs/043-temporal-memory/graphiti-evidence.md)
-- [Execution plan](../../exec-plans/active/043-temporal-memory/index.md)
+- [Execution plan](../../exec-plans/completed/043-temporal-memory/index.md)
 - [Feature inventory](../inventory.md)
 - [GraphRAG research (archived)](../016-graphrag-integration/index.md)
 - [HoloDeck Agents on Temporal](../040-holodeck-temporal/index.md)
