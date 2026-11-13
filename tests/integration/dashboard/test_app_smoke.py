@@ -7,8 +7,11 @@ separately via the Phase 8 Chrome MCP sweep.
 
 from __future__ import annotations
 
+import json
+
 import pytest
-from dash import dcc, html
+from dash import html
+from plotly.utils import PlotlyJSONEncoder
 
 from holodeck.dashboard.seed_data import build_seed_runs
 
@@ -92,9 +95,12 @@ def test_render_compare_variants(seed_runs, variant, cls):
     state = {"compare_queue": queue, "compare_variant": variant}
     tree = render_compare(state, seed_runs)
     assert _classes_contain(tree, cls)
-    # Every variant renders the shared case-matrix Plotly graph.
+    # Every variant renders the shared case matrix, which states each
+    # result in words rather than colour alone.
     assert _has_id(tree, "chart-compare-matrix")
-    assert _has_component(tree, dcc.Graph)
+    assert _has_component(tree, html.Table)
+    rendered = json.dumps(tree, cls=PlotlyJSONEncoder)
+    assert '"Pass"' in rendered
 
 
 @pytest.mark.slow
@@ -104,6 +110,8 @@ def test_render_compare_empty_state(seed_runs):
     state = {"compare_queue": [], "compare_variant": 1}
     tree = render_compare(state, seed_runs)
     assert _classes_contain(tree, "cmp-empty")
-    # Both quick-pick CTAs present
+    # Every quick-pick CTA is present
     assert _has_id(tree, "compare-quick-2")
     assert _has_id(tree, "compare-quick-3")
+    assert _has_id(tree, "compare-quick-best")
+    assert _has_id(tree, "compare-quick-revisions")

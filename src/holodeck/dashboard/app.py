@@ -15,11 +15,20 @@ import dash
 from dash import Input, Output, State, callback, ctx, dcc, html
 
 from holodeck.dashboard import state as state_mod
+from holodeck.dashboard.compare_data import (
+    quick_pick_best_worst,
+    quick_pick_latest,
+    quick_pick_latest_per_revision,
+)
 from holodeck.dashboard.components.compare_tray import render_tray
+from holodeck.dashboard.components.rail import render_rail
 from holodeck.dashboard.data_loader import load_runs_for_app, to_summary_dataframe
 from holodeck.dashboard.filters import Filters
 from holodeck.dashboard.filters import apply as apply_filters
+from holodeck.dashboard.revisions import chronological
 from holodeck.dashboard.views import render_compare, render_explorer, render_summary
+from holodeck.dashboard.views.compare import render_compare_header
+from holodeck.dashboard.views.summary import render_summary_header
 from holodeck.models.eval_run import EvalRun
 
 AGENT_DISPLAY_NAME = os.environ.get(
@@ -29,7 +38,7 @@ AGENT_NAME = os.environ.get("HOLODECK_DASHBOARD_AGENT_NAME", "customer-support")
 
 app = dash.Dash(
     __name__,
-    title="HoloDeck · Evaluation Dashboard",
+    title="HoloDeck test view",
     update_title=None,
     suppress_callback_exceptions=True,
     assets_folder="assets",
@@ -76,106 +85,33 @@ def get_runs() -> list:
     return runs
 
 
-def _topbar() -> html.Header:
-    runs = get_runs()
-    n = len(runs)
-    mode = (
-        "seed · data.js"
-        if os.environ.get("HOLODECK_DASHBOARD_USE_SEED") == "1"
-        else "live"
-    )
+def _seed_mode() -> bool:
+    return os.environ.get("HOLODECK_DASHBOARD_USE_SEED") == "1"
 
-    return html.Header(
-        [
-            html.Div(
-                [
-                    html.Div("▶", className="logo-mark"),
-                    html.Div(
-                        [
-                            html.Div("HoloDeck", className="brand-name"),
-                            html.Div("TEST VIEW", className="brand-sub"),
-                        ],
-                        className="brand",
-                    ),
-                ],
-                className="topbar-left",
-            ),
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Span(className="dot"),
-                            html.Span("experiment", className="meta"),
-                            html.Span(AGENT_DISPLAY_NAME, className="name"),
-                            html.Span("▾", className="chev"),
-                        ],
-                        className="exp-picker",
-                    ),
-                    html.Span(
-                        [
-                            html.Span(f"{n}", className="mono fg"),
-                            f" runs · results/{AGENT_NAME}/",
-                        ],
-                        className="mono",
-                        style={"fontSize": "12px", "color": "var(--hd-muted)"},
-                    ),
-                ],
-                className="topbar-center",
-            ),
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Span(className="ind"),
-                            html.Span(f"dash · {mode}"),
-                        ],
-                        className="warn",
-                    ),
-                    html.Button(["⤓ Download run"], className="hd-btn hd-btn-ghost"),
-                ],
-                className="topbar-right",
-            ),
-        ],
-        className="topbar",
+
+def _rail(state: dict, runs: list[EvalRun], tab: str, n_filtered: int) -> html.Aside:
+    return render_rail(
+        state,
+        runs,
+        active=tab,
+        counts={
+            "summary": n_filtered,
+            "explorer": len(runs),
+            "compare": len(state.get("compare_queue") or []),
+        },
+        agent_display_name=AGENT_DISPLAY_NAME,
+        agent_name=AGENT_NAME,
+        seed_mode=_seed_mode(),
     )
 
 
-def _tabbar(active: str, summary_count: int, compare_queue_n: int) -> html.Nav:
-    def tab(label: str, value: str, count_text: str | None) -> html.Button:
-        children: list = [label]
-        if count_text is not None:
-            children.append(html.Span(count_text, className="count"))
-        cls = "tab active" if active == value else "tab"
-        return html.Button(
-            children, className=cls, id={"type": "tab-btn", "value": value}, n_clicks=0
-        )
-
-    compare_count = f"{compare_queue_n}/3" if compare_queue_n else "—"
-
-    return html.Nav(
-        [
-            tab("Summary", "summary", str(summary_count)),
-            tab("Explorer", "explorer", str(summary_count)),
-            tab("Compare", "compare", compare_count),
-            html.Div(
-                [
-                    html.Span(
-                        "launched via",
-                        style={"color": "var(--hd-muted)", "fontSize": "12px"},
-                    ),
-                    html.Span(
-                        [
-                            html.Span("$ ", className="p"),
-                            html.Span("holodeck test view agent.yaml"),
-                        ],
-                        className="cmd-chip",
-                    ),
-                ],
-                className="tabbar-right",
-            ),
-        ],
-        className="tabbar",
-    )
+def _page_header(state: dict, runs: list[EvalRun], tab: str) -> html.Header | None:
+    if tab == "summary":
+        return render_summary_header(state, runs)
+    if tab == "compare":
+        return render_compare_header(state, runs)
+    # Explorer's heading is the selected case name, inside the detail panel.
+    return None
 
 
 app.layout = html.Div(
@@ -188,9 +124,12 @@ app.layout = html.Div(
         # `render_all` which already calls get_runs() — cheap no-op when the
         # fingerprint is unchanged.
         dcc.Interval(id="runs-poll", interval=5000, n_intervals=0),
-        html.Div(id="topbar-container"),
-        html.Div(id="tabbar-container"),
-        html.Main(id="view-container"),
+        html.A("Skip to content", href="#view-container", className="skip-link"),
+        # The rail (brand, agent card, views, filters) renders into
+        # #topbar-container; the page header renders into #tabbar-container.
+        html.Div(id="topbar-container", className="rail-slot"),
+        html.Div(id="tabbar-container", className="header-slot"),
+        html.Main(id="view-container", tabIndex="-1"),
         # Compare tray floats across every view; sibling of #view-container so
         # it survives tab-switch re-renders (T442).
         html.Div(id="compare-tray-container"),
@@ -211,7 +150,6 @@ def render_all(state, _n_intervals):
     state = state or state_mod.default_state()
     runs = get_runs()
     tab = state.get("tab", "summary")
-    compare_n = len(state.get("compare_queue") or [])
     filtered = apply_filters(state_mod.state_filters(state), runs)
     if tab == "explorer":
         view = render_explorer(state, runs)
@@ -220,7 +158,12 @@ def render_all(state, _n_intervals):
     else:
         view = render_summary(state, runs, agent_display_name=AGENT_DISPLAY_NAME)
     tray = render_tray(state, runs)
-    return _topbar(), _tabbar(tab, len(filtered), compare_n), view, tray
+    return (
+        _rail(state, runs, tab, len(filtered)),
+        _page_header(state, runs, tab),
+        view,
+        tray,
+    )
 
 
 @callback(
@@ -335,6 +278,28 @@ def on_runs_search(value, state):
 
 
 @callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("url", "search"),
+    State("app-state", "data"),
+    prevent_initial_call="initial_duplicate",
+)
+def restore_from_url(search, state):
+    """Load the view a copied link describes (and follow back/forward).
+
+    ``sync_url`` writes the address from the state, which fires this callback
+    again; when the address already matches the state there is nothing to do,
+    so the two never loop.
+    """
+    state = state or state_mod.default_state()
+    restored = state_mod.state_from_url_search(search or "")
+    if state_mod.url_search_from_state(restored) == state_mod.url_search_from_state(
+        state
+    ):
+        raise dash.exceptions.PreventUpdate
+    return {**state, **restored}
+
+
+@callback(
     Output("url", "search"),
     Input("app-state", "data"),
     prevent_initial_call=True,
@@ -432,7 +397,7 @@ def on_explorer_runs_toggle(n_clicks, state):
     if not n_clicks:
         raise dash.exceptions.PreventUpdate
     state = state or state_mod.default_state()
-    current = bool(state.get("explorer_runs_collapsed", True))
+    current = bool(state.get("explorer_runs_collapsed", False))
     return {**state, "explorer_runs_collapsed": not current}
 
 
@@ -478,19 +443,34 @@ def on_compare_slot_remove(_clicks, state):
     return state_mod.remove_from_compare_queue(state, run_id)
 
 
+def _clear_queue(n_clicks, state):
+    if not n_clicks:
+        raise dash.exceptions.PreventUpdate
+    state = state or state_mod.default_state()
+    return {**state, "compare_queue": []}
+
+
+# One callback per button: the tray is mounted on every view but the toolbar
+# Clear exists only on Compare, and Dash rejects a callback whose inputs are
+# not all in the layout.
 @callback(
     Output("app-state", "data", allow_duplicate=True),
     Input("compare-tray-clear", "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_compare_tray_clear(n_clicks, state):
+    return _clear_queue(n_clicks, state)
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
     Input("compare-clear", "n_clicks"),
     State("app-state", "data"),
     prevent_initial_call=True,
 )
-def on_compare_clear(_tray, _toolbar, state):
-    trig = ctx.triggered[0] if ctx.triggered else {}
-    if not trig.get("value"):
-        raise dash.exceptions.PreventUpdate
-    state = state or state_mod.default_state()
-    return {**state, "compare_queue": []}
+def on_compare_clear(n_clicks, state):
+    return _clear_queue(n_clicks, state)
 
 
 @callback(
@@ -525,26 +505,115 @@ def on_compare_variant(value, state):
     return {**state, "compare_variant": v}
 
 
+def quick_pick_queue(source: str, state: dict, runs: list[EvalRun]) -> list[str]:
+    """Run ids a quick-pick button queues; fewer than two means no pick."""
+    if source == "compare-quick-best":
+        # "In range" means the Summary filters; never fall back to all runs.
+        in_range = apply_filters(state_mod.state_filters(state), runs)
+        return quick_pick_best_worst(in_range) if len(in_range) >= 2 else []
+    if source == "compare-quick-revisions":
+        return quick_pick_latest_per_revision(runs)
+    return quick_pick_latest(runs, 3 if source == "compare-quick-3" else 2)
+
+
 @callback(
     Output("app-state", "data", allow_duplicate=True),
     Input("compare-quick-2", "n_clicks"),
     Input("compare-quick-3", "n_clicks"),
+    Input("compare-quick-best", "n_clicks"),
+    Input("compare-quick-revisions", "n_clicks"),
     State("app-state", "data"),
     prevent_initial_call=True,
 )
-def on_compare_quick_pick(_n2, _n3, state):
+def on_compare_quick_pick(_n2, _n3, _best, _revisions, state):
     trig = ctx.triggered[0] if ctx.triggered else {}
     if not trig.get("value"):
         raise dash.exceptions.PreventUpdate
     state = state or state_mod.default_state()
     source = (trig.get("prop_id") or "").split(".")[0]
-    n = 3 if source == "compare-quick-3" else 2
-    runs = get_runs()
-    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp, reverse=True)
+    queue = quick_pick_queue(source, state, get_runs())
+    if len(queue) < 2:
+        raise dash.exceptions.PreventUpdate
+    return {**state, "compare_queue": queue}
+
+
+# --------------------------------------------------------------------------- #
+# Summary: verdict links, date range, download, share link                    #
+# --------------------------------------------------------------------------- #
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input({"type": "open-case", "run_id": dash.ALL, "case_name": dash.ALL}, "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_open_case(_clicks, state):
+    state = state or state_mod.default_state()
+    if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
+        raise dash.exceptions.PreventUpdate
+    trigger = ctx.triggered[0] if ctx.triggered else {}
+    if not trigger.get("value"):
+        raise dash.exceptions.PreventUpdate
+    run_id = ctx.triggered_id.get("run_id")
+    case_name = ctx.triggered_id.get("case_name") or None
     return {
-        **state,
-        "compare_queue": [r.report.timestamp for r in sorted_runs[:n]],
+        **state_mod.open_in_explorer(state, run_id),
+        "explorer_case_name": case_name,
     }
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("filter-date-range", "start_date"),
+    Input("filter-date-range", "end_date"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_date_range(start_date, end_date, state):
+    state = state or state_mod.default_state()
+    current = state.get("filters") or asdict(Filters())
+    start = (start_date or "")[:10] or None
+    end = (end_date or "")[:10] or None
+    if start == current.get("date_from") and end == current.get("date_to"):
+        raise dash.exceptions.PreventUpdate
+    return {**state, "filters": {**current, "date_from": start, "date_to": end}}
+
+
+@callback(
+    Output("download-latest-run-file", "data"),
+    Input("download-latest-run", "n_clicks"),
+    prevent_initial_call=True,
+)
+def on_download_latest(n_clicks):
+    if not n_clicks:
+        raise dash.exceptions.PreventUpdate
+    runs = get_runs()
+    if not runs:
+        raise dash.exceptions.PreventUpdate
+    latest = chronological(runs)[-1]
+    stamp = latest.report.timestamp.replace(":", "-")
+    return {
+        "content": latest.model_dump_json(indent=2),
+        "filename": f"holodeck-run-{stamp}.json",
+    }
+
+
+# Copies the address bar (which `sync_url` keeps in step with the filters).
+app.clientside_callback(
+    """
+    function (n) {
+        if (!n) { return window.dash_clientside.no_update; }
+        if (!navigator.clipboard) { return "Copy the address bar to share this view."; }
+        return navigator.clipboard.writeText(window.location.href)
+            .then(function () { return "Link copied."; })
+            .catch(function () { return "Copy the address bar to share this view."; });
+    }
+    """,
+    Output("filter-copy-status", "children"),
+    Input("filter-copy-url", "n_clicks"),
+    prevent_initial_call=True,
+)
 
 
 def main(host: str = "127.0.0.1", port: int = 8501, debug: bool = False) -> None:

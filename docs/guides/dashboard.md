@@ -111,9 +111,11 @@ Detection is conservative — a chatty reply that embeds JSON mid-sentence stays
 
 ## Summary view
 
-The Summary tab is the landing page: four KPI tiles (latest pass rate, filtered-run count, avg G-Eval score, median duration), a pass-rate time series with prompt-version boundary markers, per-metric trend lines, and breakdowns for each metric kind. Scroll down for the filterable runs table — click any row to jump into Explorer on that run, or use the **+** button to queue a run for comparison.
+The Summary tab is the landing page. It opens with a verdict sentence about the latest run in view against the run before it (pass count, whether it is a regression, the longest-failing case, run-time change) and a numbered **Regressions in range** list. Runs are numbered like cues, `R1` (oldest loaded run) to `Rn` (newest), and each prompt version keeps one revision colour on every chip, chart band and filter.
 
-Filters (left rail) narrow everything above the table in one go: date range, prompt version, model, pass-rate threshold slider, and frontmatter-tag chips.
+Below the verdict: four figures with changes against the previous run (latest pass rate, runs in view, mean G-Eval, median duration), a pass-rate chart with a coloured band per prompt version and a numbered red ring per regression (the numbers match the list), per-metric trend lines with a dashed threshold, and breakdowns for each metric kind. Scroll down for the runs table with a **Δ vs previous** column — select a run number to open it in Explorer, or use the **+** button to queue a run for comparison.
+
+Filters in the house-blue rail narrow everything on the page in one go: date range, prompt version, model, pass-rate threshold slider, and frontmatter-tag chips. **Copy link to this view** copies the address, which carries the active filters.
 
 ## Explorer view
 
@@ -121,7 +123,7 @@ Explorer is a three-column drilldown — runs on the left, cases in the middle, 
 
 ![Explorer view — case detail with conversation thread, tool calls, and config snapshot](../assets/dashboard/explorer.png)
 
-The detail panel shows the full thread (user message → tool calls with args/results → agent reply), an expandable agent-config snapshot (captured at run time with secrets stripped), the expected-tools coverage check, and every evaluation metric with its score, threshold, and judge reasoning. Large tool-call results auto-collapse.
+The detail panel shows the full thread with every tool call numbered as a cue (`Q1`, `Q2`, …) in a ruled margin (user message → tool calls with args/results → agent reply), a collapsed agent-config snapshot (captured at run time with secrets stripped), the expected-tools check (each expected tool points to the cue that called it; calls nobody expected are flagged as warnings), and every evaluation metric with its score bar, threshold, Pass or Fail, and judge reasoning. Large tool-call results auto-collapse.
 
 The assistant reply itself adapts to the response shape — Markdown renders cleanly for prose, structured JSON renders as an indented code block.
 
@@ -129,15 +131,15 @@ Multi-turn test cases render with a turn-count chip (e.g. `4 turns · 3/4 passed
 
 ## Compare view
 
-Queue 2 or 3 runs from the compare tray (click the **+** button on any run row), then open Compare:
+Queue 2 or 3 runs from the compare tray (click the **+** button on any run row), or start from a quick pick on the empty Compare page (latest vs previous, best vs worst in range, latest run of the last three revisions, latest three runs), then open Compare:
 
 ![Compare view — headline stats with deltas, config diff, and per-case matrix](../assets/dashboard/compare.png)
 
-- **Headline stats** with deltas against the baseline (duration and cost invert polarity — lower-is-better)
-- **Config diff** highlighting rows where prompt version / model / tags / commit differ
-- **Per-case matrix** — a heatmap of pass/fail per case per run, with regressions (passing in baseline but failing elsewhere) outlined
+- **Headline stats** with deltas against the baseline (duration and cost invert polarity — lower-is-better; estimated cost appears only when every run saved token counts for a priced model)
+- **What changed between runs** — only the configuration fields that differ (prompt revision, model, temperature, tags, commit), each with the run where it changed
+- **Test cases across runs** — a table that says Pass, Fail or Not run in every cell, marking `fixed` and `regression` against the baseline
 
-Switch between `side-by-side`, `baseline + deltas`, and `matrix-first` layouts via the radio group at the top.
+Switch between **Side by side**, **Baseline + deltas**, and **Matrix first** layouts with the control in the toolbar.
 
 ## Filters and drilldown
 

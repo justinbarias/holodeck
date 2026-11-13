@@ -1,8 +1,10 @@
 """Plotly figure factories for the Summary view.
 
-Pure functions returning `plotly.graph_objects.Figure`. Consumers wrap them
-in `dcc.Graph`. Every chart calls `_apply_theme(fig)` so colors, fonts,
-gridlines, and margins align with the handoff dark terminal-green aesthetic.
+Pure functions returning ``plotly.graph_objects.Figure``. Consumers wrap them
+in ``dcc.Graph`` with the mode bar hidden. Every chart calls
+``_apply_theme(fig)``: white plot, ``#dde0e8`` grid, house-blue lines, Public
+Sans labels. Revision bands come from :mod:`holodeck.dashboard.revisions` so
+a prompt version has the same colour here as on every chip.
 """
 
 from __future__ import annotations
@@ -13,164 +15,255 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from holodeck.dashboard.data_loader import (
-    detect_regressions,
-    detect_version_boundaries,
     to_breakdown_dataframe,
     to_metric_trend_dataframe,
     to_summary_dataframe,
 )
+from holodeck.dashboard.revisions import (
+    RevisionColour,
+    RunNumbers,
+    chronological,
+    revision_colour,
+    revision_colour_map,
+    run_label,
+    run_numbers,
+)
+from holodeck.dashboard.verdict import Regression, find_regressions
 from holodeck.models.eval_run import EvalRun
 
 MetricKind = Literal["standard", "rag", "geval", "code"]
 
-PALETTE = ["#7bff5a", "#5ae0a6", "#53ff9c", "#9bff5f", "#a7f0ba", "#ffcf5a"]
-ACCENT = "#7bff5a"
-ACCENT_FILL = "rgba(123,255,90,0.15)"
-CORAL = "#ff9d7e"
-BG_CARD = "#070c0a"
-FG = "#e8f5ec"
-MUTED = "#9bb3a5"
-GRID = "rgba(28,43,37,0.5)"
-BORDER_VERSION = "rgba(123,255,90,0.35)"
-THRESHOLD_COLOR = "rgba(255,120,80,0.7)"
+HOUSE = "#1d2347"
+INK = "#15171e"
+SECONDARY = "#555b6b"
+GRID = "#dde0e8"
+GRID_INNER = "#eceef3"
+FAIL = "#c2312a"
+SANS = "Public Sans, system-ui, sans-serif"
+MONO = "Courier Prime, ui-monospace, monospace"
+
+# Series colours for metric lines. Revision colours are reserved for prompt
+# versions, so metric lines use house blue and neutral data inks, each with
+# its own dash pattern so lines never rely on colour alone.
+SERIES = ["#1d2347", "#3d6fc4", "#b07300", "#2c7a7b", "#6a4fb0", "#5d6274"]
+SERIES_DASH = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"]
+PALETTE = SERIES
+ACCENT = HOUSE
+
+# Time axes pick their tick format from the tick spacing: runs saved minutes
+# apart show clock times with the date under them; runs days apart show dates.
+DAY_MS = 86_400_000
+TIME_TICK_FORMATS = [
+    {"dtickrange": [None, DAY_MS], "value": "%H:%M<br>%-d %b"},
+    {"dtickrange": [DAY_MS, None], "value": "%-d %b"},
+]
+
+# A band is labelled only when its version name fits inside it. The plot
+# area is assumed no wider than this (the Summary chart at a narrow desktop),
+# and a 12 px Courier Prime character is about 7.2 px wide.
+BAND_LABEL_PLOT_PX = 480
+BAND_LABEL_CHAR_PX = 7.2
+BAND_LABEL_PAD_PX = 12
+
+
+def band_label_fits(band_fraction: float, label: str) -> bool:
+    """True when ``label`` fits in a band ``band_fraction`` of the axis wide."""
+    needed = len(label) * BAND_LABEL_CHAR_PX + BAND_LABEL_PAD_PX
+    return band_fraction * BAND_LABEL_PLOT_PX >= needed
 
 
 def _apply_theme(fig: go.Figure, *, show_legend: bool = False) -> go.Figure:
     fig.update_layout(
-        plot_bgcolor=BG_CARD,
-        paper_bgcolor="rgba(0,0,0,0)",
-        font={"color": FG, "family": "Inter, system-ui, sans-serif", "size": 12},
-        margin={"l": 40, "r": 16, "t": 16, "b": 28},
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        font={"color": INK, "family": SANS, "size": 12},
+        margin={"l": 48, "r": 16, "t": 28, "b": 36},
         showlegend=show_legend,
         legend={
+            "orientation": "h",
+            "x": 0,
+            "y": -0.18,
+            "xanchor": "left",
+            "yanchor": "top",
             "bgcolor": "rgba(0,0,0,0)",
-            "bordercolor": "rgba(0,0,0,0)",
-            "font": {"size": 11, "color": MUTED},
+            "font": {"size": 12, "color": SECONDARY, "family": MONO},
         },
         hoverlabel={
-            "bgcolor": "#0a110f",
-            "bordercolor": "#1c2b25",
-            "font": {"color": FG, "family": "JetBrains Mono, monospace", "size": 12},
+            "bgcolor": "#ffffff",
+            "bordercolor": GRID,
+            "font": {"color": INK, "family": SANS, "size": 12},
         },
+        hovermode="closest",
     )
-    fig.update_xaxes(
-        gridcolor=GRID,
-        zerolinecolor=GRID,
-        linecolor="rgba(28,43,37,0.8)",
-        tickfont={"size": 10, "color": MUTED, "family": "JetBrains Mono, monospace"},
-    )
-    fig.update_yaxes(
-        gridcolor=GRID,
-        zerolinecolor=GRID,
-        linecolor="rgba(28,43,37,0.8)",
-        tickfont={"size": 10, "color": MUTED, "family": "JetBrains Mono, monospace"},
-    )
+    axis = {
+        "gridcolor": GRID,
+        "zerolinecolor": GRID,
+        "linecolor": GRID,
+        "tickfont": {"size": 11, "color": SECONDARY, "family": SANS},
+        "fixedrange": True,
+    }
+    fig.update_xaxes(**axis)
+    fig.update_yaxes(**axis)
     return fig
 
 
-def pass_rate_chart(runs: list[EvalRun]) -> go.Figure:
-    """Filled area + line + regression dots + version-boundary annotations."""
+def _version_segments(
+    df: pd.DataFrame,
+) -> list[tuple[int, int, str]]:
+    """Contiguous ``(first_idx, last_idx, version)`` runs in time order."""
+    segments: list[tuple[int, int, str]] = []
+    for i, version in enumerate(df["prompt_version"]):
+        if segments and segments[-1][2] == version:
+            first, _, v = segments[-1]
+            segments[-1] = (first, i, v)
+        else:
+            segments.append((i, i, version))
+    return segments
+
+
+def _edges(times: list[pd.Timestamp]) -> list[pd.Timestamp]:
+    """Band edges: midpoints between runs, padded half a gap at each end."""
+    if len(times) == 1:
+        pad = pd.Timedelta(hours=12)
+        return [times[0] - pad, times[0] + pad]
+    mids = [times[i] + (times[i + 1] - times[i]) / 2 for i in range(len(times) - 1)]
+    first = times[0] - (times[1] - times[0]) / 2
+    last = times[-1] + (times[-1] - times[-2]) / 2
+    return [first, *mids, last]
+
+
+def pass_rate_chart(
+    runs: list[EvalRun],
+    *,
+    numbers: RunNumbers | None = None,
+    colours: dict[str, RevisionColour] | None = None,
+    regressions: list[Regression] | None = None,
+) -> go.Figure:
+    """Pass rate by run over revision bands, with numbered regression rings."""
     fig = go.Figure()
     if not runs:
         return _apply_theme(fig)
 
-    df = to_summary_dataframe(runs).sort_values("timestamp").reset_index(drop=True)
-    regression_idx = set(detect_regressions(runs))
-    boundaries = detect_version_boundaries(runs)
+    numbers = numbers if numbers is not None else run_numbers(runs)
+    colours = colours if colours is not None else revision_colour_map(runs)
+    if regressions is None:
+        regressions = find_regressions(runs, numbers)
 
-    # Filled area + main line
+    # Oldest first; the frame and ``ordered`` share one chronological order.
+    df = to_summary_dataframe(runs).iloc[::-1].reset_index(drop=True)
+    ordered = chronological(runs)
+    times = list(df["timestamp"])
+    edges = _edges(times)
+    labels = [run_label(run, numbers) for run in ordered]
+    span = edges[-1] - edges[0]
+
+    for first, last, version in _version_segments(df):
+        colour = revision_colour(version, colours)
+        # Runs saved at one instant give a zero-width axis; share it by run count.
+        band_fraction = (
+            (edges[last + 1] - edges[first]) / span
+            if span > pd.Timedelta(0)
+            else (last - first + 1) / len(times)
+        )
+        fig.add_shape(
+            type="rect",
+            xref="x",
+            yref="paper",
+            x0=edges[first],
+            x1=edges[last + 1],
+            y0=0,
+            y1=1,
+            fillcolor=colour.tint,
+            opacity=0.6,
+            line={"width": 0},
+            layer="below",
+        )
+        # A narrow band keeps its colour and its version in the hover; a label
+        # that does not fit would print over its neighbours.
+        if not band_label_fits(band_fraction, version):
+            continue
+        # The label is a revision tab above the plot, so a 100% pass rate line
+        # never runs through it.
+        fig.add_annotation(
+            xref="x",
+            yref="paper",
+            x=edges[first],
+            y=1,
+            xanchor="left",
+            yanchor="bottom",
+            yshift=2,
+            text=f"<b>{version}</b>",
+            showarrow=False,
+            bgcolor=colour.tint,
+            borderpad=2,
+            font={"size": 12, "color": colour.ink, "family": MONO},
+        )
+
+    custom = [
+        [label, version]
+        for label, version in zip(labels, df["prompt_version"], strict=True)
+    ]
     fig.add_trace(
         go.Scatter(
             x=df["timestamp"],
             y=df["pass_rate"],
-            mode="lines",
-            line={"color": ACCENT, "width": 2, "shape": "spline", "smoothing": 0.6},
-            fill="tozeroy",
-            fillcolor=ACCENT_FILL,
-            hovertemplate="%{x|%b %d}<br>%{y:.0%}<extra></extra>",
+            mode="lines+markers",
+            line={"color": HOUSE, "width": 2.2},
+            marker={"color": HOUSE, "size": 5},
+            customdata=custom,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b> · %{customdata[1]}"
+                "<br>%{x|%-d %b %H:%M}<br>Pass rate %{y:.1%}<extra></extra>"
+            ),
             showlegend=False,
         )
     )
 
-    # Normal dots
-    normal_mask = [i not in regression_idx for i in range(len(df))]
-    fig.add_trace(
-        go.Scatter(
-            x=df.loc[normal_mask, "timestamp"],
-            y=df.loc[normal_mask, "pass_rate"],
-            mode="markers",
-            marker={
-                "color": ACCENT,
-                "size": 7,
-                "line": {"color": "#050b09", "width": 2},
-            },
-            hovertemplate="%{x|%b %d}<br>%{y:.0%}<extra></extra>",
-            showlegend=False,
-        )
-    )
-
-    # Regression dots (coral)
-    if regression_idx:
-        reg_df = df.iloc[sorted(regression_idx)]
+    by_label = {label: i for i, label in enumerate(labels)}
+    ring_x: list[pd.Timestamp] = []
+    ring_y: list[float] = []
+    ring_text: list[str] = []
+    for reg in regressions:
+        idx = by_label.get(reg.label)
+        if idx is None:
+            continue
+        ring_x.append(df.at[idx, "timestamp"])
+        ring_y.append(float(df.at[idx, "pass_rate"]))
+        ring_text.append(str(reg.number))
+    if ring_x:
         fig.add_trace(
             go.Scatter(
-                x=reg_df["timestamp"],
-                y=reg_df["pass_rate"],
-                mode="markers",
+                x=ring_x,
+                y=ring_y,
+                mode="markers+text",
                 marker={
-                    "color": CORAL,
-                    "size": 10,
-                    "line": {"color": "#050b09", "width": 2},
+                    "symbol": "circle-open",
+                    "color": FAIL,
+                    "size": 15,
+                    "line": {"color": FAIL, "width": 2},
                 },
-                hovertemplate="regression<br>%{x|%b %d}<br>%{y:.0%}<extra></extra>",
+                text=ring_text,
+                textposition="bottom center",
+                textfont={"color": FAIL, "family": MONO, "size": 13},
+                hovertemplate="Regression %{text}<br>%{y:.1%}<extra></extra>",
                 showlegend=False,
             )
         )
 
-    # Prompt-version boundary lines
-    # NOTE: add_vline() with annotation_text crashes on pandas Timestamp x-values
-    # (plotly.shapeannotation averages X and blows up). Use add_shape + add_annotation
-    # separately so we can still label each boundary.
-    for idx, version in boundaries:
-        if idx < len(df):
-            ts = df.iloc[idx]["timestamp"]
-            fig.add_shape(
-                type="line",
-                xref="x",
-                yref="paper",
-                x0=ts,
-                x1=ts,
-                y0=0,
-                y1=1,
-                line={"color": BORDER_VERSION, "width": 1, "dash": "dot"},
-            )
-            fig.add_annotation(
-                xref="x",
-                yref="paper",
-                x=ts,
-                y=1.02,
-                text=version,
-                showarrow=False,
-                font={
-                    "size": 10,
-                    "color": "#5ae0a6",
-                    "family": "JetBrains Mono, monospace",
-                },
-                xanchor="center",
-                yanchor="bottom",
-            )
-
     fig.update_yaxes(
-        range=[0, 1],
+        range=[0, 1.04],
         tickmode="array",
         tickvals=[0, 0.25, 0.5, 0.75, 1.0],
         tickformat=".0%",
     )
-    fig.update_xaxes(tickformat="%b %d")
+    fig.update_xaxes(tickformatstops=TIME_TICK_FORMATS, showgrid=False)
     return _apply_theme(fig)
 
 
-def metric_trend_chart(runs: list[EvalRun], kind: MetricKind) -> go.Figure:
+def metric_trend_chart(
+    runs: list[EvalRun], kind: MetricKind, threshold: float | None = 0.7
+) -> go.Figure:
+    """Mean score per run for every metric of ``kind``; dashed threshold."""
     fig = go.Figure()
     if not runs:
         return _apply_theme(fig)
@@ -181,40 +274,37 @@ def metric_trend_chart(runs: list[EvalRun], kind: MetricKind) -> go.Figure:
 
     metric_cols = [c for c in df.columns if c != "timestamp"]
     for i, col in enumerate(metric_cols):
-        color = PALETTE[i % len(PALETTE)]
+        color = SERIES[i % len(SERIES)]
+        dash = SERIES_DASH[i % len(SERIES_DASH)]
         fig.add_trace(
             go.Scatter(
                 x=df["timestamp"],
                 y=df[col],
-                mode="lines+markers",
+                mode="lines",
                 name=col,
-                line={"color": color, "width": 2, "shape": "spline", "smoothing": 0.5},
-                marker={
-                    "color": color,
-                    "size": 5,
-                    "line": {"color": "#050b09", "width": 1},
-                },
-                hovertemplate=f"<b>{col}</b><br>%{{x|%b %d}}: %{{y:.2f}}<extra></extra>",
+                line={"color": color, "width": 2, "dash": dash},
+                hovertemplate=(
+                    f"<b>{col}</b><br>%{{x|%-d %b %H:%M}}: %{{y:.2f}}<extra></extra>"
+                ),
             )
         )
 
-    fig.add_hline(
-        y=0.7,
-        line_dash="dash",
-        line_color=THRESHOLD_COLOR,
-        line_width=1,
-        annotation_text="thresh 0.7",
-        annotation_position="top right",
-        annotation_font={
-            "size": 10,
-            "color": "#ff9d7e",
-            "family": "JetBrains Mono, monospace",
-        },
-    )
+    if threshold is not None:
+        fig.add_hline(
+            y=threshold,
+            line_dash="dash",
+            line_color=FAIL,
+            line_width=1.5,
+            annotation_text=f"{threshold:.2f}",
+            annotation_position="top right",
+            annotation_font={"size": 12, "color": FAIL, "family": MONO},
+        )
 
-    fig.update_yaxes(range=[0, 1], tickformat=".2f")
-    fig.update_xaxes(tickformat="%b %d")
-    return _apply_theme(fig, show_legend=True)
+    fig.update_yaxes(range=[0, 1.02], tickformat=".2f", tickvals=[0, 0.5, 1.0])
+    fig.update_xaxes(tickformatstops=TIME_TICK_FORMATS, showgrid=False)
+    fig = _apply_theme(fig, show_legend=True)
+    fig.update_layout(margin={"l": 48, "r": 16, "t": 16, "b": 72})
+    return fig
 
 
 def breakdown_bar(df: pd.DataFrame, palette: list[str]) -> go.Figure:
@@ -230,32 +320,23 @@ def breakdown_bar(df: pd.DataFrame, palette: list[str]) -> go.Figure:
             y=df["metric_name"],
             x=df["avg_score"],
             orientation="h",
-            marker={"color": colors, "line": {"color": "#050b09", "width": 0.5}},
+            marker={"color": colors},
             text=[f"{v:.2f}" for v in df["avg_score"]],
             textposition="outside",
-            textfont={"color": FG, "family": "JetBrains Mono, monospace", "size": 11},
+            textfont={"color": INK, "family": MONO, "size": 12},
             hovertemplate="<b>%{y}</b><br>avg=%{x:.2f}<extra></extra>",
             showlegend=False,
         )
     )
-
-    fig.add_vline(
-        x=0.7,
-        line_dash="dash",
-        line_color=THRESHOLD_COLOR,
-        line_width=1,
-    )
-
+    fig.add_vline(x=0.7, line_dash="dash", line_color=FAIL, line_width=1.5)
     height = max(180, 48 * len(df) + 40)
     fig.update_layout(height=height, bargap=0.4)
     fig.update_xaxes(range=[0, 1.08], tickformat=".1f")
-    fig.update_yaxes(
-        tickfont={"size": 11, "color": FG, "family": "JetBrains Mono, monospace"}
-    )
+    fig.update_yaxes(tickfont={"size": 12, "color": INK, "family": MONO})
     return _apply_theme(fig)
 
 
-def sparkline(values: list[float], color: str = ACCENT) -> go.Figure:
+def sparkline(values: list[float], color: str = HOUSE) -> go.Figure:
     fig = go.Figure()
     if not values:
         return fig
@@ -264,8 +345,6 @@ def sparkline(values: list[float], color: str = ACCENT) -> go.Figure:
             y=values,
             mode="lines",
             line={"color": color, "width": 1.5},
-            fill="tozeroy",
-            fillcolor="rgba(123,255,90,0.18)",
             hoverinfo="skip",
             showlegend=False,
         )
