@@ -366,14 +366,19 @@ class _TaskBoundSession:
         """
         loop = asyncio.get_running_loop()
         scope: asyncio.Timeout | None = None
+        # The callback runs via ``call_soon``, so it can fire after the turn
+        # finished and the scope exited (removing it does not unschedule a
+        # pending call); a finished ``Timeout`` cannot be rescheduled.
+        in_scope = False
 
         def _on_abandoned(fut: asyncio.Future[Any]) -> None:
-            if fut.cancelled() and scope is not None:
+            if fut.cancelled() and in_scope and scope is not None:
                 scope.reschedule(loop.time())
 
         future.add_done_callback(_on_abandoned)
         try:
             async with asyncio.timeout(None) as scope:
+                in_scope = True
                 async with contextlib.aclosing(
                     _require_event_session(session).send_events(message)
                 ) as stream:
@@ -389,6 +394,7 @@ class _TaskBoundSession:
                 turn_no,
             )
         finally:
+            in_scope = False
             future.remove_done_callback(_on_abandoned)
 
     async def prepare(self) -> None:
@@ -788,11 +794,14 @@ class AgentExecutor:
         try:
             await self._ensure_backend_and_session()
             collected: list[str] = []
-            async for chunk in self._with_deadline(
-                self._session.send_streaming(message)  # type: ignore[union-attr]
-            ):
-                collected.append(chunk)
-                yield chunk
+            async with contextlib.aclosing(
+                self._with_deadline(
+                    self._session.send_streaming(message)  # type: ignore[union-attr]
+                )
+            ) as chunks:
+                async for chunk in chunks:
+                    collected.append(chunk)
+                    yield chunk
             # Update history after stream completes
             self._history.append({"role": "user", "content": message})
             self._history.append({"role": "assistant", "content": "".join(collected)})
@@ -883,6 +892,10 @@ class AgentExecutor:
         ownership ("Attempted to exit cancel scope in a different task than it
         was entered in"). call_later runs on the current task, so the SDK's
         scope stays bound to a single task.
+
+        Closing this generator disarms the timer first, then closes *stream*
+        in the closing task, so no timer outlives the turn and cancels the
+        caller's later work.
         """
         timed_out = False
         timer: asyncio.TimerHandle | None = None
@@ -898,9 +911,8 @@ class AgentExecutor:
 
             timer = loop.call_later(self._llm_timeout, _on_deadline)
         try:
-            async with contextlib.aclosing(stream) as items:
-                async for item in items:
-                    yield item
+            async for item in stream:
+                yield item
         except asyncio.CancelledError:
             if timed_out:
                 raise TimeoutError(
@@ -910,6 +922,7 @@ class AgentExecutor:
         finally:
             if timer is not None:
                 timer.cancel()
+            await stream.aclose()
 
     async def execute_turn_agui(
         self,

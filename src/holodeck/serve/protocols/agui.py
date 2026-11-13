@@ -920,10 +920,13 @@ class AGUIProtocol(Protocol):
             if executor.streams_turn_events is True:
                 # Live path (OpenAI Agents): text deltas and tool events arrive
                 # on one ordered stream, so each is emitted as it happens.
-                async for agui_evt in _stream_turn_events(
-                    executor, full_message, message_id, tool_msg_ids
-                ):
-                    yield encoder.encode(agui_evt)
+                async with contextlib.aclosing(
+                    _stream_turn_events(
+                        executor, full_message, message_id, tool_msg_ids
+                    )
+                ) as agui_events:
+                    async for agui_evt in agui_events:
+                        yield encoder.encode(agui_evt)
                 yield encoder.encode(create_run_finished_event(thread_id, run_id))
                 logger.debug("Completed streamed request for run %s", run_id)
                 return

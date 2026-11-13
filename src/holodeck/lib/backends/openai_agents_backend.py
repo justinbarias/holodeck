@@ -23,7 +23,7 @@ import re
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from holodeck.lib.backends.base import (
     AgentSession,
@@ -44,6 +44,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
     from agents import ModelSettings, OpenAIResponsesModel, RunConfig
     from agents.models.interface import Model
     from agents.result import RunResultBase
+    from agents.stream_events import StreamEvent
     from openai import AsyncOpenAI
     from openai.types.shared import Reasoning
     from openai.types.shared.reasoning_effort import ReasoningEffort
@@ -900,11 +901,14 @@ class OpenAIAgentsSession:
 
         tracker = HandoffTracker()
         try:
-            async for item in self._stream_turn(message, tracker):
-                if isinstance(item, str):
-                    yield item
-                elif isinstance(item, ToolEvent):
-                    self._publish([item])
+            async with contextlib.aclosing(
+                self._stream_turn(message, tracker)
+            ) as items:
+                async for item in items:
+                    if isinstance(item, str):
+                        yield item
+                    elif isinstance(item, ToolEvent):
+                        self._publish([item])
         except BackendBudgetExceededError as exc:
             # The budget tripped mid-stream; the deltas produced so far have
             # already been yielded, so end the stream gracefully (FR-032).
@@ -944,8 +948,11 @@ class OpenAIAgentsSession:
 
         tracker = HandoffTracker()
         try:
-            async for item in self._stream_turn(message, tracker):
-                yield item
+            async with contextlib.aclosing(
+                self._stream_turn(message, tracker)
+            ) as items:
+                async for item in items:
+                    yield item
         except Exception as exc:
             for event in tracker.close(error=f"{type(exc).__name__}: {exc}"):
                 yield event
@@ -961,8 +968,10 @@ class OpenAIAgentsSession:
         ``ToolEvent`` records through *tracker*. On a clean finish, open
         handoffs are ended (they stay active until the run ends) and the
         completed run is yielded as an ``ExecutionResult``. Failures
-        propagate; callers close *tracker* with the error. Cancelling the
-        consumer cancels the SDK run (``stream_events`` handles that).
+        propagate; callers close *tracker* with the error. If the consumer
+        stops early (closes this generator or is cancelled), the SDK run is
+        cancelled before the event stream closes: closing ``stream_events``
+        at a yield would otherwise wait for the whole run, tools included.
 
         Args:
             message: The user message to send to the agent.
@@ -991,17 +1000,26 @@ class OpenAIAgentsSession:
                 run_config=self._run_config(),
                 hooks=self._hooks(),
             )
-        async for event in result.stream_events():
-            if event.type != "raw_response_event":
-                for tool_event in tool_events_for_stream_event(event, tracker):
-                    yield tool_event
-                continue
-            data = event.data
-            if isinstance(data, ResponseTextDeltaEvent) and data.delta:
-                yield data.delta
-        for tool_event in tracker.close():
-            yield tool_event
-        yield _to_execution_result(result, structured=self._structured_output)
+        # ``stream_events`` is an async generator; the SDK annotates it as an
+        # iterator, which hides the ``aclose`` used below.
+        events = cast("AsyncGenerator[StreamEvent, None]", result.stream_events())
+        try:
+            async for event in events:
+                if event.type != "raw_response_event":
+                    for tool_event in tool_events_for_stream_event(event, tracker):
+                        yield tool_event
+                    continue
+                data = event.data
+                if isinstance(data, ResponseTextDeltaEvent) and data.delta:
+                    yield data.delta
+            for tool_event in tracker.close():
+                yield tool_event
+            yield _to_execution_result(result, structured=self._structured_output)
+        except (GeneratorExit, asyncio.CancelledError):
+            result.cancel()
+            raise
+        finally:
+            await events.aclose()
 
     async def close(self) -> None:
         """Release the SQLite session connection, if any."""

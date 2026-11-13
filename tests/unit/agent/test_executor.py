@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import functools
+from collections.abc import Awaitable, Callable
+from typing import Any
 from unittest import mock
 from unittest.mock import AsyncMock
 
@@ -15,8 +18,25 @@ from holodeck.lib.backends.base import (
     ExecutionResult,
     ToolEvent,
 )
+from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
+
+_TEST_TIMEOUT = 15.0
+
+
+def _bounded(
+    test: Callable[..., Awaitable[None]],
+) -> Callable[..., Awaitable[None]]:
+    """Fail an async test after ``_TEST_TIMEOUT`` seconds instead of hanging."""
+
+    @functools.wraps(test)
+    async def wrapper(*args: Any, **kwargs: Any) -> None:
+        async with asyncio.timeout(_TEST_TIMEOUT):
+            await test(*args, **kwargs)
+
+    return wrapper
+
 
 # ---------------------------------------------------------------------------
 # T021: TestAgentExecutorInitialization
@@ -505,6 +525,7 @@ class TestExecuteTurnEvents:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("task_bound", [False, True])
+    @_bounded
     async def test_yields_items_in_order_and_records_final_result(
         self, make_agent, task_bound: bool
     ) -> None:
@@ -532,6 +553,7 @@ class TestExecuteTurnEvents:
         ]
 
     @pytest.mark.asyncio
+    @_bounded
     async def test_session_without_result_falls_back_to_streamed_text(
         self, make_agent
     ) -> None:
@@ -543,6 +565,7 @@ class TestExecuteTurnEvents:
         assert items[-1].content == "Let me Four."
 
     @pytest.mark.asyncio
+    @_bounded
     async def test_streams_turn_events_false_without_capability(
         self, make_agent, make_mock_backend
     ) -> None:
@@ -553,6 +576,7 @@ class TestExecuteTurnEvents:
         assert executor.streams_turn_events is False
 
     @pytest.mark.asyncio
+    @_bounded
     async def test_budget_trip_after_text_ends_gracefully(self, make_agent) -> None:
         error = BackendBudgetExceededError("partial", 1.0, 0.5)
         executor = AgentExecutor(
@@ -566,6 +590,7 @@ class TestExecuteTurnEvents:
         assert len(items) == 2
 
     @pytest.mark.asyncio
+    @_bounded
     async def test_budget_trip_without_text_fails_turn(self, make_agent) -> None:
         error = BackendBudgetExceededError("", 1.0, 0.5)
         executor = AgentExecutor(
@@ -576,6 +601,7 @@ class TestExecuteTurnEvents:
                 pass
 
     @pytest.mark.asyncio
+    @_bounded
     async def test_runtime_failure_raises_backend_session_error(
         self, make_agent
     ) -> None:
@@ -590,6 +616,7 @@ class TestExecuteTurnEvents:
                 pass
 
     @pytest.mark.asyncio
+    @_bounded
     async def test_actor_send_events_without_capability_raises(
         self, make_agent, make_mock_backend
     ) -> None:
@@ -664,6 +691,7 @@ class TestAbandonedStreamedTurn:
         return executor
 
     @pytest.mark.asyncio
+    @_bounded
     async def test_timed_out_queued_turn_is_skipped(self, make_agent) -> None:
         """Turn B times out while queued behind A; the actor must not run B."""
         session = _GatedEventSession()
@@ -687,6 +715,7 @@ class TestAbandonedStreamedTurn:
         assert session.started == ["A", "C"]
 
     @pytest.mark.asyncio
+    @_bounded
     async def test_abandoned_running_turn_is_cancelled(self, make_agent) -> None:
         """A consumer that disconnects mid-turn cancels the running stream."""
         session = _GatedEventSession()
@@ -703,3 +732,101 @@ class TestAbandonedStreamedTurn:
         assert items[0] == "C-1"
         assert isinstance(items[-1], AgentResponse)
         assert session.started == ["A", "C"]
+
+
+# ---------------------------------------------------------------------------
+# Second Codex review (fa4abb4): deadline timer and late-callback leaks
+# ---------------------------------------------------------------------------
+
+
+class _SlowCleanupSession:
+    """``send_streaming`` yields once, then blocks; its cleanup takes a while."""
+
+    def __init__(self, cleanup_seconds: float) -> None:
+        self._cleanup_seconds = cleanup_seconds
+        self.tool_events = None
+
+    async def prepare(self) -> None:
+        return None
+
+    async def send(self, message: str) -> ExecutionResult:
+        raise AssertionError("send must not be used")
+
+    async def send_streaming(self, message: str):  # type: ignore[no-untyped-def]
+        try:
+            yield "a"
+            await asyncio.Event().wait()
+        finally:
+            # Backend cleanup that awaits (e.g. draining an SDK response).
+            await asyncio.sleep(self._cleanup_seconds)
+
+    async def close(self) -> None:
+        return None
+
+
+class TestStreamDeadlineAfterClose:
+    """Closing a stream must disarm its ``llm_timeout`` timer (Codex P2)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "provider", [ProviderEnum.OPENAI, ProviderEnum.ANTHROPIC], ids=str
+    )
+    @_bounded
+    async def test_closed_stream_deadline_does_not_cancel_caller(
+        self, make_agent, provider: ProviderEnum
+    ) -> None:
+        timeout = 0.2
+        executor = AgentExecutor(
+            make_agent(provider=provider),
+            backend=_event_backend(_SlowCleanupSession(cleanup_seconds=2 * timeout)),  # type: ignore[arg-type]
+            llm_timeout=timeout,
+        )
+        stream = executor.execute_turn_streaming("q")
+        assert await anext(stream) == "a"
+        await stream.aclose()  # the caller stops reading
+
+        # Unrelated work that outlives the deadline must not be cancelled.
+        await asyncio.sleep(3 * timeout)
+        await executor.shutdown()
+
+
+class TestAbandonmentRacingCompletion:
+    """A turn that ends as its consumer leaves must exit cleanly (Codex P3)."""
+
+    @pytest.mark.asyncio
+    @_bounded
+    async def test_turn_finishing_as_consumer_leaves_raises_nothing(
+        self, make_agent
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        errors: list[dict[str, Any]] = []
+        previous = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _loop, context: errors.append(context))
+        session = _GatedEventSession()
+        executor = AgentExecutor(
+            make_agent(),
+            backend=_event_backend(session),  # type: ignore[arg-type]
+            release_transport_after_turn=True,
+        )
+        try:
+            await executor._ensure_backend_and_session()
+            actor = executor._session
+            assert actor is not None
+            turn_a = actor.send_events("A")  # type: ignore[attr-defined]
+            assert await anext(turn_a) == "A-1"
+
+            # Release the turn and leave in the same tick: the actor finishes
+            # the turn before the abandonment callback runs.
+            session.gate.set()
+            await turn_a.aclose()
+            for _ in range(10):
+                await asyncio.sleep(0)
+
+            items = [item async for item in executor.execute_turn_events("C")]
+            assert isinstance(items[-1], AgentResponse)
+        finally:
+            await executor.shutdown()
+            loop.set_exception_handler(previous)
+
+        assert errors == []
+        assert session.cancelled.is_set() is False

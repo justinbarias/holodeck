@@ -13,8 +13,11 @@ path (final answer, usage, persisted session) and the close-out on failure.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import functools
+import gc
 import json
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from types import SimpleNamespace
 from typing import Any
 
@@ -29,6 +32,20 @@ from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.serve.protocols.agui import AGUIProtocol
 
 _STEP_TIMEOUT = 5.0
+_TEST_TIMEOUT = 20.0
+
+
+def _bounded(
+    test: Callable[..., Awaitable[None]],
+) -> Callable[..., Awaitable[None]]:
+    """Fail an async test after ``_TEST_TIMEOUT`` seconds instead of hanging."""
+
+    @functools.wraps(test)
+    async def wrapper(*args: Any, **kwargs: Any) -> None:
+        async with asyncio.timeout(_TEST_TIMEOUT):
+            await test(*args, **kwargs)
+
+    return wrapper
 
 
 def _response_payload(output: list[dict[str, Any]]) -> dict[str, Any]:
@@ -214,6 +231,7 @@ async def _next_event(stream: AsyncGenerator[bytes, None]) -> dict[str, Any]:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+@_bounded
 async def test_openai_agui_streams_tool_events_and_text_live() -> None:
     gate = asyncio.Event()
     tool_entered = asyncio.Event()
@@ -310,6 +328,7 @@ async def test_openai_agui_streams_tool_events_and_text_live() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+@_bounded
 async def test_streamed_turn_matches_non_streaming_result() -> None:
     """Final answer, usage, tool calls and persisted session match ``send``."""
     from agents import SQLiteSession
@@ -394,6 +413,7 @@ class _FailingBackend(_ScriptedBackend):
     [(False, False, None), (True, False, None), (True, True, 0.2)],
     ids=["text-then-error", "tool-open-then-error", "tool-open-then-timeout"],
 )
+@_bounded
 async def test_failure_closes_open_messages_before_run_error(
     open_tool: bool, block: bool, llm_timeout: float | None
 ) -> None:
@@ -442,3 +462,234 @@ async def test_failure_closes_open_messages_before_run_error(
     starts = [e["messageId"] for e in events if e["type"] == "TEXT_MESSAGE_START"]
     ends = [e["messageId"] for e in events if e["type"] == "TEXT_MESSAGE_END"]
     assert sorted(starts) == sorted(ends)
+
+
+# ---------------------------------------------------------------------------
+# Second Codex review (fa4abb4): an abandoned turn must stop its SDK run
+# ---------------------------------------------------------------------------
+
+
+class _Holding:
+    """Turn 1 streams four deltas, then holds before it calls ``lookup``.
+
+    ``cancelled`` is set if the SDK run is cancelled while holding;
+    ``tool_runs`` records every ``lookup`` invocation.
+    """
+
+    def __init__(self) -> None:
+        self.hold = asyncio.Event()
+        self.holding = asyncio.Event()
+        self.cancelled = asyncio.Event()
+        self.tool_runs: list[str] = []
+
+    def sdk_agent(self) -> Any:
+        from agents import Agent as SDKAgent
+        from agents import FunctionTool as SDKFunctionTool
+        from agents.models.interface import Model
+        from openai.types.responses import (
+            Response,
+            ResponseCompletedEvent,
+            ResponseTextDeltaEvent,
+        )
+
+        holding = self
+
+        class _Model(Model):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def get_response(self, *_a: Any, **_k: Any) -> Any:
+                raise AssertionError("streaming path only")
+
+            async def stream_response(self, *_a: Any, **_k: Any) -> AsyncIterator[Any]:
+                deltas, output = _TURNS[self.calls]
+                first_turn = self.calls == 0
+                if first_turn:
+                    deltas = ["Let ", "me ", "che", "ck."]
+                self.calls += 1
+                for seq, delta in enumerate(deltas):
+                    yield ResponseTextDeltaEvent(
+                        type="response.output_text.delta",
+                        content_index=0,
+                        delta=delta,
+                        item_id="msg_1",
+                        logprobs=[],
+                        output_index=0,
+                        sequence_number=seq,
+                    )
+                if first_turn:
+                    holding.holding.set()
+                    try:
+                        await holding.hold.wait()
+                    except asyncio.CancelledError:
+                        holding.cancelled.set()
+                        raise
+                yield ResponseCompletedEvent(
+                    type="response.completed",
+                    response=Response.model_validate(_response_payload(output)),
+                    sequence_number=len(deltas),
+                )
+
+        async def _lookup(_ctx: Any, _input: str) -> str:
+            holding.tool_runs.append("lookup")
+            return "42"
+
+        return SDKAgent(
+            name="entry",
+            instructions="answer",
+            tools=[
+                SDKFunctionTool(
+                    name="lookup",
+                    description="lookup",
+                    params_json_schema={"type": "object", "properties": {}},
+                    on_invoke_tool=_lookup,
+                    strict_json_schema=False,
+                )
+            ],
+            model=_Model(),
+        )
+
+    async def assert_stopped(self) -> None:
+        """The run was cancelled, and releasing it runs no tool."""
+        await asyncio.wait_for(self.cancelled.wait(), _STEP_TIMEOUT)
+        self.hold.set()
+        for _ in range(20):
+            await asyncio.sleep(0.01)
+        assert self.tool_runs == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@_bounded
+async def test_closing_event_stream_cancels_sdk_run_without_actor() -> None:
+    """Default executor (no actor): closing the stream stops the SDK run."""
+    holding = _Holding()
+    executor = AgentExecutor(
+        _agent_config(), backend=_ScriptedBackend(holding.sdk_agent())
+    )
+    stream = executor.execute_turn_events("What is it?")
+    try:
+        assert await asyncio.wait_for(anext(stream), _STEP_TIMEOUT) == "Let "
+        await asyncio.wait_for(holding.holding.wait(), _STEP_TIMEOUT)
+        await asyncio.wait_for(stream.aclose(), _STEP_TIMEOUT)
+        await holding.assert_stopped()
+    finally:
+        await asyncio.wait_for(executor.shutdown(), _STEP_TIMEOUT)
+    assert holding.tool_runs == []
+
+
+def _asgi_scope(spec_version: str, body: bytes) -> dict[str, Any]:
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": spec_version},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/awp",
+        "raw_path": b"/awp",
+        "root_path": "",
+        "query_string": b"",
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"accept", b"text/event-stream"),
+            (b"content-length", str(len(body)).encode()),
+        ],
+        "client": ("127.0.0.1", 50000),
+        "server": ("127.0.0.1", 8000),
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "spec_version",
+    ["2.4", "2.3"],
+    ids=["send-raises-oserror", "receive-http-disconnect"],
+)
+@_bounded
+async def test_http_disconnect_stops_turn_before_tool_runs(
+    spec_version: str,
+) -> None:
+    """A client that disconnects mid-stream stops the turn: no tool runs.
+
+    Drives the real FastAPI app from ``AgentServer.create_app`` (middleware
+    included) over raw ASGI. The client is slow to take the first text chunk;
+    the later chunks fill the two middleware hand-offs, so the body generator
+    is suspended at its ``yield``. Then the client goes away, while the model
+    is still deciding to call ``lookup``. A cancellation does not reach a
+    generator suspended at a ``yield``; only an explicit close does.
+    """
+    from holodeck.serve.server import AgentServer
+
+    holding = _Holding()
+    server = AgentServer(agent_config=_agent_config())
+    executors: list[AgentExecutor] = []
+
+    def _create_executor() -> AgentExecutor:
+        executor = AgentExecutor(
+            _agent_config(),
+            backend=_ScriptedBackend(holding.sdk_agent()),
+            release_transport_after_turn=True,
+        )
+        executors.append(executor)
+        return executor
+
+    server._create_executor = _create_executor  # type: ignore[method-assign]
+    app = server.create_app()
+
+    body = json.dumps(
+        {
+            "threadId": "thread-1",
+            "runId": "run-1",
+            "messages": [{"id": "u1", "role": "user", "content": "What is it?"}],
+            "state": None,
+            "tools": [],
+            "context": [],
+            "forwardedProps": None,
+        }
+    ).encode()
+    request_sent = False
+    gone = asyncio.Event()
+    received: list[bytes] = []
+
+    async def receive() -> dict[str, Any]:
+        nonlocal request_sent
+        if not request_sent:
+            request_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await gone.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        if gone.is_set():
+            raise OSError("client went away")
+        if message["type"] != "http.response.body":
+            return
+        if b"TEXT_MESSAGE_CONTENT" in message.get("body", b""):
+            # A slow client: the second chunk is produced meanwhile and the
+            # body generator blocks at its ``yield``. Then the client leaves.
+            await asyncio.wait_for(holding.holding.wait(), _STEP_TIMEOUT)
+            await asyncio.sleep(0.05)
+            gone.set()
+            if spec_version == "2.4":
+                raise OSError("client went away")
+            # The disconnect may cancel this; if not, the next send fails.
+            await asyncio.sleep(0.5)
+        received.append(message.get("body", b""))
+
+    # Cleanup must not depend on garbage collection: with the cyclic
+    # collector off, a generator kept alive by an exception's traceback
+    # cycle is only closed if the server closes it.
+    gc.disable()
+    try:
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(
+                app(_asgi_scope(spec_version, body), receive, send), _STEP_TIMEOUT
+            )
+        assert gone.is_set()
+        await holding.assert_stopped()
+    finally:
+        gc.enable()
+        for executor in executors:
+            await asyncio.wait_for(executor.shutdown(), _STEP_TIMEOUT)
+    assert holding.tool_runs == []
