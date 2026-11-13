@@ -264,7 +264,7 @@ def _formatted(row: StatRow, idx: int) -> str:
 
 
 _STAT_LABELS = {
-    "pass_rate": "Pass rate",
+    "pass_rate": "Pass rate",  # nosec B105
     "passed_ratio": "Cases passed",
     "geval_avg": "Mean G-Eval",
     "rag_avg": "Mean RAG",

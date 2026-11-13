@@ -17,7 +17,7 @@ from holodeck.dashboard.revisions import RevisionColour, parse_run_time
 StateKind = Literal["pass", "fail", "regression", "warn", "miss", "done"]
 
 _STATE_ICON: dict[str, str] = {
-    "pass": "check",
+    "pass": "check",  # nosec B105
     "done": "check",
     "fail": "x",
     "regression": "down",
@@ -26,7 +26,7 @@ _STATE_ICON: dict[str, str] = {
 }
 
 _STATE_WORD: dict[str, str] = {
-    "pass": "Pass",
+    "pass": "Pass",  # nosec B105
     "done": "Done",
     "fail": "Fail",
     "regression": "Regression",

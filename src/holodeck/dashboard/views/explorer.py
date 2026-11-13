@@ -116,7 +116,7 @@ def _tier(pr: float) -> str:
     return "fail"
 
 
-_TIER_ICON = {"pass": "check", "warn": "warn", "fail": "x"}
+_TIER_ICON = {"pass": "check", "warn": "warn", "fail": "x"}  # nosec B105
 
 
 def _runs_column_expanded(

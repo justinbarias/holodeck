@@ -572,9 +572,9 @@ def _tier(pr: float) -> str:
     return "fail"
 
 
-_TIER_ICON = {"pass": "check", "warn": "warn", "fail": "x"}
+_TIER_ICON = {"pass": "check", "warn": "warn", "fail": "x"}  # nosec B105
 _TIER_TEXT = {
-    "pass": "at or above 85%",
+    "pass": "at or above 85%",  # nosec B105
     "warn": "between 65% and 85%",
     "fail": "below 65%",
 }
