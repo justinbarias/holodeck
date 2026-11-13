@@ -29,12 +29,30 @@ class Filters:
     search: str = ""  # substring match across prompt version / model / commit
 
 
+def _bound(value: str, ts: pd.Timestamp, *, end: bool) -> pd.Timestamp:
+    """Parse a filter date in the run timestamp's zone.
+
+    A date-only ``date_to`` covers the whole day, so it ends at the next
+    midnight (exclusive).
+    """
+    bound = pd.to_datetime(value)
+    if bound.tzinfo is None and ts.tzinfo is not None:
+        bound = bound.tz_localize(ts.tzinfo)
+    elif bound.tzinfo is not None and ts.tzinfo is None:
+        bound = bound.tz_convert(None)
+    if end and len(value) == 10:
+        bound = bound + pd.Timedelta(days=1)
+    return bound
+
+
 def _run_passes(run: EvalRun, f: Filters) -> bool:
     ts = pd.to_datetime(run.report.timestamp)
-    if f.date_from and ts < pd.to_datetime(f.date_from):
+    if f.date_from and ts < _bound(f.date_from, ts, end=False):
         return False
-    if f.date_to and ts > pd.to_datetime(f.date_to):
-        return False
+    if f.date_to:
+        to_bound = _bound(f.date_to, ts, end=True)
+        if (ts >= to_bound) if len(f.date_to) == 10 else (ts > to_bound):
+            return False
     if (
         f.prompt_versions
         and run.metadata.prompt_version.version not in f.prompt_versions
@@ -112,7 +130,7 @@ def filters_from_query_params(params: dict[str, str]) -> Filters:
     if params.get("tags"):
         f.tags = [v for v in params["tags"].split(",") if v]
     kind = params.get("kind")
-    if kind in ("standard", "rag", "geval"):
+    if kind in ("standard", "rag", "geval", "code"):
         f.metric_kind = kind  # type: ignore[assignment]
     if params.get("q"):
         f.search = params["q"]

@@ -158,6 +158,7 @@ class ExpectedToolsCoverage:
     unexpected: int
     rows: list[tuple[str, bool]]  # (tool_name, was_called)
     per_turn: list[TurnCoverage] = field(default_factory=list)
+    unexpected_names: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -179,6 +180,7 @@ class MetricRow:
     threshold: float | None
     passed: bool
     reasoning: str | None
+    model_used: str | None = None
 
 
 @dataclass(frozen=True)
@@ -457,16 +459,17 @@ def _build_expected_tools_coverage(case: TestResult) -> ExpectedToolsCoverage:
     rows = [(e, any(_tool_name_matches(e, c) for c in called)) for e in expected]
     matched = sum(1 for _, ok in rows if ok)
     missed = len(expected) - matched
-    unexpected = sum(
-        1 for c in called if not any(_tool_name_matches(e, c) for e in expected)
-    )
+    unexpected_names = [
+        c for c in called if not any(_tool_name_matches(e, c) for e in expected)
+    ]
     return ExpectedToolsCoverage(
         total=len(expected),
         matched=matched,
         missed=missed,
-        unexpected=unexpected,
+        unexpected=len(unexpected_names),
         rows=rows,
         per_turn=[],
+        unexpected_names=unexpected_names,
     )
 
 
@@ -478,6 +481,7 @@ def _metric_row(m: MetricResult) -> MetricRow:
         threshold=float(m.threshold) if m.threshold is not None else None,
         passed=bool(m.passed) if m.passed is not None else False,
         reasoning=m.reasoning,
+        model_used=m.model_used,
     )
 
 

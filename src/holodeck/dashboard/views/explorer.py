@@ -1,10 +1,11 @@
-"""Explorer view — 3-column drilldown (runs → cases → detail).
+"""Explorer view — runs → test cases → case detail.
 
-Layout + interaction mirror the design handoff's ``explorer.js``. Column
-widths and collapse behavior come from ``Evaluation Dashboard.html``:
-
-* expanded:   ``340px 340px 1fr``
-* collapsed:  ``48px 340px 1fr``
+Three columns beside the compact rail: runs (cue-numbered, collapsible),
+test cases for the selected run, and the case detail. The detail reads like
+a prompt book: tool calls are numbered cues (Q1, Q2…) in a ruled margin
+beside the conversation; expected tools refer back to those cues; unexpected
+calls get the warning treatment; every evaluation shows its score against
+its threshold with Pass or Fail in words.
 
 State — ``state["explorer_run_id"]``, ``state["explorer_case_name"]``,
 ``state["explorer_runs_collapsed"]`` — lives in the app's ``dcc.Store``.
@@ -15,11 +16,21 @@ single ``Output("app-state", "data")`` sink.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from typing import Any
 
 from dash import dcc, html
 
 from holodeck.dashboard.components.compare_add_button import render_add_button
+from holodeck.dashboard.components.ui import (
+    cue,
+    fmt_when,
+    icon,
+    parse_ts,
+    revision_chip,
+    sr_only,
+    state_word,
+)
 from holodeck.dashboard.explorer_data import (
     AgentSnapshot,
     CaseDetail,
@@ -35,40 +46,58 @@ from holodeck.dashboard.explorer_data import (
     list_case_summaries,
     select_run,
 )
+from holodeck.dashboard.revisions import (
+    RevisionColour,
+    revision_colour,
+    revision_colour_map,
+    run_label,
+    run_numbers,
+)
 from holodeck.dashboard.seed_data import SEED_CONVERSATIONS
+from holodeck.dashboard.verdict import pass_rate
 from holodeck.models.eval_run import EvalRun
+
+KIND_LABELS: dict[str, str] = {
+    "rag": "RAG",
+    "geval": "G-Eval",
+    "standard": "NLP",
+    "code": "Code",
+}
 
 # --------------------------------------------------------------------------- #
 # Empty / not-found states                                                    #
 # --------------------------------------------------------------------------- #
 
 
-def _empty_no_runs() -> html.Div:
-    return html.Div(
+def _empty_no_runs() -> html.Section:
+    return html.Section(
         [
-            html.Span("∅", className="hd-empty-glyph"),
-            html.H3("No runs found"),
+            html.H1("No saved runs yet"),
             html.P(
-                html.Code("Run holodeck test agent.yaml to generate one"),
-                className="mono",
+                [
+                    "Run ",
+                    html.Span("holodeck test agent.yaml", className="cue"),
+                    " to save a result; the Explorer lists it here.",
+                ]
             ),
         ],
-        className="hd-empty-state",
+        className="sheet empty",
     )
 
 
 def _placeholder_case_panel() -> html.Div:
     return html.Div(
-        [
-            html.Div("▸", style={"fontSize": "32px", "marginBottom": "8px"}),
-            html.H3("Select a test case", style={"margin": "0 0 6px"}),
-            html.P(
-                "Pick a case on the left to inspect its config, conversation, "
-                "tool calls, and evaluations.",
-                className="mono",
-            ),
-        ],
-        className="hd-explorer-detail hd-empty",
+        html.Section(
+            [
+                html.H1("Pick a test case"),
+                html.P(
+                    "Choose a case in the list to read its conversation, tool "
+                    "cues and evaluations."
+                ),
+            ],
+            className="sheet empty",
+        ),
+        className="detail hd-explorer-detail",
     )
 
 
@@ -77,250 +106,186 @@ def _placeholder_case_panel() -> html.Div:
 # --------------------------------------------------------------------------- #
 
 
-def _pass_rate_tier(pass_rate: float) -> str:
-    if pass_rate >= 0.85:
+def _tier(pr: float) -> str:
+    if pr >= 0.85:
         return "pass"
-    if pass_rate >= 0.65:
+    if pr >= 0.65:
         return "warn"
     return "fail"
 
 
-def _model_suffix(model_name: str) -> str:
-    parts = (model_name or "").split("-")
-    return "-".join(parts[-2:]) if len(parts) >= 2 else model_name
+_TIER_ICON = {"pass": "check", "warn": "warn", "fail": "x"}
 
 
 def _runs_column_expanded(
     runs: list[EvalRun],
     active_run_id: str | None,
     queue: list[str],
+    numbers: dict[str, int] | None = None,
+    colours: dict[str, RevisionColour] | None = None,
 ) -> html.Div:
-    # Newest first.
+    numbers = numbers if numbers is not None else run_numbers(runs)
+    colours = colours if colours is not None else revision_colour_map(runs)
+    usual_model = Counter(r.metadata.agent_config.model.name for r in runs).most_common(
+        1
+    )[0][0]
     sorted_runs = sorted(runs, key=lambda r: r.report.timestamp, reverse=True)
 
-    rows: list = []
+    rows: list[Any] = []
     for run in sorted_runs:
         rid = run.report.timestamp
-        total = run.report.summary.total_tests
-        pr = (run.report.summary.passed / total) if total > 0 else 0.0
-        tier = _pass_rate_tier(pr)
-        cls = "hd-run-row hd-run-row--active" if rid == active_run_id else "hd-run-row"
+        label = run_label(rid, numbers)
+        pr = pass_rate(run)
+        tier = _tier(pr)
+        version = run.metadata.prompt_version.version
+        model = run.metadata.agent_config.model.name
+        when = fmt_when(parse_ts(rid))
+        meta = when if model == usual_model else f"{when} · {model}"
+        active = rid == active_run_id
+        attrs: dict[str, Any] = {"aria-current": "true"} if active else {}
         rows.append(
-            html.Div(
+            html.Li(
                 [
-                    html.Div(
+                    html.Button(
                         [
                             html.Span(
-                                rid[:16].replace("T", " "),
-                                className="mono",
-                                style={"fontSize": "12px", "color": "var(--fg1)"},
+                                [
+                                    cue(label),
+                                    revision_chip(
+                                        version, revision_colour(version, colours)
+                                    ),
+                                ],
+                                className="row-line",
                             ),
                             html.Span(
-                                run.metadata.prompt_version.version,
-                                className="mono",
-                                style={"color": "var(--hd-accent)"},
-                            ),
-                            render_add_button(rid, queue),
-                        ],
-                        className="r1",
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "gap": "8px",
-                            "justifyContent": "space-between",
-                        },
-                    ),
-                    html.Div(
-                        [
-                            html.Span(
-                                f"{pr * 100:.1f}%",
-                                className=f"pill pill-{tier}",
-                            ),
-                            html.Span(
-                                f"{run.report.summary.passed}/{run.report.summary.total_tests}",
-                                className="mono",
-                            ),
-                            html.Span(
-                                _model_suffix(run.metadata.agent_config.model.name),
-                                className="mono",
-                                style={"marginLeft": "auto"},
+                                [
+                                    html.Span(meta, className="row-meta"),
+                                    html.Span(
+                                        [icon(_TIER_ICON[tier]), f"{pr * 100:.1f}%"],
+                                        className=f"state state-{tier}",
+                                    ),
+                                ],
+                                className="row-line",
                             ),
                         ],
-                        className="r2",
-                        style={"display": "flex", "alignItems": "center", "gap": "8px"},
+                        id={"type": "explorer-run-row", "run_id": rid},
+                        className="list-row on" if active else "list-row",
+                        n_clicks=0,
+                        **attrs,
                     ),
+                    render_add_button(rid, queue, label),
                 ],
-                id={"type": "explorer-run-row", "run_id": rid},
-                className=cls,
-                n_clicks=0,
+                className="list-item",
             )
         )
 
     header = html.Div(
         [
-            html.Span("▸", style={"color": "var(--hd-accent)", "fontSize": "22px"}),
-            html.H4(
-                [
-                    "Runs ",
-                    html.Span(
-                        str(len(sorted_runs)),
-                        className="mono",
-                        style={"color": "var(--hd-muted)", "fontWeight": 400},
-                    ),
-                ],
-                style={"margin": 0, "fontSize": "13px"},
-            ),
-            html.Span(
-                "newest first",
-                className="mono",
-                style={
-                    "fontSize": "11px",
-                    "color": "var(--hd-muted)",
-                    "marginLeft": "auto",
-                },
+            html.H2(["Runs ", html.Span(str(len(sorted_runs)), className="cue count")]),
+            html.Button(
+                icon("chevron-left"),
+                id="explorer-runs-toggle",
+                className="icon-btn",
+                n_clicks=0,
+                title="Collapse runs",
+                **{"aria-label": "Collapse runs", "aria-expanded": "true"},
             ),
         ],
-        id="explorer-runs-toggle",
-        className="list-head",
-        role="button",
-        n_clicks=0,
-        style={
-            "display": "flex",
-            "alignItems": "center",
-            "gap": "10px",
-            "cursor": "pointer",
-        },
+        className="col-head",
     )
 
     return html.Div(
-        [
-            header,
-            html.Div(rows, className="list-scroll", style={"overflowY": "auto"}),
-        ],
-        className="list-card hd-explorer-runs",
+        [header, html.Ul(rows, className="list-scroll")],
+        className="col hd-explorer-runs",
     )
 
 
 def _runs_column_collapsed(runs: list[EvalRun]) -> html.Div:
     return html.Div(
-        [
-            html.Span(
-                "▸",
-                style={
-                    "color": "var(--hd-accent)",
-                    "fontSize": "22px",
-                    "marginTop": "16px",
-                },
-            ),
-            html.Span(
-                f"RUNS {len(runs)}",
-                style={
-                    "writingMode": "vertical-rl",
-                    "transform": "rotate(180deg)",
-                    "fontSize": "11px",
-                    "letterSpacing": ".2em",
-                    "textTransform": "uppercase",
-                    "color": "var(--hd-muted)",
-                    "fontFamily": "var(--font-mono)",
-                    "marginTop": "12px",
-                },
-            ),
-        ],
-        id="explorer-runs-toggle",
-        className="hd-explorer-runs-collapsed",
-        n_clicks=0,
-        role="button",
-        title="Expand runs",
+        html.Button(
+            [
+                icon("chevron-right"),
+                html.Span(f"Runs {len(runs)}", className="vertical"),
+            ],
+            id="explorer-runs-toggle",
+            className="collapsed-toggle",
+            n_clicks=0,
+            title="Show runs",
+            **{"aria-label": f"Show runs ({len(runs)})", "aria-expanded": "false"},
+        ),
+        className="col hd-explorer-runs-collapsed",
     )
+
+
+def _case_meta(c: CaseSummary) -> list[str]:
+    parts: list[str] = []
+    if c.geval_score is not None:
+        parts.append(f"geval {c.geval_score:.2f}")
+    if c.rag_avg_score is not None:
+        parts.append(f"rag {c.rag_avg_score:.2f}")
+    if c.tools_called_count > 0:
+        n = c.tools_called_count
+        parts.append(f"{n} tool{'s' if n != 1 else ''}")
+    return parts
 
 
 def _cases_column(
     cases: list[CaseSummary],
     active_case_name: str | None,
+    run_text: str | None = None,
 ) -> html.Div:
     pass_count = sum(1 for c in cases if c.passed)
 
-    rows: list = []
+    rows: list[Any] = []
     for c in cases:
-        cls = "case-item active" if c.name == active_case_name else "case-item"
-        metric_chips = []
-        if c.geval_score is not None:
-            metric_chips.append(
-                html.Span(
-                    f"geval {c.geval_score:.2f}",
-                    className=f"mini-metric{' pass' if c.geval_score >= 0.7 else ' fail'}",
-                )
-            )
-        if c.rag_avg_score is not None:
-            metric_chips.append(
-                html.Span(f"rag {c.rag_avg_score:.2f}", className="mini-metric")
-            )
-        if c.tools_called_count > 0:
-            metric_chips.append(
-                html.Span(f"{c.tools_called_count} tools", className="mini-metric")
-            )
+        active = c.name == active_case_name
+        meta: list[Any] = [" · ".join(_case_meta(c))] if _case_meta(c) else []
         if c.turns_total is not None:
-            chip_cls = "mini-metric"
-            if c.turns_failed is not None and c.turns_failed > 0:
-                chip_cls += " fail"
-            metric_chips.append(
+            chip_cls = "turn-chip fail" if c.turns_failed else "turn-chip"
+            meta.append(
                 html.Span(
                     f"{c.turns_total} turns · {c.turns_passed}/{c.turns_total} passed",
                     className=chip_cls,
                 )
             )
-
+        attrs: dict[str, Any] = {"aria-current": "true"} if active else {}
         rows.append(
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Span(c.name, className="nm", title=c.name),
-                            html.Span(
-                                "PASS" if c.passed else "FAIL",
-                                className=f"pill {'pill-pass' if c.passed else 'pill-fail'}",
-                            ),
-                        ],
-                        className="c1",
-                    ),
-                    html.Div(metric_chips, className="c2"),
-                ],
-                id={"type": "explorer-case-row", "case_name": c.name},
-                className=cls,
-                n_clicks=0,
+            html.Li(
+                html.Button(
+                    [
+                        html.Span(
+                            [
+                                html.Span(
+                                    c.name,
+                                    className="cue cue-strong case-name",
+                                    title=c.name,
+                                ),
+                                state_word("pass" if c.passed else "fail"),
+                            ],
+                            className="row-line",
+                        ),
+                        html.Span(meta, className="row-meta"),
+                    ],
+                    id={"type": "explorer-case-row", "case_name": c.name},
+                    className="list-row on" if active else "list-row",
+                    n_clicks=0,
+                    **attrs,
+                ),
+                className="list-item",
             )
         )
 
+    sub = f"{pass_count} of {len(cases)} pass"
+    if run_text:
+        sub = f"{run_text} · {sub}"
     header = html.Div(
-        [
-            html.H4(
-                [
-                    "Test cases ",
-                    html.Span(
-                        str(len(cases)),
-                        className="mono",
-                        style={"color": "var(--hd-muted)", "fontWeight": 400},
-                    ),
-                ],
-                style={"margin": 0, "fontSize": "13px"},
-            ),
-            html.Span(
-                f"{pass_count} pass",
-                className="mono",
-                style={
-                    "fontSize": "11px",
-                    "color": "var(--hd-muted)",
-                    "marginLeft": "auto",
-                },
-            ),
-        ],
-        className="list-head",
-        style={"display": "flex", "alignItems": "center", "gap": "10px"},
+        [html.H2("Test cases"), html.Span(sub, className="col-sub")],
+        className="col-head",
     )
 
     return html.Div(
-        [header, html.Div(rows, className="list-scroll")],
-        className="list-card",
+        [header, html.Ul(rows, className="list-scroll")],
+        className="col hd-explorer-cases",
     )
 
 
@@ -329,238 +294,171 @@ def _cases_column(
 # --------------------------------------------------------------------------- #
 
 
-def _case_header_section(h: CaseHeader) -> html.Div:
-    def badge(label: str, value: Any, *, accent: bool = False) -> html.Span:
-        return html.Span(
-            [
-                html.Span(
-                    label,
-                    className="mono",
-                    style={"color": "var(--hd-muted)", "marginRight": "4px"},
-                ),
-                html.B(
-                    value,
-                    className="mono",
-                    style={"color": "var(--hd-accent)" if accent else "var(--fg1)"},
-                ),
-            ],
-            style={"display": "inline-flex", "gap": "4px"},
-        )
-
+def _kv(label: str, value: Any, *, mono: bool = True) -> html.Div:
     return html.Div(
+        [html.Dt(label), html.Dd(value, className="cue" if mono else "")],
+        className="kv-item",
+    )
+
+
+def _case_header_section(
+    h: CaseHeader,
+    run_text: str | None = None,
+    colour: RevisionColour | None = None,
+) -> html.Section:
+    when = fmt_when(parse_ts(h.run_timestamp))
+    run_value = f"{run_text} · {when}" if run_text else h.run_timestamp
+    version_value: Any = (
+        revision_chip(h.prompt_version, colour)
+        if colour is not None
+        else h.prompt_version
+    )
+    temp = f"{h.temperature}" if h.temperature is not None else "—"
+    return html.Section(
         [
             html.Div(
                 [
-                    html.Span(
-                        "✓ PASS" if h.passed else "✕ FAIL",
-                        className=f"pill {'pill-pass' if h.passed else 'pill-fail'}",
-                    ),
-                    html.H2(h.case_name, style={"margin": 0}),
+                    state_word("pass" if h.passed else "fail", badge=True),
+                    html.H1(h.case_name, className="cue case-title"),
                 ],
-                className="row1",
-                style={"display": "flex", "alignItems": "center", "gap": "10px"},
+                className="case-head",
             ),
-            html.Div(
+            html.Dl(
                 [
-                    badge("run", h.run_timestamp.replace("T", " ")[:19]),
-                    badge("prompt", h.prompt_version, accent=True),
-                    badge("model", h.model_name),
-                    badge(
-                        "temp",
-                        f"{h.temperature}" if h.temperature is not None else "—",
-                    ),
-                    badge("commit", (h.git_commit or "—")[:10]),
+                    _kv("Run", run_value),
+                    _kv("Revision", version_value, mono=False),
+                    _kv("Model · temperature", f"{h.model_name} · {temp}"),
+                    _kv("Commit", h.git_commit or "—"),
                 ],
-                className="row2",
-                style={
-                    "display": "flex",
-                    "flexWrap": "wrap",
-                    "gap": "12px",
-                    "marginTop": "8px",
-                },
+                className="kv kv-4",
             ),
         ],
-        className="detail-head",
+        className="sheet detail-head",
     )
 
 
 def _agent_snapshot_section(snap: AgentSnapshot) -> html.Details:
-    def item(k: str, v: Any, *, accent: bool = False) -> html.Div:
-        return html.Div(
-            [
-                html.Span(k, className="k"),
-                html.Span(
-                    str(v),
-                    className="v",
-                    style=({"color": "var(--hd-accent)"} if accent else {}),
+    tools = ", ".join(name for _, name in snap.tools) if snap.tools else "none"
+    temp = f"{snap.model_temperature}" if snap.model_temperature is not None else "—"
+    grid = html.Dl(
+        [
+            _kv("Backend", snap.model_provider),
+            _kv("Model · temperature", f"{snap.model_name} · {temp}"),
+            _kv("Max tokens", str(snap.model_max_tokens or "—")),
+            _kv("Instructions", snap.prompt_file_path or snap.prompt_source),
+            _kv("Tools", tools),
+            _kv(
+                "Embedding",
+                (
+                    f"{snap.embedding_provider} · {snap.embedding_name}"
+                    if snap.embedding_provider
+                    else "—"
                 ),
-            ],
-            className="cfg-item",
-        )
-
-    grid = html.Div(
-        [
-            item("model.provider", snap.model_provider),
-            item("model.name", snap.model_name),
-            item("model.temperature", snap.model_temperature),
-            item("model.max_tokens", snap.model_max_tokens or "—"),
-            item("embedding.provider", snap.embedding_provider or "—"),
-            item("embedding.name", snap.embedding_name or "—"),
-            item("claude.extended_thinking", snap.claude_extended_thinking),
-            item("prompt.version", snap.prompt_version, accent=True),
-            item("prompt.author", snap.prompt_author or "—"),
-            item("prompt.file_path", snap.prompt_file_path or "—"),
-            item("prompt.source", snap.prompt_source),
-            item("prompt.tags", " ".join(f"#{t}" for t in snap.prompt_tags)),
-        ],
-        className="cfg-grid",
-    )
-
-    tools_row = html.Div(
-        [
-            html.Div(
-                f"TOOLS ({len(snap.tools)})",
-                className="eyebrow",
-                style={
-                    "fontSize": "10px",
-                    "letterSpacing": ".15em",
-                    "textTransform": "uppercase",
-                    "color": "var(--hd-muted)",
-                    "marginBottom": "6px",
-                },
             ),
-            html.Div(
-                [
-                    html.Span(
-                        [
-                            html.Span(
-                                kind,
-                                style={
-                                    "color": "var(--hd-accent-soft)",
-                                    "marginRight": "6px",
-                                    "fontSize": "10px",
-                                },
-                            ),
-                            html.Span(name),
-                        ],
-                        className="chip",
-                        style={"cursor": "default"},
-                    )
-                    for kind, name in snap.tools
-                ],
-                className="chip-row",
-            ),
+            _kv("Prompt version", snap.prompt_version),
+            _kv("Prompt author", snap.prompt_author or "—"),
+            _kv("Tags", " ".join(f"#{t}" for t in snap.prompt_tags) or "—"),
+            _kv("Extended thinking", "on" if snap.claude_extended_thinking else "off"),
         ],
-        style={"marginTop": "12px"},
+        className="kv kv-3",
     )
 
     raw_drawer = html.Details(
         [
-            html.Summary("View raw JSON", className="reset-btn"),
+            html.Summary(
+                "Show the saved configuration as JSON", className="sub-summary"
+            ),
             html.Pre(
                 json.dumps(snap.raw_config, indent=2, default=str),
                 className="code",
-                style={"marginTop": "8px"},
             ),
         ],
-        style={"marginTop": "12px"},
+        className="raw-drawer",
     )
 
     summary = html.Summary(
         [
+            html.Span(icon("chevron-right"), className="disclosure"),
             html.Div(
                 [
-                    html.Div("AGENT CONFIG SNAPSHOT", className="eyebrow"),
-                    html.H3("Configuration at run time"),
+                    html.H2("Agent configuration at run time", className="h-sm"),
                     html.P(
-                        [
-                            "Captured from ",
-                            html.Code("agent.yaml"),
-                            " at run time · secret-bearing fields stripped before persist.",
-                        ],
-                        className="subtitle",
+                        "Captured from agent.yaml when the run started. Fields "
+                        "holding secrets are removed before saving.",
+                        className="panel-sub",
                     ),
                 ],
-                className="summary-text",
             ),
         ],
+        className="sheet-summary",
     )
 
     return html.Details(
-        [summary, grid, tools_row, raw_drawer],
-        className="panel hd-explorer-section",
+        [summary, grid, raw_drawer],
+        className="sheet hd-explorer-section config",
         open=False,
     )
 
 
-def _tool_call_panel(tc: ToolCallView) -> html.Div:
-    header = html.Div(
-        [
-            html.Span("TOOL", className="badge"),
-            html.Span(f"{tc.name}()", className="tname"),
-            html.Span(f"{tc.result_size_bytes}B", className="bytes"),
-        ],
-        className="th",
-    )
+def _args_summary(args: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key, value in list(args.items())[:3]:
+        text = value if isinstance(value, str) else json.dumps(value, default=str)
+        if len(text) > 32:
+            text = text[:31] + "…"
+        parts.append(f"{key} {text}")
+    return " · ".join(parts)
 
-    pieces: list = [header]
+
+def _tool_call_panel(
+    tc: ToolCallView, cue_no: int | None = None, max_ms: int | None = None
+) -> html.Div:
+    failed = bool(tc.error)
+    meta: list[str] = [f"{tc.result_size_bytes} B"]
+    if tc.duration_ms is not None:
+        meta.append(f"{tc.duration_ms / 1000:.2f} s")
+
+    header: list[Any] = [
+        html.Span(tc.name, className="cue cue-strong tool-name"),
+        html.Span(_args_summary(tc.args), className="tool-args"),
+        state_word("fail", "Failed") if failed else state_word("done"),
+        html.Span(" · ".join(meta), className="tool-meta"),
+    ]
+    pieces: list[Any] = [html.Div(header, className="tool-head")]
+
+    if tc.duration_ms is not None and max_ms:
+        pieces.append(
+            html.Div(
+                html.Span(style={"width": f"{tc.duration_ms / max_ms * 100:.0f}%"}),
+                className="dur-bar tool-dur",
+                **{"aria-hidden": "true"},
+            )
+        )
 
     if tc.error:
         pieces.append(
             html.Div(
-                f"Tool failed: {tc.error}",
-                style={
-                    "background": "rgba(255,120,80,.08)",
-                    "borderLeft": "3px solid #ff9d7e",
-                    "padding": "6px 10px",
-                    "borderRadius": "4px",
-                    "fontSize": "12px",
-                    "color": "#ff9d7e",
-                },
+                [icon("x"), f"Tool failed: {tc.error}"],
+                className="callout callout-fail",
             )
         )
 
-    # args — always open
     pieces.append(
         html.Details(
             [
-                html.Summary(
-                    html.Span(
-                        "args",
-                        className="mono",
-                        style={
-                            "color": "var(--hd-muted)",
-                            "textTransform": "uppercase",
-                            "letterSpacing": ".1em",
-                            "fontSize": "11px",
-                        },
-                    )
-                ),
+                html.Summary("Arguments", className="sub-summary"),
                 html.Pre(json.dumps(tc.args, indent=2, default=str), className="code"),
             ],
-            open=True,
+            open=False,
         )
     )
-
-    # result — collapsed by default when large
-    result_summary = "result"
+    result_label = "Result"
     if tc.large:
-        result_summary = f"result — Expand ({tc.result_size_bytes}B)"
+        result_label = f"Result ({tc.result_size_bytes} B)"
     pieces.append(
         html.Details(
             [
-                html.Summary(
-                    html.Span(
-                        result_summary,
-                        className="mono",
-                        style={
-                            "color": "var(--hd-muted)",
-                            "textTransform": "uppercase",
-                            "letterSpacing": ".1em",
-                            "fontSize": "11px",
-                        },
-                    )
-                ),
+                html.Summary(result_label, className="sub-summary"),
                 html.Pre(
                     json.dumps(tc.result, indent=2, default=str), className="code"
                 ),
@@ -571,14 +469,38 @@ def _tool_call_panel(tc: ToolCallView) -> html.Div:
 
     if tc.args == {} and tc.result is None and not tc.error:
         pieces.append(
-            html.Div(
-                "args/result not captured — re-run after upgrading to this HoloDeck version",
-                className="mono",
-                style={"color": "var(--hd-muted)", "fontSize": "11px"},
+            html.P(
+                "Arguments and result were not saved for this call; re-run with "
+                "this HoloDeck version to capture them.",
+                className="muted-note",
             )
         )
 
-    return html.Div(pieces, className="tool-call")
+    card = html.Div(pieces, className="tool-call")
+    if cue_no is None:
+        return card
+    return _cue_row(card, cue_no, failed)
+
+
+def _cue_row(content: Any, cue_no: int | None, failed: bool = False) -> html.Div:
+    """One row of the cue sheet: ruled margin (with an optional cue) + content."""
+    margin: Any = None
+    if cue_no is not None:
+        margin = html.Span(
+            [
+                html.Span(className="cue-light fail" if failed else "cue-light"),
+                f"Q{cue_no}",
+                sr_only(", failed" if failed else ", done"),
+            ],
+            className="cue-mark",
+        )
+    return html.Div(
+        [
+            html.Div(margin, className="cue-margin"),
+            html.Div(content, className="cue-body"),
+        ],
+        className="cue-row",
+    )
 
 
 def _render_assistant_body(text: str) -> Any:
@@ -606,470 +528,377 @@ def _render_assistant_body(text: str) -> Any:
     )
 
 
-def _turn_thread_block(turn: TurnView) -> html.Div:
+def _user_bubble(text: str) -> html.Div:
+    return html.Div(
+        [html.Div("User", className="who sr-only-label"), html.Div(text)],
+        className="bubble user",
+    )
+
+
+def _agent_reply(text: str, model_name: str | None) -> html.Div:
+    who = f"Agent · {model_name}" if model_name else "Agent"
+    return html.Div(
+        [html.Div(who, className="who"), _render_assistant_body(text)],
+        className="bubble assistant",
+    )
+
+
+def _max_duration(calls: list[ToolCallView]) -> int | None:
+    values = [c.duration_ms for c in calls if c.duration_ms is not None]
+    return max(values) if values else None
+
+
+def _turn_thread_block(turn: TurnView, cue_start: int = 1) -> html.Div:
     """Render one turn inside a multi-turn conversation section.
 
-    Composes the existing sub-components — :func:`_tool_call_panel`,
-    :func:`_metric_row_div`, and the token-usage renderer — into a
-    per-turn ``html.Details``. Skipped turns are dimmed and carry a
-    distinct badge so the reader can spot them at a glance.
+    Tool calls keep counting cues across turns: pass ``cue_start`` for the
+    first cue number in this turn. Skipped turns are marked in words.
     """
-
     is_skipped = turn.skipped
 
-    header_pieces: list = [
-        html.Span(
-            f"Turn {turn.turn_index}",
-            className="mono",
-            style={
-                "fontWeight": 600,
-                "fontSize": "12px",
-                "letterSpacing": ".1em",
-                "textTransform": "uppercase",
-                "color": "var(--hd-muted)" if is_skipped else "var(--fg1)",
-            },
-        ),
+    header: list[Any] = [
+        html.Span(f"Turn {turn.turn_index}", className="turn-title"),
     ]
     if is_skipped:
-        header_pieces.append(
-            html.Span(
-                "SKIPPED",
-                className="pill pill-fail",
-                style={"marginLeft": "8px"},
-            )
-        )
+        header.append(state_word("miss", "Skipped"))
     else:
-        header_pieces.append(
-            html.Span(
-                f"{turn.execution_time_ms}ms",
-                className="mono",
-                style={
-                    "marginLeft": "8px",
-                    "color": "var(--hd-muted)",
-                    "fontSize": "11px",
-                },
-            )
+        header.append(
+            html.Span(f"{turn.execution_time_ms / 1000:.2f} s", className="tool-meta")
         )
+        if turn.tool_invocations:
+            n = len(turn.tool_invocations)
+            header.append(
+                html.Span(f"{n} cue{'s' if n != 1 else ''}", className="tool-meta")
+            )
 
-    body: list = []
+    rows: list[Any] = []
     if turn.input:
-        body.append(
-            html.Div(
-                [html.Div("USER", className="who"), html.Div(turn.input)],
-                className="bubble user",
-            )
-        )
-    for tc in turn.tool_invocations:
-        body.append(_tool_call_panel(tc))
+        rows.append(_cue_row(_user_bubble(turn.input), None))
+    max_ms = _max_duration(turn.tool_invocations)
+    for offset, tc in enumerate(turn.tool_invocations):
+        rows.append(_tool_call_panel(tc, cue_start + offset, max_ms))
     if turn.response is not None and turn.response != "":
-        body.append(
-            html.Div(
-                [
-                    html.Div("AGENT", className="who"),
-                    _render_assistant_body(turn.response),
-                ],
-                className="bubble assistant",
-            )
-        )
+        rows.append(_cue_row(_agent_reply(turn.response, None), None))
 
+    extras: list[Any] = []
     if turn.metric_results:
-        body.append(
+        extras.append(
             html.Div(
-                [
-                    html.Div(
-                        "METRICS",
-                        className="eyebrow",
-                        style={
-                            "fontSize": "10px",
-                            "letterSpacing": ".15em",
-                            "textTransform": "uppercase",
-                            "color": "var(--hd-accent-soft)",
-                            "margin": "8px 0 6px",
-                        },
-                    ),
-                    *(_metric_row_div(m) for m in turn.metric_results),
-                ]
+                [_metric_row_div(m) for m in turn.metric_results],
+                className="evals evals-turn",
             )
         )
-
-    if turn.errors:
-        body.append(
-            html.Div(
-                [
-                    html.Div(
-                        msg,
-                        style={
-                            "background": "rgba(255,120,80,.08)",
-                            "borderLeft": "3px solid #ff9d7e",
-                            "padding": "6px 10px",
-                            "borderRadius": "4px",
-                            "fontSize": "12px",
-                            "color": "#ff9d7e",
-                            "marginTop": "4px",
-                        },
-                    )
-                    for msg in turn.errors
-                ]
-            )
-        )
-
+    for msg in turn.errors:
+        extras.append(html.Div([icon("x"), msg], className="callout callout-fail"))
     if turn.token_usage is not None:
         tu = turn.token_usage
-        body.append(
-            html.Div(
-                [
-                    html.Span(
-                        f"tokens: prompt={tu.get('prompt_tokens', 0)} · "
-                        f"completion={tu.get('completion_tokens', 0)} · "
-                        f"total={tu.get('total_tokens', 0)}",
-                        className="mono",
-                        style={
-                            "fontSize": "11px",
-                            "color": "var(--hd-muted)",
-                        },
-                    ),
-                ],
-                style={"marginTop": "6px"},
+        extras.append(
+            html.P(
+                f"Tokens: prompt {tu.get('prompt_tokens', 0)} · completion "
+                f"{tu.get('completion_tokens', 0)} · total {tu.get('total_tokens', 0)}",
+                className="muted-note cue",
             )
         )
+    if extras:
+        rows.append(_cue_row(html.Div(extras), None))
 
-    summary = html.Summary(header_pieces)
     details_cls = "hd-explorer-turn"
     if is_skipped:
         details_cls += " hd-explorer-turn--skipped"
     details = html.Details(
-        [summary, html.Div(body, className="thread")],
-        className=details_cls,
-        open=not is_skipped and bool(turn.errors),
-    )
-
-    wrapper_style = {"padding": "8px 0"}
-    if is_skipped:
-        wrapper_style["opacity"] = "0.6"
-    return html.Div(
-        [details], className="hd-explorer-turn-wrapper", style=wrapper_style
-    )
-
-
-def _conversation_section(conv: ConversationView, model_name: str) -> html.Details:
-    summary = html.Summary(
         [
-            html.Div(
-                [
-                    html.Div("CONVERSATION", className="eyebrow"),
-                    html.H3("Thread with tool calls"),
-                    html.P(
-                        "User input, agent response, and every tool invocation that happened in between.",
-                        className="subtitle",
-                    ),
-                ],
-                className="summary-text",
+            html.Summary(
+                [html.Span(icon("chevron-right"), className="disclosure"), *header],
+                className="turn-summary",
+            ),
+            html.Div(rows, className="cue-sheet"),
+        ],
+        className=details_cls,
+        open=not is_skipped,
+    )
+    return html.Div([details], className="hd-explorer-turn-wrapper")
+
+
+def _conversation_section(conv: ConversationView, model_name: str) -> html.Section:
+    head = html.Div(
+        [
+            html.H2("Conversation", className="h-sm"),
+            html.P(
+                "User input, every tool cue in order, then the agent's answer.",
+                className="panel-sub",
             ),
         ],
+        className="sheet-head",
     )
 
     if conv.turns is not None:
-        turn_blocks = [_turn_thread_block(t) for t in conv.turns]
-        return html.Details(
-            [summary, html.Div(turn_blocks, className="thread hd-explorer-turns")],
-            className="panel hd-explorer-section",
-            open=True,
+        blocks: list[Any] = []
+        next_cue = 1
+        for t in conv.turns:
+            blocks.append(_turn_thread_block(t, next_cue))
+            next_cue += len(t.tool_invocations)
+        return html.Section(
+            [head, html.Div(blocks, className="turns hd-explorer-turns")],
+            className="sheet hd-explorer-section conversation",
         )
 
-    thread: list = []
+    rows: list[Any] = []
     if conv.user:
-        thread.append(
-            html.Div(
-                [html.Div("USER", className="who"), html.Div(conv.user)],
-                className="bubble user",
-            )
-        )
-    for tc in conv.tool_calls:
-        thread.append(_tool_call_panel(tc))
+        rows.append(_cue_row(_user_bubble(conv.user), None))
+    max_ms = _max_duration(conv.tool_calls)
+    for i, tc in enumerate(conv.tool_calls, start=1):
+        rows.append(_tool_call_panel(tc, i, max_ms))
     if conv.assistant:
-        thread.append(
-            html.Div(
-                [
-                    html.Div(f"AGENT · {model_name}", className="who"),
-                    _render_assistant_body(conv.assistant),
-                ],
-                className="bubble assistant",
-            )
-        )
+        rows.append(_cue_row(_agent_reply(conv.assistant, model_name), None))
 
-    return html.Details(
-        [summary, html.Div(thread, className="thread")],
-        className="panel hd-explorer-section",
-        open=True,
+    return html.Section(
+        [head, html.Div(rows, className="cue-sheet")],
+        className="sheet hd-explorer-section conversation",
     )
 
 
-def _expected_tool_row(name: str, ok: bool) -> html.Div:
-    return html.Div(
-        [
-            html.Span("✓" if ok else "✕", className="ind"),
-            html.Span(name, className="nm mono"),
-            html.Span("called" if ok else "not invoked", className="note"),
-        ],
-        className=f"expect-row {'ok' if ok else 'miss'}",
+def _cue_for(name: str, cue_names: list[str], *, exact: bool) -> int | None:
+    for i, called in enumerate(cue_names, start=1):
+        if (called == name) if exact else (name in called):
+            return i
+    return None
+
+
+def _expected_tool_row(name: str, ok: bool, cue_no: int | None = None) -> html.Li:
+    if ok:
+        text = f"Called · Q{cue_no}" if cue_no is not None else "Called"
+        status = state_word("pass", text)
+    else:
+        status = state_word("fail", "Not called")
+    return html.Li(
+        [html.Span(name, className="cue"), status],
+        className="expect-row",
+    )
+
+
+def _unexpected_row(name: str, cue_no: int | None) -> html.Li:
+    text = f"Unexpected call at Q{cue_no}" if cue_no is not None else "Unexpected call"
+    return html.Li(
+        [html.Span(name, className="cue"), state_word("warn", text)],
+        className="expect-row warn",
     )
 
 
 def _turn_coverage_block(tc: TurnCoverage) -> html.Div:
-    expected_rows = [_expected_tool_row(name, ok) for name, ok in tc.expected] or [
-        html.Div(
-            "(no tools asserted this turn)",
-            className="mono",
-            style={"color": "var(--hd-muted)", "fontSize": "12px"},
-        )
+    expected_rows: list[Any] = [
+        _expected_tool_row(name, ok) for name, ok in tc.expected
     ]
-    actual_body = (
-        html.Div(
-            [html.Span(a, className="nm mono") for a in tc.actual],
-            style={"display": "flex", "flexWrap": "wrap", "gap": "6px"},
-        )
-        if tc.actual
-        else html.Div(
-            "(no tool calls this turn)",
-            className="mono",
-            style={"color": "var(--hd-muted)", "fontSize": "12px"},
-        )
-    )
+    if not expected_rows:
+        expected_rows = [
+            html.Li(
+                "No tools asserted in this turn.", className="expect-row muted-note"
+            )
+        ]
+    actual = ", ".join(tc.actual) if tc.actual else "no tool calls"
     return html.Div(
         [
-            html.Div(
-                f"Turn {tc.turn_index}",
-                className="eyebrow",
-                style={"marginTop": "8px"},
+            html.H3(f"Turn {tc.turn_index}", className="h-xs"),
+            html.Ul(expected_rows, className="expect-list"),
+            html.P(
+                ["Called: ", html.Span(actual, className="cue")],
+                className="muted-note",
             ),
-            html.Div("Expected", className="mono", style={"fontSize": "11px"}),
-            html.Div(
-                expected_rows,
-                style={"display": "flex", "flexDirection": "column", "gap": "4px"},
-            ),
-            html.Div(
-                "Actual",
-                className="mono",
-                style={"fontSize": "11px", "marginTop": "6px"},
-            ),
-            actual_body,
         ],
-        style={
-            "padding": "10px 0",
-            "borderTop": "1px solid var(--hd-border)",
-        },
+        className="turn-coverage",
     )
 
 
-def _expected_tools_section(cov: ExpectedToolsCoverage) -> html.Details:
-    match_pill_cls = (
-        "pill-pass" if cov.total > 0 and cov.matched == cov.total else "pill-fail"
-    )
+def _expected_tools_section(
+    cov: ExpectedToolsCoverage, cue_names: list[str] | None = None
+) -> html.Section:
+    cue_names = cue_names or []
+    unexpected = cov.unexpected_names if cov.total > 0 else []
+
+    status: list[Any] = []
+    if cov.total > 0:
+        all_matched = cov.matched == cov.total
+        status.append(
+            state_word(
+                "pass" if all_matched else "fail",
+                f"{cov.matched} of {cov.total} matched",
+            )
+        )
+    if unexpected:
+        status.append(state_word("warn", f"{len(unexpected)} unexpected"))
 
     if cov.total == 0 and not cov.per_turn:
-        body: Any = html.Div(
-            "No expected tools configured for this case.",
-            className="mono",
-            style={"padding": "12px 0", "color": "var(--hd-muted)"},
+        body: Any = html.P(
+            "No expected tools are configured for this case.",
+            className="muted-note pad",
         )
     elif cov.per_turn:
         body = html.Div(
             [_turn_coverage_block(tc) for tc in cov.per_turn],
-            style={"display": "flex", "flexDirection": "column"},
+            className="turn-coverages",
         )
     else:
-        body = html.Div(
-            [_expected_tool_row(name, ok) for name, ok in cov.rows],
-            style={"display": "flex", "flexDirection": "column", "gap": "6px"},
-        )
+        rows: list[Any] = [
+            _expected_tool_row(name, ok, _cue_for(name, cue_names, exact=False))
+            for name, ok in cov.rows
+        ]
+        rows += [
+            _unexpected_row(name, _cue_for(name, cue_names, exact=True))
+            for name in unexpected
+        ]
+        body = html.Ul(rows, className="expect-list")
 
-    summary = html.Summary(
+    return html.Section(
         [
             html.Div(
                 [
-                    html.Div("EXPECTED TOOLS", className="eyebrow"),
-                    html.H3("Tool-call coverage"),
-                    html.P(
+                    html.Div(
                         [
-                            "Configured ",
-                            html.Code("expected_tools"),
-                            " vs. what the agent actually invoked.",
-                        ],
-                        className="subtitle",
+                            html.H2("Expected tools", className="h-sm"),
+                            html.P(
+                                [
+                                    html.Span("expected_tools", className="cue"),
+                                    " from the test case against what the agent called.",
+                                ],
+                                className="panel-sub",
+                            ),
+                        ]
                     ),
+                    html.Div(status, className="head-status"),
                 ],
-                className="summary-text",
+                className="sheet-head split",
             ),
-            html.Div(
-                html.Span(
-                    f"{cov.matched}/{cov.total} matched",
-                    className=f"pill {match_pill_cls}",
-                ),
-                className="summary-right",
-            ),
+            body,
         ],
-    )
-
-    return html.Details(
-        [summary, body], className="panel hd-explorer-section", open=False
+        className="sheet hd-explorer-section",
     )
 
 
 def _metric_row_div(row: MetricRow) -> html.Div:
-    score_cls = "mono fg" if row.passed else "mono"
-    color = "var(--hd-accent)" if row.passed else "#ff9d7e"
-    pieces = [
-        html.Div(
-            [
-                html.Span(row.kind, className="kind"),
-                html.Span(row.name, className="name"),
-            ],
-            className="nm",
-        ),
-        html.Div(
-            [
-                html.Span(
-                    "score",
-                    className="mono",
-                    style={"fontSize": "11px", "color": "var(--hd-muted)"},
-                ),
-                html.Div(
-                    f"{row.score:.2f}",
-                    className=score_cls,
-                    style={"fontSize": "14px", "fontWeight": 600, "color": color},
-                ),
-            ],
-            style={"textAlign": "center"},
-        ),
-        html.Div(
-            [
-                html.Span(
-                    "thresh",
-                    className="mono",
-                    style={"fontSize": "11px", "color": "var(--hd-muted)"},
-                ),
-                html.Div(
-                    f"{row.threshold:.2f}" if row.threshold is not None else "—",
-                    className="mono",
-                    style={"fontSize": "13px"},
-                ),
-            ],
-            style={"textAlign": "center"},
-        ),
+    score = max(0.0, min(row.score, 1.0)) * 100
+    track: list[Any] = [
         html.Span(
-            "PASS" if row.passed else "FAIL",
-            className=f"pill {'pill-pass' if row.passed else 'pill-fail'}",
-            style={"justifySelf": "end"},
-        ),
+            className="bar-fill fail" if not row.passed else "bar-fill",
+            style={"width": f"{score:.0f}%"},
+        )
     ]
-    if row.reasoning:
-        pieces.append(html.Div(row.reasoning, className="rsn"))
-
+    if row.threshold is not None and 0 <= row.threshold <= 1:
+        track.append(
+            html.Span(
+                className="bar-thresh", style={"left": f"{row.threshold * 100:.0f}%"}
+            )
+        )
+    kind = KIND_LABELS.get(row.kind, row.kind)
+    sub = f"{kind} · {row.model_used}" if row.model_used else kind
+    pieces: list[Any] = [
+        html.Div(
+            [
+                html.Span(row.name, className="cue cue-strong"),
+                html.Span(sub, className="met-sub"),
+            ],
+            className="met-name",
+        ),
+        html.Div(
+            [
+                html.Span(
+                    f"{row.score:.2f}",
+                    className="met-score fail" if not row.passed else "met-score",
+                ),
+                html.Span(track, className="bar-track", **{"aria-hidden": "true"}),
+            ],
+            className="met-bar",
+        ),
+        html.Div(
+            f"≥ {row.threshold:.2f}" if row.threshold is not None else "no threshold",
+            className="met-thresh",
+        ),
+        html.Div(state_word("pass" if row.passed else "fail"), className="met-result"),
+        html.Div(row.reasoning or "", className="met-reason"),
+    ]
     return html.Div(pieces, className="eval-row")
 
 
-def _code_average_header(avg_count: tuple[float, int]) -> html.Div:
+def _code_average_header(avg_count: tuple[float, int]) -> html.P:
     avg, count = avg_count
     label = "score" if count == 1 else "scores"
-    return html.Div(
+    return html.P(
         [
-            html.Span(
-                "CODE GRADER AVERAGE",
-                className="eyebrow",
-                style={
-                    "fontSize": "10px",
-                    "letterSpacing": ".15em",
-                    "color": "var(--hd-accent-soft)",
-                    "marginRight": "10px",
-                },
-            ),
-            html.Span(
-                f"{avg:.2f}",
-                className="mono fg",
-                style={"fontSize": "16px", "fontWeight": 600},
-            ),
-            html.Span(
-                f" · {count} {label}",
-                className="mono",
-                style={"color": "var(--hd-muted)", "marginLeft": "6px"},
-            ),
+            "Code grader average ",
+            html.Span(f"{avg:.2f}", className="cue cue-strong"),
+            f" across {count} {label}.",
         ],
-        style={
-            "padding": "10px 12px",
-            "border": "1px solid var(--hd-border)",
-            "borderRadius": "6px",
-            "marginBottom": "14px",
-            "background": "#050b09",
-        },
+        className="muted-note pad",
     )
 
 
 def _evaluations_section(
     groups: dict[str, list[MetricRow]],
     code_metric_average: tuple[float, int] | None = None,
-) -> html.Details:
+) -> html.Section:
     blocks: list[Any] = []
     if code_metric_average is not None:
         blocks.append(_code_average_header(code_metric_average))
-    for kind, rows in groups.items():
+    rows = [r for kind_rows in groups.values() for r in kind_rows]
+    if rows:
         blocks.append(
             html.Div(
                 [
-                    html.Div(
-                        kind.upper(),
-                        className="eyebrow",
-                        style={
-                            "fontSize": "10px",
-                            "letterSpacing": ".15em",
-                            "textTransform": "uppercase",
-                            "color": "var(--hd-accent-soft)",
-                            "marginBottom": "8px",
-                        },
-                    ),
-                    *(_metric_row_div(r) for r in rows),
+                    html.Span("Metric"),
+                    html.Span("Score"),
+                    html.Span("Threshold"),
+                    html.Span("Result"),
+                    html.Span("Reasoning"),
                 ],
-                style={"marginBottom": "14px"},
+                className="eval-row eval-head",
+                **{"aria-hidden": "true"},
+            )
+        )
+        blocks.extend(_metric_row_div(r) for r in rows)
+    else:
+        blocks.append(
+            html.P(
+                "No evaluations were saved for this case.", className="muted-note pad"
             )
         )
 
-    body: Any = blocks or html.Div(
-        "No evaluations recorded for this case.",
-        className="mono",
-        style={"color": "var(--hd-muted)"},
-    )
-
-    summary = html.Summary(
+    return html.Section(
         [
             html.Div(
                 [
-                    html.Div("EVALUATIONS", className="eyebrow"),
-                    html.H3("Per-metric results"),
+                    html.H2("Evaluations", className="h-sm"),
                     html.P(
-                        "Score, threshold, and judge reasoning for every evaluation attached to this case.",
-                        className="subtitle",
+                        "Score, threshold and the judge's reasoning for every "
+                        "metric on this case.",
+                        className="panel-sub",
                     ),
                 ],
-                className="summary-text",
+                className="sheet-head",
             ),
+            html.Div(blocks, className="evals"),
         ],
-    )
-
-    return html.Details(
-        [summary, html.Div(body)],
-        className="panel hd-explorer-section",
-        open=False,
+        className="sheet hd-explorer-section",
     )
 
 
-def _detail_panel(run: EvalRun, detail: CaseDetail) -> html.Div:
+def _detail_panel(
+    run: EvalRun,
+    detail: CaseDetail,
+    run_text: str | None = None,
+    colour: RevisionColour | None = None,
+) -> html.Div:
+    if detail.conversation.turns is not None:
+        cue_names = [
+            tc.name for t in detail.conversation.turns for tc in t.tool_invocations
+        ]
+    else:
+        cue_names = [tc.name for tc in detail.conversation.tool_calls]
     return html.Div(
         [
-            _case_header_section(detail.header),
+            _case_header_section(detail.header, run_text, colour),
             _agent_snapshot_section(detail.agent_snapshot),
             _conversation_section(
                 detail.conversation, detail.agent_snapshot.model_name
             ),
-            _expected_tools_section(detail.expected_tools_coverage),
+            _expected_tools_section(detail.expected_tools_coverage, cue_names),
             _evaluations_section(detail.evaluations, detail.code_metric_average),
         ],
         className="detail hd-explorer-detail",
@@ -1083,38 +912,47 @@ def _detail_panel(run: EvalRun, detail: CaseDetail) -> html.Div:
 
 def render_explorer(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
     if not runs:
-        return html.Div(_empty_no_runs(), className="explorer")
+        return html.Div(_empty_no_runs(), className="page explorer-empty")
+
+    numbers = run_numbers(runs)
+    colours = revision_colour_map(runs)
 
     # Resolve selection with sensible defaults.
     run_id = state.get("explorer_run_id")
     run = select_run(runs, run_id) if run_id else None
     if run is None:
         run = sorted(runs, key=lambda r: r.report.timestamp)[-1]
+    label = run_label(run.report.timestamp, numbers)
+    version = run.metadata.prompt_version.version
 
     cases = list_case_summaries(run)
     case_name = state.get("explorer_case_name")
     if case_name is None or not any(c.name == case_name for c in cases):
         case_name = cases[0].name if cases else None
 
-    runs_collapsed = bool(state.get("explorer_runs_collapsed", True))
+    runs_collapsed = bool(state.get("explorer_runs_collapsed", False))
     queue = list(state.get("compare_queue") or [])
 
     col_runs: html.Div
     if runs_collapsed:
         col_runs = _runs_column_collapsed(runs)
     else:
-        col_runs = _runs_column_expanded(runs, run.report.timestamp, queue)
+        col_runs = _runs_column_expanded(
+            runs, run.report.timestamp, queue, numbers, colours
+        )
 
-    col_cases = _cases_column(cases, case_name)
+    col_cases = _cases_column(cases, case_name, label)
 
     if case_name is None:
-        col_detail = _placeholder_case_panel()
+        col_detail: html.Div = _placeholder_case_panel()
     else:
         detail = build_case_detail(run, case_name, SEED_CONVERSATIONS)
         if detail is None:
             col_detail = _placeholder_case_panel()
         else:
-            col_detail = _detail_panel(run, detail)
+            col_detail = _detail_panel(
+                run, detail, label, revision_colour(version, colours)
+            )
 
     grid_cls = "hd-explorer-grid"
     if runs_collapsed:

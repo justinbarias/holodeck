@@ -216,6 +216,28 @@ def to_breakdown_dataframe(
     )
 
 
+def metric_thresholds(runs: list[EvalRun], kind: MetricKind) -> dict[str, float | None]:
+    """Threshold per metric name of ``kind``; ``None`` when runs disagree or
+    no threshold was saved."""
+    seen: dict[str, set[float | None]] = {}
+    for run in runs:
+        for m in _iter_metric_results(run, kind):
+            value = float(m.threshold) if m.threshold is not None else None
+            seen.setdefault(m.metric_name, set()).add(value)
+    return {
+        name: next(iter(values)) if len(values) == 1 else None
+        for name, values in seen.items()
+    }
+
+
+def shared_threshold(runs: list[EvalRun], kind: MetricKind) -> float | None:
+    """The one threshold every metric of ``kind`` uses, else ``None``."""
+    values = set(metric_thresholds(runs, kind).values())
+    if len(values) == 1:
+        return next(iter(values))
+    return None
+
+
 def detect_regressions(runs: list[EvalRun], drop_threshold: float = 0.04) -> list[int]:
     """Indices (chronological) where pass_rate drops more than `drop_threshold`."""
     if len(runs) < 2:
