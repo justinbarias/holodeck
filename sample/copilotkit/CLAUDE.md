@@ -18,18 +18,34 @@ A Next.js 16 generic frontend for any HoloDeck agent. It uses **CopilotKit v2** 
 ```
 src/
 ├── app/
-│   ├── layout.tsx          # Root layout — wraps app in <CopilotKit> provider, injects runtime config
-│   ├── page.tsx            # Main chat page — uses CopilotChat.View (v2 API)
-│   ├── globals.css         # Theme variables + CopilotKit CSS overrides
+│   ├── layout.tsx          # Root layout: <CopilotKit> provider, runtime config, self-hosted fonts
+│   ├── page.tsx            # Chat page: rail, header, conversation on the cue margin, composer
+│   ├── memory-demo/page.tsx # Every tool card state from fixtures, collapsed and expanded
+│   ├── globals.css         # Design tokens (light + html.dark) and all .pb-* styles
 │   └── api/copilotkit/
 │       └── route.ts        # CopilotKit API route (proxies to HoloDeck backend)
 ├── components/
-│   ├── ThemeProvider.tsx    # next-themes wrapper
-│   ├── ThemeToggle.tsx      # Dark/light mode toggle button
-│   └── ToolCallRenderer.tsx # Wildcard tool call renderer (useRenderToolCall)
+│   ├── chat/               # Rail, Conversation (cue margin, brackets, groups), Composer, HowToRead
+│   ├── tool-card/          # ToolCardShell (shared progressive disclosure), context, CopyButton
+│   ├── memory/             # memory_timeline / memory_search / memory_provenance views + pure view logic
+│   ├── ToolCallCard.tsx    # Generic tool card
+│   ├── ToolCallRenderer.tsx # ToolCallView: picks the view for one tool call
+│   ├── Icons.tsx           # Inline SVG icons (stroke 1.5)
+│   ├── ThemeProvider.tsx   # next-themes wrapper
+│   └── ThemeToggle.tsx     # Dark/light toggle
 └── lib/
+    ├── conversation.ts     # AG-UI messages -> rows: cue numbers, answer brackets, groups of >3 calls
+    ├── use-run-events.ts   # Tool call start/end times and RUN_ERROR from agent.subscribe
+    ├── tool-view.ts        # Headlines, failure detection, sizes, durations
+    ├── supported-mime.ts   # File types holodeck serve accepts
     └── runtime-config.ts   # Runtime environment configuration (server + client)
 ```
+
+The page draws the conversation itself from `agent.messages` (it does not use
+`CopilotChat.View`), so it can number tool calls in the cue margin. Assistant
+markdown still goes through `CopilotChatAssistantMessage.MarkdownRenderer`.
+Styles are plain `.pb-*` classes with CSS custom properties; Tailwind
+utilities are not used.
 
 ## Key Architecture Decisions
 
@@ -54,22 +70,8 @@ This enables true runtime configuration in Docker containers (values don't need 
 | `FILE_ACCEPT` | MIME types for file upload | Every type `holodeck serve` accepts (see `src/lib/supported-mime.ts`) |
 
 ### CopilotKit v2 API
-- Uses `CopilotChat.View` (not the v1 `<CopilotChat>` component)
-- Imports from `@copilotkit/react-core/v2`
-- CSS imported via `@copilotkit/react-core/v2/styles.css` in `page.tsx`
-
-### CopilotChat.View API
-The v2 `CopilotChat.View` uses **flat props**, not `inputProps`:
-```tsx
-<CopilotChat.View
-  messages={messages}
-  isRunning={isRunning}
-  inputValue={inputValue}
-  onInputChange={setInputValue}
-  onSubmitMessage={handleSubmitMessage}
-  onStop={handleStop}
-/>
-```
+- `useAgent` and `useCopilotKit` from `@copilotkit/react-core/v2`; messages are sent with `agent.addMessage` + `copilotkit.runAgent`
+- CSS imported via `@copilotkit/react-core/v2/styles.css` in `page.tsx` (for the markdown renderer)
 
 ### Theming — IMPORTANT
 CopilotKit (v1.54 and later) uses a **shadcn/ui-style theming system** with CSS variables. The old `--copilot-kit-*` variables (pre-v1.53) no longer work.
@@ -78,7 +80,7 @@ CopilotKit's CSS bundles its own **full Tailwind v4 build** which sets theme var
 
 1. **Theme variables must use `!important`** to override CopilotKit's `@layer theme` defaults.
 2. **Dark mode** uses `html.dark` class selector (controlled by next-themes).
-3. Use custom CSS classes (`.holodeck-*`) instead of Tailwind utilities for elements outside CopilotKit.
+3. Use the `.pb-*` classes and tokens in `globals.css` instead of Tailwind utilities; the app tokens are not CopilotKit names (`--action`, not `--primary`).
 
 ### Docker Support
 - `next.config.ts` has `output: "standalone"` for optimized Docker builds
