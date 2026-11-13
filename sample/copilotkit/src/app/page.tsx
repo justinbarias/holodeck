@@ -10,6 +10,7 @@ import "@copilotkit/react-core/v2/styles.css";
 import { ToolCallRenderer } from "@/components/ToolCallRenderer";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useRuntimeConfig } from "@/lib/runtime-config-provider";
+import { partitionSupportedFiles } from "@/lib/supported-mime";
 
 import type { ContentPart } from "@ag-ui/client";
 
@@ -39,9 +40,27 @@ function toFilePart(file: FileUpload): ContentPart {
   return { type, source, metadata };
 }
 
+/** Read a file as base64; resolves null when the read fails or is empty. */
+function readAsUpload(
+  file: File,
+  contentType: string,
+  filename: string,
+): Promise<FileUpload | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = (e.target?.result as string)?.split(",")[1];
+      resolve(base64 ? { contentType, bytes: base64, filename } : null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function Page() {
   const config = useRuntimeConfig();
   const [selectedFiles, setSelectedFiles] = useState<FileUpload[]>([]);
+  const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedFilesRef = useRef<FileUpload[]>([]);
@@ -54,85 +73,61 @@ export default function Page() {
     selectedFilesRef.current = selectedFiles;
   }, [selectedFiles]);
 
+  // Queue the files serve accepts; name the rest in a dismissible notice.
+  const queueFiles = useCallback(
+    async (files: File[], nameFor: (file: File, mimeType: string) => string) => {
+      const { accepted, rejected } = partitionSupportedFiles(files);
+      setRejectedFiles(rejected.map((file) => file.name || file.type || "file"));
+
+      const loadedFiles = (
+        await Promise.all(
+          accepted.map(({ file, mimeType }) =>
+            readAsUpload(file, mimeType, nameFor(file, mimeType))
+          )
+        )
+      ).filter((f): f is FileUpload => f !== null);
+      setSelectedFiles((prev) => [...prev, ...loadedFiles]);
+    },
+    []
+  );
+
   // Handle file selection
   const handleFileSelect = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (!files || files.length === 0) return;
 
-      const filePromises = Array.from(files).map((file) => {
-        return new Promise<FileUpload | null>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const base64 = (e.target?.result as string)?.split(",")[1];
-            if (base64) {
-              resolve({
-                contentType: file.type,
-                bytes: base64,
-                filename: file.name,
-              });
-            } else {
-              resolve(null);
-            }
-          };
-          reader.onerror = () => resolve(null);
-          reader.readAsDataURL(file);
-        });
-      });
-
-      const loadedFiles = (await Promise.all(filePromises)).filter(
-        (f): f is FileUpload => f !== null
-      );
-      setSelectedFiles((prev) => [...prev, ...loadedFiles]);
+      await queueFiles(Array.from(files), (file) => file.name);
 
       if (event.target) {
         event.target.value = "";
       }
     },
-    []
+    [queueFiles]
   );
 
-  // Handle clipboard paste for images
+  // Handle clipboard paste of files (screenshots, copied files)
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
       const items = Array.from(e.clipboardData?.items || []);
-      const imageItems = items.filter((item) => item.type.startsWith("image/"));
-      if (imageItems.length === 0) return;
+      const pastedFiles = items
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
+      if (pastedFiles.length === 0) return;
 
       e.preventDefault();
 
-      const imagePromises = imageItems.map((item) => {
-        const file = item.getAsFile();
-        if (!file) return Promise.resolve(null);
-
-        return new Promise<FileUpload | null>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const base64 = (e.target?.result as string)?.split(",")[1];
-            if (base64) {
-              resolve({
-                contentType: file.type,
-                bytes: base64,
-                filename: `pasted-${Date.now()}.${file.type.split("/")[1]}`,
-              });
-            } else {
-              resolve(null);
-            }
-          };
-          reader.onerror = () => resolve(null);
-          reader.readAsDataURL(file);
-        });
-      });
-
-      const loadedImages = (await Promise.all(imagePromises)).filter(
-        (img): img is FileUpload => img !== null
+      await queueFiles(
+        pastedFiles,
+        (file, mimeType) =>
+          file.name || `pasted-${Date.now()}.${mimeType.split("/")[1]}`
       );
-      setSelectedFiles((prev) => [...prev, ...loadedImages]);
     };
 
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, []);
+  }, [queueFiles]);
 
   // Remove a file from queue
   const removeFile = useCallback((index: number) => {
@@ -220,6 +215,25 @@ export default function Page() {
       </header>
 
       <main className="holodeck-main" style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {/* Files serve would skip: not queued, named here */}
+        {rejectedFiles.length > 0 && (
+          <div className="holodeck-file-notice" role="alert">
+            <span>
+              Not attached (unsupported file type): {rejectedFiles.join(", ")}.
+              Supported: PNG, JPEG, GIF, WebP, PDF, DOCX, XLSX, PPTX, TXT, CSV,
+              Markdown.
+            </span>
+            <button
+              type="button"
+              onClick={() => setRejectedFiles([])}
+              className="holodeck-file-notice__dismiss"
+              aria-label="Dismiss notice"
+            >
+              x
+            </button>
+          </div>
+        )}
+
         {/* File upload queue */}
         {selectedFiles.length > 0 && (
           <div className="holodeck-file-bar">

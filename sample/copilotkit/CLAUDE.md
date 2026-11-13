@@ -51,7 +51,7 @@ This enables true runtime configuration in Docker containers (values don't need 
 | `AGENT_TITLE` | Displayed in header and browser tab | `HoloDeck Assistant` |
 | `AGENT_DESCRIPTION` | Agent description subtitle | `AI-powered assistant` |
 | `HOLODECK_BACKEND_URL` | HoloDeck serve endpoint | `http://127.0.0.1:8000/awp` |
-| `FILE_ACCEPT` | MIME types for file upload | `image/*,application/pdf,.doc,.docx,.txt` |
+| `FILE_ACCEPT` | MIME types for file upload | Every type `holodeck serve` accepts (see `src/lib/supported-mime.ts`) |
 
 ### CopilotKit v2 API
 - Uses `CopilotChat.View` (not the v1 `<CopilotChat>` component)

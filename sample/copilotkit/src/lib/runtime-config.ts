@@ -6,10 +6,11 @@
  * subset to <RuntimeConfigProvider>; client components consume it via useRuntimeConfig().
  */
 
+import { DEFAULT_FILE_ACCEPT } from "./supported-mime";
+
 const DEFAULT_AGENT_ID = "my_agent_replace_me";
 const DEFAULT_AGENT_TITLE = "HoloDeck Assistant";
 const DEFAULT_AGENT_DESCRIPTION = "AI-powered assistant";
-const DEFAULT_FILE_ACCEPT = "image/*,application/pdf,.doc,.docx,.txt";
 const DEFAULT_HOLODECK_BACKEND_URL = "http://127.0.0.1:8000/awp";
 
 /** Fields safe to expose to the browser. */
