@@ -220,7 +220,12 @@ summary {
 
 /* App shell */
 
+/* position: relative makes the shell (and the stage below) the containing
+   block for absolutely positioned descendants such as .sr-only text. Without
+   it they resolve against the page, escape these overflow clips and let the
+   document scroll past the app. */
 .pb-app {
+  position: relative;
   display: grid;
   grid-template-columns: 264px minmax(0, 1fr);
   height: 100dvh;
@@ -661,6 +666,7 @@ summary {
 /* Stage and the cue margin */
 
 .pb-stage {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -1375,7 +1381,11 @@ button.pb-card__head:focus-visible {
   visibility: visible;
 }
 
+/* Positioned so the clip also covers absolutely positioned descendants
+   (.sr-only text in a collapsed card); otherwise they add blank scroll
+   space below the conversation. */
 .pb-card__reveal > * {
+  position: relative;
   min-height: 0;
   overflow: hidden;
 }
@@ -1984,6 +1994,8 @@ button.pb-card__head:focus-visible {
 /* /memory-demo */
 
 .pb-demo {
+  /* Contains .sr-only text, as .pb-app does. */
+  position: relative;
   height: 100dvh;
   overflow-y: auto;
   background: var(--page);
