@@ -785,6 +785,20 @@ class AGUIProtocol(Protocol):
             else:
                 full_message = text_message
 
+            # Every attachment was skipped (url/file sources, empty data,
+            # conversion failures) and there is no text: do not run an empty
+            # model turn. Tool-resume turns (latest role ``tool``) are exempt.
+            if latest_message_role(input_data) == "user" and not full_message.strip():
+                logger.error(
+                    "No content left in user message after file processing "
+                    "(binary_parts=%d)",
+                    len(binary_parts),
+                )
+                raise ValueError(
+                    "No content found in user message. "
+                    "Message contained no text and no processable file content."
+                )
+
             executor = session.agent_executor
             provider = executor.agent_config.model.provider
             if provider in (ProviderEnum.ANTHROPIC, ProviderEnum.ANTHROPIC.value):

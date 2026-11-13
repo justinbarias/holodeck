@@ -1394,6 +1394,162 @@ class TestMediaPartParsing:
             cleanup_temp_files(file_inputs)
 
 
+def _executor_mock(provider: str) -> MagicMock:
+    """Executor mock; tests assert its backend entry points are never called."""
+    from unittest.mock import AsyncMock
+
+    executor = MagicMock()
+    executor.agent_config.model.provider = provider
+    executor.execute_turn_agui = MagicMock()
+    executor.execute_turn = AsyncMock()
+    return executor
+
+
+async def _collect(protocol: Any, input_data: Any, executor: MagicMock) -> str:
+    session = MagicMock()
+    session.session_id = "session-123"
+    session.agent_executor = executor
+    chunks = [chunk async for chunk in protocol.handle_request(input_data, session)]
+    return b"".join(chunks).decode("utf-8")
+
+
+class TestSkippedAttachmentsNoEmptyTurn:
+    """A user turn whose attachments were all skipped must not run the model."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("provider", ["anthropic", "openai"])
+    async def test_url_source_only_emits_run_error(self, provider: str) -> None:
+        from ag_ui.core import ImagePart, UrlSource
+
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        input_data = _run_input_with_content(
+            [
+                ImagePart(
+                    source=UrlSource(
+                        value="https://example.com/a.png", mime_type="image/png"
+                    )
+                )
+            ]
+        )
+        executor = _executor_mock(provider)
+
+        body = await _collect(AGUIProtocol(), input_data, executor)
+
+        assert "RUN_ERROR" in body
+        assert "No content found in user message" in body
+        assert "RUN_STARTED" not in body
+        executor.execute_turn_agui.assert_not_called()
+        executor.execute_turn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_data_source_only_emits_run_error(self) -> None:
+        from ag_ui.core import DataSource, DocumentPart
+
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        input_data = _run_input_with_content(
+            [DocumentPart(source=DataSource(value="", mime_type="application/pdf"))]
+        )
+        executor = _executor_mock("anthropic")
+
+        body = await _collect(AGUIProtocol(), input_data, executor)
+
+        assert "RUN_ERROR" in body
+        assert "No content found in user message" in body
+        executor.execute_turn_agui.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_text_with_skipped_attachment_runs_with_text(self) -> None:
+        from ag_ui.core import ImagePart, TextPart, UrlSource
+
+        from holodeck.serve.protocols.agui import (
+            AGUIProtocol,
+            create_run_finished_event,
+            create_run_started_event,
+        )
+
+        input_data = _run_input_with_content(
+            [
+                TextPart(text="Describe it"),
+                ImagePart(
+                    source=UrlSource(
+                        value="https://example.com/a.png", mime_type="image/png"
+                    )
+                ),
+            ]
+        )
+        calls: list[str | None] = []
+
+        async def execute_turn_agui(
+            _input: object, message_override: str | None = None
+        ) -> Any:
+            calls.append(message_override)
+            yield create_run_started_event("thread-123", "run-456")
+            yield create_run_finished_event("thread-123", "run-456")
+
+        executor = MagicMock()
+        executor.agent_config.model.provider = "anthropic"
+        executor.execute_turn_agui = execute_turn_agui
+
+        body = await _collect(AGUIProtocol(), input_data, executor)
+
+        assert calls == ["Describe it"]
+        assert "RUN_FINISHED" in body
+        assert "RUN_ERROR" not in body
+
+    @pytest.mark.asyncio
+    async def test_tool_resume_turn_is_not_blocked(self) -> None:
+        from ag_ui.core import ImagePart, ToolMessage, UrlSource
+        from ag_ui.core.events import RunAgentInput
+
+        from holodeck.serve.protocols.agui import (
+            AGUIProtocol,
+            create_run_finished_event,
+            create_run_started_event,
+        )
+
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[
+                UserMessage(
+                    id="u1",
+                    content=[
+                        ImagePart(
+                            source=UrlSource(
+                                value="https://example.com/a.png",
+                                mime_type="image/png",
+                            )
+                        )
+                    ],
+                ),
+                ToolMessage(id="t1", tool_call_id="toolu_1", content="ok"),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+        calls: list[str | None] = []
+
+        async def execute_turn_agui(
+            _input: object, message_override: str | None = None
+        ) -> Any:
+            calls.append(message_override)
+            yield create_run_started_event("thread-123", "run-456")
+            yield create_run_finished_event("thread-123", "run-456")
+
+        executor = MagicMock()
+        executor.agent_config.model.provider = "anthropic"
+        executor.execute_turn_agui = execute_turn_agui
+
+        body = await _collect(AGUIProtocol(), input_data, executor)
+
+        assert calls == [None]
+        assert "RUN_ERROR" not in body
+
+
 # =============================================================================
 # T029b: Unit tests for AG-UI binary content to FileInput conversion
 # =============================================================================
