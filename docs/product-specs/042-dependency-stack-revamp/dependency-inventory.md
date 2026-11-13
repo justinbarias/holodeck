@@ -129,7 +129,7 @@ All **50** `[project].dependencies` declarations are accounted for. "No import" 
 | `fastapi>=0.115.0,<1.0.0` | `0.162.2` | `serve/server.py`, REST protocol, middleware, tool-init routes. | Retain; consider explicit serving profile. |
 | `starlette>=1.3.1` | `1.10.0` | `serve/middleware.py`; also FastAPI/MCP dependency. | Retain with security floor. |
 | `uvicorn[standard]>=0.34.0,<1.0.0` | `0.54.0` | `cli/commands/serve.py`. | Retain. |
-| `ag-ui-protocol>=0.1.18,<1.0.0` | `0.1.22` | Chat executor, Claude backend, AG-UI server/protocol. Upstream 1.0 needs a multimodal migration (Dependabot #413). | Retain; 1.0 migration is separate work. |
+| `ag-ui-protocol>=1.0.0,<2.0.0` | `1.0.0` | Chat executor, Claude backend, AG-UI server/protocol. Moved to 1.0 with the multimodal content-part migration (2026-11-13). | Retain. |
 | `werkzeug>=3.1.9` | `3.1.9` | No direct import; security floor. Required by dash and flask (dashboard) and by openapi-core (SK). | Move the floor to the dashboard profile/constraints after SK removal. |
 | `opentelemetry-sdk>=1.20.0,<2.0.0` | `1.45.2` | Observability providers, exporters, serving, optimizer, SDK tracing. | Retain. |
 | `opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0` | `1.45.2` | `lib/observability/exporters/otlp.py`. | Retain. |
