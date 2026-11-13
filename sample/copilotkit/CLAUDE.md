@@ -6,10 +6,10 @@ A Next.js 16 generic frontend for any HoloDeck agent. It uses **CopilotKit v2** 
 
 ## Tech Stack
 
-- **Next.js** 16.1.1 with App Router
-- **React** 19.2.3
-- **CopilotKit** v1.54.0 (`@copilotkit/react-core`, `@copilotkit/react-ui`, `@copilotkit/runtime`)
-- **AG-UI Client** ^0.0.47
+- **Next.js** 16.4 with App Router
+- **React** 19.3
+- **CopilotKit** v1.87 (`@copilotkit/react-core`, `@copilotkit/react-ui`, `@copilotkit/runtime`)
+- **AG-UI Client** 1.0 (file uploads go out as AG-UI 1.0 `image`/`audio`/`video`/`document` parts with a base64 `data` source; the filename travels in `metadata.filename`)
 - **Tailwind CSS** v4 (CSS-first config via `@import "tailwindcss"` — no `tailwind.config.js`)
 - **TypeScript** 5
 
@@ -58,7 +58,7 @@ This enables true runtime configuration in Docker containers (values don't need 
 - Imports from `@copilotkit/react-core/v2`
 - CSS imported via `@copilotkit/react-core/v2/styles.css` in `page.tsx`
 
-### CopilotChat.View API (v1.54.0)
+### CopilotChat.View API
 The v2 `CopilotChat.View` uses **flat props**, not `inputProps`:
 ```tsx
 <CopilotChat.View
@@ -72,7 +72,7 @@ The v2 `CopilotChat.View` uses **flat props**, not `inputProps`:
 ```
 
 ### Theming — IMPORTANT
-CopilotKit v1.54 uses a **shadcn/ui-style theming system** with CSS variables. The old `--copilot-kit-*` variables (pre-v1.53) no longer work.
+CopilotKit (v1.54 and later) uses a **shadcn/ui-style theming system** with CSS variables. The old `--copilot-kit-*` variables (pre-v1.53) no longer work.
 
 CopilotKit's CSS bundles its own **full Tailwind v4 build** which sets theme variables via `@layer theme`. This means:
 

@@ -23,6 +23,20 @@ updates:
       - dependency-name: "openai"  # 3.x needs litellm and openai-agents 0.21+ together
         update-types: ["version-update:semver-major"]
 
+  # The CopilotKit sample front end. Without this entry only security PRs
+  # open, one per advisory, and the tree drifts far behind its majors.
+  - package-ecosystem: "npm"
+    directory: "/sample/copilotkit"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      copilotkit:
+        patterns: ["@copilotkit/*", "@ag-ui/*"]
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

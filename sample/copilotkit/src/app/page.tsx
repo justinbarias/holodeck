@@ -11,28 +11,33 @@ import { ToolCallRenderer } from "@/components/ToolCallRenderer";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useRuntimeConfig } from "@/lib/runtime-config-provider";
 
-/**
- * Content part types for AG-UI multimodal messages
- */
-type TextContent = {
-  type: "text";
-  text: string;
-};
-
-type BinaryContent = {
-  type: "binary";
-  mimeType: string;
-  data: string;
-  filename?: string;
-};
-
-type ContentPart = TextContent | BinaryContent;
+import type { ContentPart } from "@ag-ui/client";
 
 type FileUpload = {
   contentType: string;
   bytes: string;
   filename?: string;
 };
+
+/**
+ * AG-UI 1.0 file part: the MIME family picks the part type, the bytes travel
+ * as a base64 data source, and the filename rides in metadata (1.0 parts have
+ * no filename field; holodeck serve reads metadata.filename).
+ */
+function toFilePart(file: FileUpload): ContentPart {
+  const source = {
+    type: "data" as const,
+    value: file.bytes,
+    mimeType: file.contentType,
+  };
+  const metadata = file.filename ? { filename: file.filename } : undefined;
+  const family = file.contentType.split("/")[0];
+  const type =
+    family === "image" || family === "audio" || family === "video"
+      ? family
+      : "document";
+  return { type, source, metadata };
+}
 
 export default function Page() {
   const config = useRuntimeConfig();
@@ -159,19 +164,14 @@ export default function Page() {
         }
 
         for (const file of currentFiles) {
-          contentParts.push({
-            type: "binary",
-            mimeType: file.contentType,
-            data: file.bytes,
-            filename: file.filename,
-          });
+          contentParts.push(toFilePart(file));
         }
 
         content = contentParts;
 
         console.log("[Multimodal] Sending message with files:", {
           textParts: contentParts.filter((p) => p.type === "text").length,
-          binaryParts: contentParts.filter((p) => p.type === "binary").length,
+          fileParts: contentParts.filter((p) => p.type !== "text").length,
         });
       } else {
         content = text.trim();
@@ -273,6 +273,7 @@ export default function Page() {
           onInputChange={setInputValue}
           onSubmitMessage={handleSubmitMessage}
           onStop={handleStop}
+          onAddFile={() => fileInputRef.current?.click()}
         />
       </main>
     </div>
