@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-13T14:33:17.573152Z",
+  "title": "Design System: HoloDeck",
+  "extensions": {
+    "colorMeta": {
+      "house": {
+        "role": "primary",
+        "displayName": "House Blue",
+        "canonical": "#1d2347",
+        "dark": "#171b38"
+      },
+      "page": {
+        "role": "neutral",
+        "displayName": "Page",
+        "canonical": "#f5f6f9",
+        "dark": "#12162e"
+      },
+      "sheet": {
+        "role": "neutral",
+        "displayName": "Script White",
+        "canonical": "#ffffff",
+        "dark": "#1b2042"
+      },
+      "control-chat": {
+        "role": "neutral",
+        "displayName": "Chat Control Border",
+        "canonical": "#868c9f",
+        "dark": "#6f78ad"
+      },
+      "go-green": {
+        "role": "state",
+        "displayName": "Go",
+        "canonical": "#17703c",
+        "dark": "#5fd08b"
+      },
+      "standby-amber": {
+        "role": "state",
+        "displayName": "Standby",
+        "canonical": "#9a6400",
+        "dark": "#e8b95a"
+      },
+      "fail-red": {
+        "role": "state",
+        "displayName": "Fail",
+        "canonical": "#c2312a",
+        "dark": "#ff8f86"
+      }
+    },
+    "typographyMeta": {
+      "cue": {
+        "displayName": "Cue",
+        "purpose": "Q/R numbers, tool names, IDs, data numbers only."
+      },
+      "ui": {
+        "displayName": "UI",
+        "purpose": "All reading and control text."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 1px 2px rgba(20,24,40,0.05)",
+        "purpose": "Hairline under cards; none in dark."
+      },
+      {
+        "name": "pop",
+        "value": "0 12px 30px rgba(20,24,40,0.15)",
+        "purpose": "Popovers."
+      }
+    ],
+    "motion": [
+      {
+        "name": "disclosure",
+        "value": "180ms ease-out",
+        "purpose": "Card height, opacity, chevron; reduced-motion gated."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "chat-drawer",
+        "value": "899px"
+      },
+      {
+        "name": "card-wrap",
+        "value": "560px (container)"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Tool Card Header",
+      "kind": "card",
+      "refersTo": "tool-card-header",
+      "description": "Collapsed one-row disclosure button.",
+      "html": "<div class=\"ds-card\"><button class=\"ds-head\"><span class=\"ds-name\">memory_search</span><span class=\"ds-headline\">3 facts as of 1 Jul 2026</span><span class=\"ds-status\">Done</span></button></div>",
+      "css": ".ds-card{border:1px solid #dde0e8;border-radius:8px;background:#fff;width:520px}.ds-head{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;width:100%;min-height:44px;padding:8px 14px;border:0;background:transparent;color:#555b6b;font:13px 'Public Sans',sans-serif;text-align:left}.ds-head:hover{background:#f7f8fb}.ds-head:focus-visible{outline:2px solid #1d2347;outline-offset:-2px}.ds-name{font-family:'Courier Prime',monospace;font-weight:700;font-size:14px;color:#15171e}.ds-status{font-weight:600;font-size:12px;color:#17703c}"
+    },
+    {
+      "name": "Revision Chip",
+      "kind": "chip",
+      "refersTo": "revision-chip",
+      "description": "Prompt version only.",
+      "html": "<span class=\"ds-rv\">v2</span>",
+      "css": ".ds-rv{display:inline-block;font:600 12px 'Public Sans',sans-serif;padding:3px 7px;border-radius:3px;background:#cfe0f8;color:#234f99}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "House-blue action.",
+      "html": "<button class=\"ds-btn\">Send</button>",
+      "css": ".ds-btn{min-height:44px;padding:0 16px;border:0;border-radius:6px;background:#1d2347;color:#fff;font:600 14px 'Public Sans',sans-serif}.ds-btn:hover{background:#3d4a99}.ds-btn:focus-visible{outline:2px solid #1d2347;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Prompt Book",
+    "overview": "Every run is a rehearsal and the screen is the stage manager's prompt book: tool calls are numbered cues in a ruled margin, prompt versions are coloured revision pages, state is a cue light with a word.",
+    "keyCharacteristics": [
+      "House blue over script white",
+      "Cues, brackets, lights",
+      "Revision colours only for prompt versions",
+      "Courier only for cues and data",
+      "Saved never looks live"
+    ],
+    "rules": [
+      {
+        "name": "The Revision-Only Rule",
+        "body": "Revision colours mark prompt versions and compilations and nothing else.",
+        "section": "colors"
+      },
+      {
+        "name": "The Words Rule",
+        "body": "State is never shown by colour alone.",
+        "section": "colors"
+      },
+      {
+        "name": "The Cue-Only Mono Rule",
+        "body": "Courier Prime only for cues, tool names, IDs and data numbers.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do pair every state colour with its icon and word."
+    ],
+    "donts": [
+      "Don't use eyebrow labels, border-left over 1px, glyph icons, gradient text or mono costume."
+    ]
+  }
+}
