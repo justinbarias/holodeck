@@ -31,6 +31,7 @@ from holodeck.dashboard.components.ui import (
     state_word,
 )
 from holodeck.dashboard.filters import apply as apply_filters
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import (
     RevisionColour,
     revision_colour,
@@ -39,7 +40,6 @@ from holodeck.dashboard.revisions import (
     run_numbers,
 )
 from holodeck.dashboard.state import state_filters
-from holodeck.models.eval_run import EvalRun
 
 _CONFIG_LABELS: dict[str, str] = {
     "prompt_version": "Prompt revision",
@@ -56,20 +56,20 @@ _LOWER_IS_BETTER = {"duration_ms", "total_tokens", "est_cost"}
 class _Ctx:
     """Cue numbers and revision colours for the runs on screen."""
 
-    def __init__(self, all_runs: list[EvalRun]) -> None:
+    def __init__(self, all_runs: list[LoadedRun]) -> None:
         self.numbers = run_numbers(all_runs)
         self.colours = revision_colour_map(all_runs)
 
-    def label(self, run: EvalRun) -> str:
+    def label(self, run: LoadedRun) -> str:
         return run_label(run, self.numbers)
 
-    def colour(self, run: EvalRun) -> RevisionColour:
+    def colour(self, run: LoadedRun) -> RevisionColour:
         return revision_colour(run.metadata.prompt_version.version, self.colours)
 
-    def chip(self, run: EvalRun) -> html.Span:
+    def chip(self, run: LoadedRun) -> html.Span:
         return revision_chip(run.metadata.prompt_version.version, self.colour(run))
 
-    def run_tag(self, run: EvalRun) -> html.Span:
+    def run_tag(self, run: LoadedRun) -> html.Span:
         return html.Span([cue(self.label(run)), self.chip(run)], className="run-tag")
 
 
@@ -78,10 +78,10 @@ class _Ctx:
 # --------------------------------------------------------------------------- #
 
 
-def render_compare_header(state: dict[str, Any], runs: list[EvalRun]) -> html.Header:
+def render_compare_header(state: dict[str, Any], runs: list[LoadedRun]) -> html.Header:
     queue = list(state.get("compare_queue") or [])
     numbers = run_numbers(runs)
-    runs_by_id = {r.report.timestamp: r for r in runs}
+    runs_by_id = {r.run_id: r for r in runs}
     known = [runs_by_id[rid] for rid in queue if rid in runs_by_id]
     if len(known) >= 2:
         sub = (
@@ -159,7 +159,7 @@ def _range_note(runs_in_range: int) -> html.P:
     return html.P(text, className="muted-note range-note", role="status")
 
 
-def _toolbar(runs: list[EvalRun], variant: int, ctx: _Ctx) -> html.Div:
+def _toolbar(runs: list[LoadedRun], variant: int, ctx: _Ctx) -> html.Div:
     chips: list[Any] = []
     for i, run in enumerate(runs):
         label = ctx.label(run)
@@ -173,7 +173,7 @@ def _toolbar(runs: list[EvalRun], variant: int, ctx: _Ctx) -> html.Div:
                         icon("x"),
                         id={
                             "type": "compare-slot-remove",
-                            "run_id": run.report.timestamp,
+                            "run_id": run.run_id,
                         },
                         className="chip-remove",
                         n_clicks=0,
@@ -274,7 +274,7 @@ _STAT_LABELS = {
 }
 
 
-def _stat_rows(runs: list[EvalRun]) -> list[StatRow]:
+def _stat_rows(runs: list[LoadedRun]) -> list[StatRow]:
     rows = compute_summary_rows(runs)
     stats = [run_stats(r) for r in runs]
     # Cost is only shown when it comes from token counts and the pricing
@@ -309,7 +309,7 @@ def _cell(
     return html.Td(body, title=title)
 
 
-def _case_matrix(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Section:
+def _case_matrix(runs: list[LoadedRun], ctx: _Ctx | None = None) -> html.Section:
     ctx = ctx or _Ctx(runs)
     df = compute_case_matrix(runs)
     head = html.Div(
@@ -348,7 +348,7 @@ def _case_matrix(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Section:
             html.Th(df.at[ri, "case_name"], scope="row", className="cue")
         ]
         for run in runs:
-            rid = run.report.timestamp
+            rid = run.run_id
             score = df.at[ri, f"score::{rid}"]
             present = _present(score)
             cells.append(
@@ -382,7 +382,7 @@ def _case_matrix(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Section:
 # --------------------------------------------------------------------------- #
 
 
-def _headline_stats(runs: list[EvalRun], ctx: _Ctx) -> html.Section:
+def _headline_stats(runs: list[LoadedRun], ctx: _Ctx) -> html.Section:
     rows = _stat_rows(runs)
     header = html.Thead(
         html.Tr(
@@ -422,7 +422,7 @@ def _headline_stats(runs: list[EvalRun], ctx: _Ctx) -> html.Section:
     )
 
 
-def _config_change(row: ConfigRow, runs: list[EvalRun], ctx: _Ctx) -> Any:
+def _config_change(row: ConfigRow, runs: list[LoadedRun], ctx: _Ctx) -> Any:
     if row.label == "prompt_version":
         pieces: list[Any] = []
         for i, run in enumerate(runs):
@@ -449,7 +449,7 @@ def _config_change(row: ConfigRow, runs: list[EvalRun], ctx: _Ctx) -> Any:
     return html.Dd(changes, className="cue changes")
 
 
-def _config_block(runs: list[EvalRun], ctx: _Ctx) -> html.Section:
+def _config_block(runs: list[LoadedRun], ctx: _Ctx) -> html.Section:
     rows = compute_config_diff(runs)
     changed = [r for r in rows if not r.all_same]
     same = [_CONFIG_LABELS.get(r.label, r.label).lower() for r in rows if r.all_same]
@@ -495,7 +495,7 @@ def _config_block(runs: list[EvalRun], ctx: _Ctx) -> html.Section:
     )
 
 
-def _variant_1(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Div:
+def _variant_1(runs: list[LoadedRun], ctx: _Ctx | None = None) -> html.Div:
     ctx = ctx or _Ctx(runs)
     return html.Div(
         [
@@ -514,7 +514,7 @@ def _variant_1(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Div:
 # --------------------------------------------------------------------------- #
 
 
-def _variant_2(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Div:
+def _variant_2(runs: list[LoadedRun], ctx: _Ctx | None = None) -> html.Div:
     ctx = ctx or _Ctx(runs)
     baseline = runs[0]
     bs = run_stats(baseline)
@@ -602,7 +602,7 @@ def _variant_2(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Div:
 # --------------------------------------------------------------------------- #
 
 
-def _strip(runs: list[EvalRun], ctx: _Ctx) -> html.Div:
+def _strip(runs: list[LoadedRun], ctx: _Ctx) -> html.Div:
     base = run_stats(runs[0])
     cards: list[Any] = []
     for i, run in enumerate(runs):
@@ -634,7 +634,9 @@ def _strip(runs: list[EvalRun], ctx: _Ctx) -> html.Div:
 _NARRATIVE_NAMES = 5
 
 
-def _changes_vs_baseline(runs: list[EvalRun], ctx: _Ctx) -> tuple[list[str], list[str]]:
+def _changes_vs_baseline(
+    runs: list[LoadedRun], ctx: _Ctx
+) -> tuple[list[str], list[str]]:
     """Every case fixed and every case broken against the baseline, each
     named once with the first run where it changed (not truncated)."""
     base = {c.test_name: c.passed for c in runs[0].report.results if c.test_name}
@@ -662,7 +664,7 @@ def _name_list(names: list[str]) -> str:
     return f"{shown} and {extra} more" if extra > 0 else shown
 
 
-def _narrative(runs: list[EvalRun], ctx: _Ctx) -> html.Div:
+def _narrative(runs: list[LoadedRun], ctx: _Ctx) -> html.Div:
     df = compute_case_matrix(runs)
     lines: list[Any] = []
     fixed, broken = _changes_vs_baseline(runs, ctx)
@@ -693,8 +695,8 @@ def _narrative(runs: list[EvalRun], ctx: _Ctx) -> html.Div:
             str(df.at[ri, "case_name"])
             for ri in range(len(df))
             if all(
-                _present(df.at[ri, f"score::{r.report.timestamp}"])
-                and not bool(df.at[ri, f"passed::{r.report.timestamp}"])
+                _present(df.at[ri, f"score::{r.run_id}"])
+                and not bool(df.at[ri, f"passed::{r.run_id}"])
                 for r in runs
             )
         ]
@@ -727,7 +729,7 @@ def _narrative(runs: list[EvalRun], ctx: _Ctx) -> html.Div:
     return html.Div(lines, className="sheet narrative")
 
 
-def _variant_3(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Div:
+def _variant_3(runs: list[LoadedRun], ctx: _Ctx | None = None) -> html.Div:
     ctx = ctx or _Ctx(runs)
     return html.Div(
         [_strip(runs, ctx), _narrative(runs, ctx), _case_matrix(runs, ctx)],
@@ -740,9 +742,9 @@ def _variant_3(runs: list[EvalRun], ctx: _Ctx | None = None) -> html.Div:
 # --------------------------------------------------------------------------- #
 
 
-def render_compare(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
+def render_compare(state: dict[str, Any], runs: list[LoadedRun]) -> html.Div:
     queue_ids = list(state.get("compare_queue") or [])
-    runs_by_id = {r.report.timestamp: r for r in runs}
+    runs_by_id = {r.run_id: r for r in runs}
     queue_runs = [runs_by_id[rid] for rid in queue_ids if rid in runs_by_id]
 
     if len(queue_runs) < 2:

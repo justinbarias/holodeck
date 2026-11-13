@@ -19,22 +19,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from holodeck.dashboard.data_loader import detect_regressions
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import RunNumbers, chronological, run_label
-from holodeck.models.eval_run import EvalRun
 from holodeck.models.test_result import MetricResult, TestResult
 
 
-def pass_rate(run: EvalRun) -> float:
+def pass_rate(run: LoadedRun) -> float:
     """Pass rate on the 0..1 scale from ``passed / total_tests``."""
     s = run.report.summary
     return (s.passed / s.total_tests) if s.total_tests > 0 else 0.0
 
 
-def _chronological(runs: list[EvalRun]) -> list[EvalRun]:
+def _chronological(runs: list[LoadedRun]) -> list[LoadedRun]:
     return chronological(runs)
 
 
-def _case_map(run: EvalRun) -> dict[str, TestResult]:
+def _case_map(run: LoadedRun) -> dict[str, TestResult]:
     return {c.test_name: c for c in run.report.results if c.test_name}
 
 
@@ -80,7 +80,7 @@ class Regression:
         return f"{self.rate_text()} · {case} failed" if case else self.rate_text()
 
 
-def _newly_failed(previous: EvalRun, run: EvalRun) -> tuple[str, ...]:
+def _newly_failed(previous: LoadedRun, run: LoadedRun) -> tuple[str, ...]:
     before = _case_map(previous)
     out: list[str] = []
     for case in run.report.results:
@@ -91,7 +91,7 @@ def _newly_failed(previous: EvalRun, run: EvalRun) -> tuple[str, ...]:
     return tuple(out)
 
 
-def find_regressions(runs: list[EvalRun], numbers: RunNumbers) -> list[Regression]:
+def find_regressions(runs: list[LoadedRun], numbers: RunNumbers) -> list[Regression]:
     """Numbered regressions across ``runs`` in chronological order."""
     ordered = _chronological(runs)
     out: list[Regression] = []
@@ -101,7 +101,7 @@ def find_regressions(runs: list[EvalRun], numbers: RunNumbers) -> list[Regressio
         out.append(
             Regression(
                 number=k,
-                run_id=run.report.timestamp,
+                run_id=run.run_id,
                 label=run_label(run, numbers),
                 version=run.metadata.prompt_version.version,
                 previous_label=run_label(previous, numbers),
@@ -170,7 +170,7 @@ def _weakest_failed_metric(
     return worst.metric_name, float(worst.score), threshold
 
 
-def _failing_cases(ordered: list[EvalRun], numbers: RunNumbers) -> list[FailingCase]:
+def _failing_cases(ordered: list[LoadedRun], numbers: RunNumbers) -> list[FailingCase]:
     latest = ordered[-1]
     previous = ordered[-2] if len(ordered) > 1 else None
     out: list[FailingCase] = []
@@ -253,7 +253,7 @@ class Verdict:
 
 
 def build_verdict(
-    runs: list[EvalRun],
+    runs: list[LoadedRun],
     numbers: RunNumbers,
     regressions: list[Regression] | None = None,
 ) -> Verdict | None:
@@ -266,7 +266,7 @@ def build_verdict(
     if regressions is None:
         regressions = find_regressions(ordered, numbers)
     reg_number = next(
-        (r.number for r in regressions if r.label == run_label(latest, numbers)),
+        (r.number for r in regressions if r.run_id == latest.run_id),
         None,
     )
     duration_delta: int | None = None
@@ -276,12 +276,12 @@ def build_verdict(
             - previous.report.summary.total_duration_ms
         )
     return Verdict(
-        run_id=latest.report.timestamp,
+        run_id=latest.run_id,
         label=run_label(latest, numbers),
         version=latest.metadata.prompt_version.version,
         passed=latest.report.summary.passed,
         total=latest.report.summary.total_tests,
-        previous_run_id=previous.report.timestamp if previous else None,
+        previous_run_id=previous.run_id if previous else None,
         previous_label=(run_label(previous, numbers) if previous else None),
         previous_passed=previous.report.summary.passed if previous else None,
         previous_total=previous.report.summary.total_tests if previous else None,

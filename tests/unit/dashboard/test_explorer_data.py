@@ -25,9 +25,9 @@ def seed_runs():
 
 
 @pytest.mark.unit
-def test_select_run_returns_match_by_timestamp_id(seed_runs):
+def test_select_run_returns_match_by_run_id(seed_runs):
     target = seed_runs[3]
-    assert select_run(seed_runs, target.report.timestamp) is target
+    assert select_run(seed_runs, target.run_id) is target
 
 
 @pytest.mark.unit

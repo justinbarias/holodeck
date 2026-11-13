@@ -19,6 +19,7 @@ from holodeck.dashboard.data_loader import (
     to_metric_trend_dataframe,
     to_summary_dataframe,
 )
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import (
     RevisionColour,
     RunNumbers,
@@ -29,7 +30,6 @@ from holodeck.dashboard.revisions import (
     run_numbers,
 )
 from holodeck.dashboard.verdict import Regression, find_regressions
-from holodeck.models.eval_run import EvalRun
 
 MetricKind = Literal["standard", "rag", "geval", "code"]
 
@@ -133,7 +133,7 @@ def _edges(times: list[pd.Timestamp]) -> list[pd.Timestamp]:
 
 
 def pass_rate_chart(
-    runs: list[EvalRun],
+    runs: list[LoadedRun],
     *,
     numbers: RunNumbers | None = None,
     colours: dict[str, RevisionColour] | None = None,
@@ -261,7 +261,7 @@ def pass_rate_chart(
 
 
 def metric_trend_chart(
-    runs: list[EvalRun], kind: MetricKind, threshold: float | None = 0.7
+    runs: list[LoadedRun], kind: MetricKind, threshold: float | None = 0.7
 ) -> go.Figure:
     """Mean score per run for every metric of ``kind``; dashed threshold."""
     fig = go.Figure()
@@ -361,7 +361,7 @@ def sparkline(values: list[float], color: str = HOUSE) -> go.Figure:
 
 
 def breakdown_dataframe(
-    runs: list[EvalRun], kind: MetricKind, recent_n: int = 6
+    runs: list[LoadedRun], kind: MetricKind, recent_n: int = 6
 ) -> pd.DataFrame:
     """Re-export for views that want the bar chart alongside raw rows."""
     return to_breakdown_dataframe(runs, kind, recent_n=recent_n)

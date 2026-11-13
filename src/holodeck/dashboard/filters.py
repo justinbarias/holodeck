@@ -12,8 +12,8 @@ from typing import Literal
 
 import pandas as pd
 
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import run_time
-from holodeck.models.eval_run import EvalRun
 
 MetricKind = Literal["standard", "rag", "geval", "code"]
 
@@ -46,7 +46,7 @@ def _bound(value: str, ts: pd.Timestamp, *, end: bool) -> pd.Timestamp:
     return bound
 
 
-def _run_passes(run: EvalRun, f: Filters) -> bool:
+def _run_passes(run: LoadedRun, f: Filters) -> bool:
     # Parsed at the shared boundary: aware, naive read as UTC.
     ts = pd.Timestamp(run_time(run))
     if f.date_from and ts < _bound(f.date_from, ts, end=False):
@@ -88,7 +88,7 @@ def _run_passes(run: EvalRun, f: Filters) -> bool:
     return True
 
 
-def apply(filters: Filters, runs: list[EvalRun]) -> list[EvalRun]:
+def apply(filters: Filters, runs: list[LoadedRun]) -> list[LoadedRun]:
     return [r for r in runs if _run_passes(r, filters)]
 
 

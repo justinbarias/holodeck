@@ -15,6 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from holodeck.config.context import STORED_SNAPSHOT
+from holodeck.dashboard.loaded_run import LoadedRun, run_id_from_timestamp
 from holodeck.models.eval_run import EvalRun
 from holodeck.models.test_result import (
     MetricResult,
@@ -46,11 +47,18 @@ def _fixture_path() -> Path:
 
 
 @lru_cache(maxsize=1)
-def build_seed_runs() -> list[EvalRun]:
-    """Return the 24-run seed dataset as validated EvalRun instances."""
+def build_seed_runs() -> list[LoadedRun]:
+    """Return the 24-run seed dataset as validated runs.
+
+    Each id is the file name the writer would give the run.
+    """
     raw = json.loads(_fixture_path().read_text(encoding="utf-8"))
-    return [
+    runs = [
         EvalRun.model_validate(item, context={STORED_SNAPSHOT: True}) for item in raw
+    ]
+    return [
+        LoadedRun.from_run(run, run_id_from_timestamp(run.report.timestamp))
+        for run in runs
     ]
 
 
@@ -204,7 +212,7 @@ def _four_turn_failing_case() -> TestResult:
     )
 
 
-def build_multi_turn_seed_case() -> EvalRun:
+def build_multi_turn_seed_case() -> LoadedRun:
     """Return a mixed seed run: legacy + passing 3-turn + failing 4-turn (US5).
 
     Reuses the metadata block from :func:`build_seed_runs` so the
@@ -233,7 +241,11 @@ def build_multi_turn_seed_case() -> EvalRun:
         timestamp="2026-04-20T00:00:03+00:00",
         holodeck_version=base.report.holodeck_version,
     )
-    return EvalRun(report=report, metadata=base.metadata)
+    return LoadedRun(
+        report=report,
+        metadata=base.metadata,
+        run_id=run_id_from_timestamp(report.timestamp),
+    )
 
 
 SEED_CONVERSATIONS: dict[str, dict] = {

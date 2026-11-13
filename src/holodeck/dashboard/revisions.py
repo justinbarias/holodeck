@@ -9,7 +9,8 @@ filtered subset, so a prompt version keeps its colour and a run keeps its
 * Run numbers: ``R1`` is the oldest loaded run, ``Rn`` the newest, ordered by
   the parsed run time (a timestamp without an offset is read as UTC). Runs
   with the same time keep their load order, and each still gets its own
-  number. The timestamp stays the run id used by callbacks and URLs.
+  number. Numbers are keyed by :attr:`LoadedRun.run_id`, the id callbacks
+  and URLs use.
 
 :func:`run_time` and :func:`chronological` are the one ordering every view,
 chart, verdict and download uses.
@@ -21,10 +22,14 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TypeVar
 
 import pandas as pd
 
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.models.eval_run import EvalRun
+
+RunT = TypeVar("RunT", bound=EvalRun)
 
 
 @dataclass(frozen=True)
@@ -99,44 +104,33 @@ def run_time(run: EvalRun) -> datetime:
     return parse_run_time(run.report.timestamp)
 
 
-def chronological(runs: Iterable[EvalRun]) -> list[EvalRun]:
+def chronological(runs: Iterable[RunT]) -> list[RunT]:
     """Oldest first by parsed time; equal times keep their input order."""
     return sorted(runs, key=run_time)
 
 
 @dataclass(frozen=True)
 class RunNumbers:
-    """Cue numbers for the loaded runs.
+    """Cue numbers for the loaded runs, keyed by run id, so two runs saved
+    with the same timestamp still get distinct numbers."""
 
-    Keyed by run object so two saved runs with the same timestamp still get
-    distinct numbers; ``by_timestamp`` serves callers that only hold a run id
-    (it keeps the first number for a repeated timestamp).
-    """
+    by_id: dict[str, int] = field(default_factory=dict)
 
-    by_run: dict[int, int] = field(default_factory=dict)
-    by_timestamp: dict[str, int] = field(default_factory=dict)
-
-    def number(self, run: EvalRun | str) -> int | None:
-        if isinstance(run, str):
-            return self.by_timestamp.get(run)
-        found = self.by_run.get(id(run))
-        if found is not None:
-            return found
-        return self.by_timestamp.get(run.report.timestamp)
+    def number(self, run: LoadedRun | str) -> int | None:
+        """Number for a run or a run id; ``None`` when it is not loaded."""
+        return self.by_id.get(run if isinstance(run, str) else run.run_id)
 
 
-def run_numbers(runs: Iterable[EvalRun]) -> RunNumbers:
+def run_numbers(runs: Iterable[LoadedRun]) -> RunNumbers:
     """1-based chronological number for every run in ``runs``."""
-    by_run: dict[int, int] = {}
-    by_timestamp: dict[str, int] = {}
-    for i, run in enumerate(chronological(runs), start=1):
-        by_run[id(run)] = i
-        by_timestamp.setdefault(run.report.timestamp, i)
-    return RunNumbers(by_run=by_run, by_timestamp=by_timestamp)
+    return RunNumbers(
+        by_id={run.run_id: i for i, run in enumerate(chronological(runs), start=1)}
+    )
 
 
-def run_label(run: EvalRun | str, numbers: RunNumbers) -> str:
-    """``R<n>`` for a known run; the raw timestamp prefix otherwise."""
+def run_label(run: LoadedRun | str, numbers: RunNumbers) -> str:
+    """``R<n>`` for a known run; otherwise the id, or the timestamp prefix of
+    a run object."""
     n = numbers.number(run)
     if n is not None:
         return f"R{n}"

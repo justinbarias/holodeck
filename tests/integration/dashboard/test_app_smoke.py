@@ -63,7 +63,7 @@ def test_render_explorer_produces_three_columns_and_five_sections(seed_runs):
 
     run = seed_runs[-1]
     state = {
-        "explorer_run_id": run.report.timestamp,
+        "explorer_run_id": run.run_id,
         "explorer_case_name": run.report.results[0].test_name,
         "explorer_runs_collapsed": False,
     }
@@ -91,7 +91,7 @@ def test_render_explorer_produces_three_columns_and_five_sections(seed_runs):
 def test_render_compare_variants(seed_runs, variant, cls):
     from holodeck.dashboard.views.compare import render_compare
 
-    queue = [r.report.timestamp for r in seed_runs[-3:]]
+    queue = [r.run_id for r in seed_runs[-3:]]
     state = {"compare_queue": queue, "compare_variant": variant}
     tree = render_compare(state, seed_runs)
     assert _classes_contain(tree, cls)

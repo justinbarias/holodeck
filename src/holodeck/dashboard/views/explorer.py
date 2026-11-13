@@ -46,6 +46,7 @@ from holodeck.dashboard.explorer_data import (
     list_case_summaries,
     select_run,
 )
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.dashboard.revisions import (
     RevisionColour,
     RunNumbers,
@@ -57,7 +58,6 @@ from holodeck.dashboard.revisions import (
 )
 from holodeck.dashboard.seed_data import SEED_CONVERSATIONS
 from holodeck.dashboard.verdict import pass_rate
-from holodeck.models.eval_run import EvalRun
 
 KIND_LABELS: dict[str, str] = {
     "rag": "RAG",
@@ -84,6 +84,27 @@ def _empty_no_runs() -> html.Section:
             ),
         ],
         className="sheet empty",
+    )
+
+
+def _run_not_found_panel(ref: str) -> html.Div:
+    return html.Div(
+        html.Section(
+            [
+                html.H1("Run not found"),
+                html.P(
+                    [
+                        "This link names run ",
+                        html.Span(ref, className="cue"),
+                        ", which is not in the loaded results. The file may "
+                        "have been renamed or deleted. Pick a run from the list.",
+                    ]
+                ),
+            ],
+            className="sheet empty",
+            role="status",
+        ),
+        className="detail hd-explorer-detail",
     )
 
 
@@ -120,7 +141,7 @@ _TIER_ICON = {"pass": "check", "warn": "warn", "fail": "x"}  # nosec B105
 
 
 def _runs_column_expanded(
-    runs: list[EvalRun],
+    runs: list[LoadedRun],
     active_run_id: str | None,
     queue: list[str],
     numbers: RunNumbers | None = None,
@@ -135,13 +156,13 @@ def _runs_column_expanded(
 
     rows: list[Any] = []
     for run in sorted_runs:
-        rid = run.report.timestamp
+        rid = run.run_id
         label = run_label(run, numbers)
         pr = pass_rate(run)
         tier = _tier(pr)
         version = run.metadata.prompt_version.version
         model = run.metadata.agent_config.model.name
-        when = fmt_when(parse_ts(rid))
+        when = fmt_when(parse_ts(run.report.timestamp))
         meta = when if model == usual_model else f"{when} · {model}"
         active = rid == active_run_id
         attrs: dict[str, Any] = {"aria-current": "true"} if active else {}
@@ -202,7 +223,7 @@ def _runs_column_expanded(
     )
 
 
-def _runs_column_collapsed(runs: list[EvalRun]) -> html.Div:
+def _runs_column_collapsed(runs: list[LoadedRun]) -> html.Div:
     return html.Div(
         html.Button(
             [
@@ -904,7 +925,7 @@ def _evaluations_section(
 
 
 def _detail_panel(
-    run: EvalRun,
+    run: LoadedRun,
     detail: CaseDetail,
     run_text: str | None = None,
     colour: RevisionColour | None = None,
@@ -934,17 +955,39 @@ def _detail_panel(
 # --------------------------------------------------------------------------- #
 
 
-def render_explorer(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
+def render_explorer(state: dict[str, Any], runs: list[LoadedRun]) -> html.Div:
     if not runs:
         return html.Div(_empty_no_runs(), className="page explorer-empty")
 
     numbers = run_numbers(runs)
     colours = revision_colour_map(runs)
 
-    # Resolve selection with sensible defaults.
-    run_id = state.get("explorer_run_id")
-    run = select_run(runs, run_id) if run_id else None
-    if run is None:
+    runs_collapsed = bool(state.get("explorer_runs_collapsed", False))
+    queue = list(state.get("compare_queue") or [])
+    grid_cls = "hd-explorer-grid"
+    if runs_collapsed:
+        grid_cls += " hd-explorer-grid--collapsed"
+
+    def runs_column(active_run_id: str | None) -> html.Div:
+        if runs_collapsed:
+            return _runs_column_collapsed(runs)
+        return _runs_column_expanded(runs, active_run_id, queue, numbers, colours)
+
+    # No selection opens the latest run. A selection that names no loaded
+    # run says so; it never shows a different run in its place.
+    ref = state.get("explorer_run_id")
+    if ref:
+        run = select_run(runs, str(ref))
+        if run is None:
+            return html.Div(
+                [
+                    runs_column(None),
+                    _cases_column([], None),
+                    _run_not_found_panel(str(ref)),
+                ],
+                className=grid_cls,
+            )
+    else:
         run = chronological(runs)[-1]
     label = run_label(run, numbers)
     version = run.metadata.prompt_version.version
@@ -954,17 +997,7 @@ def render_explorer(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
     if case_name is None or not any(c.name == case_name for c in cases):
         case_name = cases[0].name if cases else None
 
-    runs_collapsed = bool(state.get("explorer_runs_collapsed", False))
-    queue = list(state.get("compare_queue") or [])
-
-    col_runs: html.Div
-    if runs_collapsed:
-        col_runs = _runs_column_collapsed(runs)
-    else:
-        col_runs = _runs_column_expanded(
-            runs, run.report.timestamp, queue, numbers, colours
-        )
-
+    col_runs = runs_column(run.run_id)
     col_cases = _cases_column(cases, case_name, label)
 
     if case_name is None:
@@ -977,9 +1010,5 @@ def render_explorer(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
             col_detail = _detail_panel(
                 run, detail, label, revision_colour(version, colours)
             )
-
-    grid_cls = "hd-explorer-grid"
-    if runs_collapsed:
-        grid_cls += " hd-explorer-grid--collapsed"
 
     return html.Div([col_runs, col_cases, col_detail], className=grid_cls)

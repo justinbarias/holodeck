@@ -10,11 +10,13 @@ from dataclasses import asdict
 from typing import Any
 from urllib.parse import parse_qsl, urlencode
 
+from holodeck.dashboard.explorer_data import select_run
 from holodeck.dashboard.filters import (
     Filters,
     filters_from_query_params,
     filters_to_query_params,
 )
+from holodeck.dashboard.loaded_run import LoadedRun
 
 
 def default_state() -> dict[str, Any]:
@@ -66,20 +68,21 @@ _TABS = ("summary", "explorer", "compare")
 
 def url_search_from_state(state: dict[str, Any]) -> str:
     """Query string for the address bar: filters, view, compare selection
-    and the Explorer selection. :func:`state_from_url_search` reverses it."""
-    params = filters_to_query_params(state_filters(state))
+    and the Explorer selection. :func:`state_from_url_search` reverses it.
+
+    Each compare run is its own ``cmp`` parameter, so a run id that contains
+    a comma survives the round trip."""
+    params = list(filters_to_query_params(state_filters(state)).items())
     if state.get("tab") and state["tab"] != "summary":
-        params["tab"] = state["tab"]
-    queue = list(state.get("compare_queue") or [])
-    if queue:
-        params["cmp"] = ",".join(queue)
+        params.append(("tab", state["tab"]))
+    params.extend(("cmp", str(rid)) for rid in state.get("compare_queue") or [])
     variant = int(state.get("compare_variant", 1) or 1)
     if variant != 1:
-        params["layout"] = str(variant)
+        params.append(("layout", str(variant)))
     if state.get("explorer_run_id"):
-        params["run"] = str(state["explorer_run_id"])
+        params.append(("run", str(state["explorer_run_id"])))
     if state.get("explorer_case_name"):
-        params["case"] = str(state["explorer_case_name"])
+        params.append(("case", str(state["explorer_case_name"])))
     if not params:
         return ""
     return "?" + urlencode(params, safe=",:")
@@ -93,13 +96,14 @@ def state_from_url_search(search: str) -> dict[str, Any]:
     query = (search or "").lstrip("?")
     if not query:
         return state
-    params = dict(parse_qsl(query))
+    pairs = parse_qsl(query)
+    params = {k: v for k, v in pairs if k != "cmp"}
     tab = params.pop("tab", None)
     if tab in _TABS:
         state = set_tab(state, tab)
-    cmp = params.pop("cmp", "")
-    if cmp:
-        state["compare_queue"] = [r for r in cmp.split(",") if r][:3]
+    queue = list(dict.fromkeys(v for k, v in pairs if k == "cmp" and v))
+    if queue:
+        state["compare_queue"] = queue[:3]
     layout = params.pop("layout", "")
     if layout in ("1", "2", "3"):
         state["compare_variant"] = int(layout)
@@ -110,3 +114,25 @@ def state_from_url_search(search: str) -> dict[str, Any]:
     if case:
         state["explorer_case_name"] = case
     return set_filters(state, filters_from_query_params(params))
+
+
+def resolve_run_refs(state: dict[str, Any], runs: list[LoadedRun]) -> dict[str, Any]:
+    """Point a restored link's run references at loaded run ids.
+
+    An old link's timestamp becomes its run's id (see
+    :func:`~holodeck.dashboard.explorer_data.select_run`). A compare entry
+    that names no loaded run is dropped. An Explorer run that names no loaded
+    run is kept, so the Explorer can say that it is missing.
+    """
+    queue: list[str] = []
+    for ref in state.get("compare_queue") or []:
+        run = select_run(runs, str(ref))
+        if run is not None and run.run_id not in queue:
+            queue.append(run.run_id)
+    ref = state.get("explorer_run_id")
+    found = select_run(runs, str(ref)) if ref else None
+    return {
+        **state,
+        "compare_queue": queue,
+        "explorer_run_id": found.run_id if found is not None else ref,
+    }
