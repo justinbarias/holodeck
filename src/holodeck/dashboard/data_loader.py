@@ -22,6 +22,7 @@ from typing import Literal
 import pandas as pd
 
 from holodeck.config.context import STORED_SNAPSHOT
+from holodeck.dashboard.revisions import chronological, run_time
 from holodeck.dashboard.seed_data import build_seed_runs
 from holodeck.models.eval_run import EvalRun
 
@@ -47,7 +48,7 @@ def load_all(results_dir: Path) -> list[EvalRun]:
 
     Corrupt or schema-violating files are logged and skipped (FR-024, R6).
     Missing directory returns [] without error (FR-023).
-    Results sorted by `report.timestamp` ascending.
+    Results sorted oldest first by parsed run time (`revisions.chronological`).
     """
     if not results_dir.exists() or not results_dir.is_dir():
         return []
@@ -65,8 +66,7 @@ def load_all(results_dir: Path) -> list[EvalRun]:
         except Exception as exc:
             logger.warning("Skipping %s — failed to load EvalRun: %s", path.name, exc)
             continue
-    runs.sort(key=lambda r: r.report.timestamp)
-    return runs
+    return chronological(runs)
 
 
 def load_runs_for_app() -> list[EvalRun]:
@@ -124,12 +124,12 @@ def to_summary_dataframe(runs: list[EvalRun]) -> pd.DataFrame:
         )
 
     rows = []
-    for run in runs:
+    for run in chronological(runs):
         pr = _pass_rate_fraction(run)
         rows.append(
             {
                 "id": run.report.timestamp,
-                "timestamp": pd.to_datetime(run.report.timestamp),
+                "timestamp": pd.Timestamp(run_time(run)).tz_convert("UTC"),
                 "pass_rate": pr,
                 "passed": run.report.summary.passed,
                 "total": run.report.summary.total_tests,
@@ -141,9 +141,8 @@ def to_summary_dataframe(runs: list[EvalRun]) -> pd.DataFrame:
                 "pass_rate_tier": _pass_rate_tier(pr),
             }
         )
-    df = pd.DataFrame(rows)
-    df = df.sort_values("timestamp", ascending=False).reset_index(drop=True)
-    return df
+    # Newest first; built in chronological order so equal times stay stable.
+    return pd.DataFrame(rows).iloc[::-1].reset_index(drop=True)
 
 
 def _iter_metric_results(run: EvalRun, kind: MetricKind | None = None):
@@ -162,8 +161,10 @@ def to_metric_trend_dataframe(runs: list[EvalRun], kind: MetricKind) -> pd.DataF
         return pd.DataFrame()
 
     per_run: list[dict] = []
-    for run in runs:
-        row: dict[str, object] = {"timestamp": pd.to_datetime(run.report.timestamp)}
+    for run in chronological(runs):
+        row: dict[str, object] = {
+            "timestamp": pd.Timestamp(run_time(run)).tz_convert("UTC")
+        }
         bucket: dict[str, list[float]] = {}
         for m in _iter_metric_results(run, kind):
             bucket.setdefault(m.metric_name, []).append(float(m.score))
@@ -171,8 +172,7 @@ def to_metric_trend_dataframe(runs: list[EvalRun], kind: MetricKind) -> pd.DataF
             row[name] = sum(scores) / len(scores) if scores else None
         per_run.append(row)
 
-    df = pd.DataFrame(per_run).sort_values("timestamp").reset_index(drop=True)
-    return df
+    return pd.DataFrame(per_run)
 
 
 def to_breakdown_dataframe(
@@ -182,7 +182,7 @@ def to_breakdown_dataframe(
     if not runs:
         return pd.DataFrame(columns=["metric_name", "avg_score", "pass_count", "total"])
 
-    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp)[-recent_n:]
+    sorted_runs = chronological(runs)[-recent_n:]
 
     agg: dict[str, dict] = {}
     for run in sorted_runs:
@@ -242,7 +242,7 @@ def detect_regressions(runs: list[EvalRun], drop_threshold: float = 0.04) -> lis
     """Indices (chronological) where pass_rate drops more than `drop_threshold`."""
     if len(runs) < 2:
         return []
-    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp)
+    sorted_runs = chronological(runs)
     rates = [_pass_rate_fraction(r) for r in sorted_runs]
     out = []
     for i in range(1, len(rates)):
@@ -255,7 +255,7 @@ def detect_version_boundaries(runs: list[EvalRun]) -> list[tuple[int, str]]:
     """Indices (chronological) where prompt_version changes, + the new version."""
     if not runs:
         return []
-    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp)
+    sorted_runs = chronological(runs)
     out: list[tuple[int, str]] = []
     prev = None
     for i, run in enumerate(sorted_runs):

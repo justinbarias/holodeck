@@ -21,6 +21,8 @@ from holodeck.dashboard.data_loader import (
 )
 from holodeck.dashboard.revisions import (
     RevisionColour,
+    RunNumbers,
+    chronological,
     revision_colour,
     revision_colour_map,
     run_label,
@@ -112,7 +114,7 @@ def _edges(times: list[pd.Timestamp]) -> list[pd.Timestamp]:
 def pass_rate_chart(
     runs: list[EvalRun],
     *,
-    numbers: dict[str, int] | None = None,
+    numbers: RunNumbers | None = None,
     colours: dict[str, RevisionColour] | None = None,
     regressions: list[Regression] | None = None,
 ) -> go.Figure:
@@ -126,10 +128,12 @@ def pass_rate_chart(
     if regressions is None:
         regressions = find_regressions(runs, numbers)
 
-    df = to_summary_dataframe(runs).sort_values("timestamp").reset_index(drop=True)
+    # Oldest first; the frame and ``ordered`` share one chronological order.
+    df = to_summary_dataframe(runs).iloc[::-1].reset_index(drop=True)
+    ordered = chronological(runs)
     times = list(df["timestamp"])
     edges = _edges(times)
-    labels = [run_label(rid, numbers) for rid in df["id"]]
+    labels = [run_label(run, numbers) for run in ordered]
 
     for first, last, version in _version_segments(df):
         colour = revision_colour(version, colours)
@@ -180,12 +184,12 @@ def pass_rate_chart(
         )
     )
 
-    by_id = {rid: i for i, rid in enumerate(df["id"])}
+    by_label = {label: i for i, label in enumerate(labels)}
     ring_x: list[pd.Timestamp] = []
     ring_y: list[float] = []
     ring_text: list[str] = []
     for reg in regressions:
-        idx = by_id.get(reg.run_id)
+        idx = by_label.get(reg.label)
         if idx is None:
             continue
         ring_x.append(df.at[idx, "timestamp"])

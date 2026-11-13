@@ -12,7 +12,7 @@ from typing import Literal
 
 from dash import html
 
-from holodeck.dashboard.revisions import RevisionColour
+from holodeck.dashboard.revisions import RevisionColour, parse_run_time
 
 StateKind = Literal["pass", "fail", "regression", "warn", "miss", "done"]
 
@@ -126,5 +126,5 @@ def fmt_date(ts: datetime) -> str:
 
 
 def parse_ts(run_id: str) -> datetime:
-    """Parse a run id (ISO timestamp, ``Z`` allowed)."""
-    return datetime.fromisoformat(run_id.replace("Z", "+00:00"))
+    """Parse a run id as an aware datetime (naive read as UTC)."""
+    return parse_run_time(run_id)

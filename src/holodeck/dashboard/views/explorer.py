@@ -48,6 +48,8 @@ from holodeck.dashboard.explorer_data import (
 )
 from holodeck.dashboard.revisions import (
     RevisionColour,
+    RunNumbers,
+    chronological,
     revision_colour,
     revision_colour_map,
     run_label,
@@ -121,7 +123,7 @@ def _runs_column_expanded(
     runs: list[EvalRun],
     active_run_id: str | None,
     queue: list[str],
-    numbers: dict[str, int] | None = None,
+    numbers: RunNumbers | None = None,
     colours: dict[str, RevisionColour] | None = None,
 ) -> html.Div:
     numbers = numbers if numbers is not None else run_numbers(runs)
@@ -129,12 +131,12 @@ def _runs_column_expanded(
     usual_model = Counter(r.metadata.agent_config.model.name for r in runs).most_common(
         1
     )[0][0]
-    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp, reverse=True)
+    sorted_runs = list(reversed(chronological(runs)))
 
     rows: list[Any] = []
     for run in sorted_runs:
         rid = run.report.timestamp
-        label = run_label(rid, numbers)
+        label = run_label(run, numbers)
         pr = pass_rate(run)
         tier = _tier(pr)
         version = run.metadata.prompt_version.version
@@ -664,6 +666,26 @@ def _cue_for(name: str, cue_names: list[str], *, exact: bool) -> int | None:
     return None
 
 
+def _unexpected_cues(unexpected: list[str], cue_names: list[str]) -> list[int | None]:
+    """Cue number for each unexpected call, in order: a repeated tool name
+    points at its own occurrence (Q1, then Q2), not the first one again."""
+    used: set[int] = set()
+    out: list[int | None] = []
+    for name in unexpected:
+        cue_no = next(
+            (
+                i
+                for i, called in enumerate(cue_names, start=1)
+                if called == name and i not in used
+            ),
+            None,
+        )
+        if cue_no is not None:
+            used.add(cue_no)
+        out.append(cue_no)
+    return out
+
+
 def _expected_tool_row(name: str, ok: bool, cue_no: int | None = None) -> html.Li:
     if ok:
         text = f"Called · Q{cue_no}" if cue_no is not None else "Called"
@@ -742,8 +764,10 @@ def _expected_tools_section(
             for name, ok in cov.rows
         ]
         rows += [
-            _unexpected_row(name, _cue_for(name, cue_names, exact=True))
-            for name in unexpected
+            _unexpected_row(name, cue_no)
+            for name, cue_no in zip(
+                unexpected, _unexpected_cues(unexpected, cue_names), strict=True
+            )
         ]
         body = html.Ul(rows, className="expect-list")
 
@@ -921,8 +945,8 @@ def render_explorer(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
     run_id = state.get("explorer_run_id")
     run = select_run(runs, run_id) if run_id else None
     if run is None:
-        run = sorted(runs, key=lambda r: r.report.timestamp)[-1]
-    label = run_label(run.report.timestamp, numbers)
+        run = chronological(runs)[-1]
+    label = run_label(run, numbers)
     version = run.metadata.prompt_version.version
 
     cases = list_case_summaries(run)

@@ -33,7 +33,7 @@ def render_tray(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
     for i, run in enumerate(items):
         version = run.metadata.prompt_version.version
         colour = revision_colour(version, colours)
-        label = run_label(run.report.timestamp, numbers)
+        label = run_label(run, numbers)
         chips.append(
             html.Span(
                 [

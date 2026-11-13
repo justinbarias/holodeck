@@ -6,15 +6,23 @@ filtered subset, so a prompt version keeps its colour and a run keeps its
 
 * Revision colours: the nth prompt version in sorted version order takes the
   nth colour of :data:`REVISION_PALETTE` (wrapping after eight).
-* Run numbers: ``R1`` is the oldest loaded run, ``Rn`` the newest. The
-  timestamp stays the run id used by callbacks and URLs.
+* Run numbers: ``R1`` is the oldest loaded run, ``Rn`` the newest, ordered by
+  the parsed run time (a timestamp without an offset is read as UTC). Runs
+  with the same time keep their load order, and each still gets its own
+  number. The timestamp stays the run id used by callbacks and URLs.
+
+:func:`run_time` and :func:`chronological` are the one ordering every view,
+chart, verdict and download uses.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+
+import pandas as pd
 
 from holodeck.models.eval_run import EvalRun
 
@@ -77,13 +85,59 @@ def revision_colour(
     return colour_map.get(version, UNKNOWN_REVISION)
 
 
-def run_numbers(runs: Iterable[EvalRun]) -> dict[str, int]:
-    """Map run id (``report.timestamp``) to its 1-based chronological number."""
-    ordered = sorted(runs, key=lambda r: r.report.timestamp)
-    return {run.report.timestamp: i for i, run in enumerate(ordered, start=1)}
+def parse_run_time(value: str) -> datetime:
+    """Parse a saved run timestamp as an aware datetime (naive → UTC)."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = pd.Timestamp(value).to_pydatetime()
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
-def run_label(run_id: str, numbers: dict[str, int]) -> str:
+def run_time(run: EvalRun) -> datetime:
+    """When ``run`` happened, as an aware datetime."""
+    return parse_run_time(run.report.timestamp)
+
+
+def chronological(runs: Iterable[EvalRun]) -> list[EvalRun]:
+    """Oldest first by parsed time; equal times keep their input order."""
+    return sorted(runs, key=run_time)
+
+
+@dataclass(frozen=True)
+class RunNumbers:
+    """Cue numbers for the loaded runs.
+
+    Keyed by run object so two saved runs with the same timestamp still get
+    distinct numbers; ``by_timestamp`` serves callers that only hold a run id
+    (it keeps the first number for a repeated timestamp).
+    """
+
+    by_run: dict[int, int] = field(default_factory=dict)
+    by_timestamp: dict[str, int] = field(default_factory=dict)
+
+    def number(self, run: EvalRun | str) -> int | None:
+        if isinstance(run, str):
+            return self.by_timestamp.get(run)
+        found = self.by_run.get(id(run))
+        if found is not None:
+            return found
+        return self.by_timestamp.get(run.report.timestamp)
+
+
+def run_numbers(runs: Iterable[EvalRun]) -> RunNumbers:
+    """1-based chronological number for every run in ``runs``."""
+    by_run: dict[int, int] = {}
+    by_timestamp: dict[str, int] = {}
+    for i, run in enumerate(chronological(runs), start=1):
+        by_run[id(run)] = i
+        by_timestamp.setdefault(run.report.timestamp, i)
+    return RunNumbers(by_run=by_run, by_timestamp=by_timestamp)
+
+
+def run_label(run: EvalRun | str, numbers: RunNumbers) -> str:
     """``R<n>`` for a known run; the raw timestamp prefix otherwise."""
-    n = numbers.get(run_id)
-    return f"R{n}" if n is not None else run_id[:16]
+    n = numbers.number(run)
+    if n is not None:
+        return f"R{n}"
+    return (run if isinstance(run, str) else run.report.timestamp)[:16]

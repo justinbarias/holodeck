@@ -38,6 +38,8 @@ from holodeck.dashboard.data_loader import (
 from holodeck.dashboard.filters import apply as apply_filters
 from holodeck.dashboard.revisions import (
     RevisionColour,
+    RunNumbers,
+    chronological,
     revision_colour,
     revision_colour_map,
     run_label,
@@ -64,7 +66,7 @@ BREAKDOWN_RECENT_N = 6
 
 
 def _chronological(runs: list[EvalRun]) -> list[EvalRun]:
-    return sorted(runs, key=lambda r: r.report.timestamp)
+    return chronological(runs)
 
 
 def _geval_mean(run: EvalRun) -> float | None:
@@ -269,14 +271,14 @@ def _delta_note(text: str, cls: str) -> html.Span:
 def _figures(
     filtered: list[EvalRun],
     total_runs: int,
-    numbers: dict[str, int],
+    numbers: RunNumbers,
     colours: dict[str, RevisionColour],
 ) -> html.Dl:
     ordered = _chronological(filtered)
     latest = ordered[-1]
     previous = ordered[-2] if len(ordered) > 1 else None
-    latest_label = run_label(latest.report.timestamp, numbers)
-    prev_label = run_label(previous.report.timestamp, numbers) if previous else None
+    latest_label = run_label(latest, numbers)
+    prev_label = run_label(previous, numbers) if previous else None
     version = latest.metadata.prompt_version.version
 
     # 1 · latest pass rate
@@ -373,16 +375,16 @@ def _panel_head(title: str, sub: Any, right: Any = None) -> html.Div:
 
 def _pass_rate_panel(
     filtered: list[EvalRun],
-    numbers: dict[str, int],
+    numbers: RunNumbers,
     colours: dict[str, RevisionColour],
     regressions: list[Regression],
 ) -> html.Section:
     ordered = _chronological(filtered)
     first, last = ordered[0], ordered[-1]
     description = (
-        f"Pass rate by run from {run_label(first.report.timestamp, numbers)} "
+        f"Pass rate by run from {run_label(first, numbers)} "
         f"({pass_rate(first) * 100:.1f}%) to "
-        f"{run_label(last.report.timestamp, numbers)} "
+        f"{run_label(last, numbers)} "
         f"({pass_rate(last) * 100:.1f}%), "
         f"{len(regressions)} regression{'s' if len(regressions) != 1 else ''} marked."
     )
@@ -581,16 +583,14 @@ _TIER_TEXT = {
 def _runs_table(
     filtered: list[EvalRun],
     compare_queue: list[str],
-    numbers: dict[str, int],
+    numbers: RunNumbers,
     colours: dict[str, RevisionColour],
     regressions: list[Regression],
     search: str,
 ) -> html.Section:
     ordered = _chronological(filtered)
-    prev_rate: dict[str, float | None] = {}
-    for i, run in enumerate(ordered):
-        prev_rate[run.report.timestamp] = pass_rate(ordered[i - 1]) if i > 0 else None
-    reg_ids = {r.run_id: r.number for r in regressions}
+    previous_rates: list[float | None] = [None] + [pass_rate(r) for r in ordered[:-1]]
+    reg_numbers = {r.label: r.number for r in regressions}
     max_ms = max((r.report.summary.total_duration_ms for r in ordered), default=0) or 1
 
     header = html.Thead(
@@ -611,13 +611,12 @@ def _runs_table(
     )
 
     rows = []
-    for run in reversed(ordered):
+    for run, prev in reversed(list(zip(ordered, previous_rates, strict=True))):
         rid = run.report.timestamp
-        label = run_label(rid, numbers)
+        label = run_label(run, numbers)
         pr = pass_rate(run)
         tier = _tier(pr)
         version = run.metadata.prompt_version.version
-        prev = prev_rate[rid]
         in_queue = rid in compare_queue
 
         def nav(col: str, children: Any, cls: str = "", rid: str = rid) -> html.Td:
@@ -628,9 +627,9 @@ def _runs_table(
                 className=f"run-nav {cls}".strip(),
             )
 
-        if rid in reg_ids:
+        if label in reg_numbers:
             rate_cell: Any = html.Span(
-                [icon("x"), f"{pr * 100:.1f}% · regression {reg_ids[rid]}"],
+                [icon("x"), f"{pr * 100:.1f}% · regression {reg_numbers[label]}"],
                 className="state state-fail",
             )
         else:

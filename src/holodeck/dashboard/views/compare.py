@@ -16,7 +16,6 @@ from holodeck.dashboard.compare_data import (
     ConfigRow,
     StatRow,
     compute_case_matrix,
-    compute_compare_callouts,
     compute_config_diff,
     compute_summary_rows,
     run_stats,
@@ -31,6 +30,7 @@ from holodeck.dashboard.components.ui import (
     sr_only,
     state_word,
 )
+from holodeck.dashboard.filters import apply as apply_filters
 from holodeck.dashboard.revisions import (
     RevisionColour,
     revision_colour,
@@ -38,6 +38,7 @@ from holodeck.dashboard.revisions import (
     run_label,
     run_numbers,
 )
+from holodeck.dashboard.state import state_filters
 from holodeck.models.eval_run import EvalRun
 
 _CONFIG_LABELS: dict[str, str] = {
@@ -60,7 +61,7 @@ class _Ctx:
         self.colours = revision_colour_map(all_runs)
 
     def label(self, run: EvalRun) -> str:
-        return run_label(run.report.timestamp, self.numbers)
+        return run_label(run, self.numbers)
 
     def colour(self, run: EvalRun) -> RevisionColour:
         return revision_colour(run.metadata.prompt_version.version, self.colours)
@@ -80,7 +81,8 @@ class _Ctx:
 def render_compare_header(state: dict[str, Any], runs: list[EvalRun]) -> html.Header:
     queue = list(state.get("compare_queue") or [])
     numbers = run_numbers(runs)
-    known = [rid for rid in queue if rid in numbers]
+    runs_by_id = {r.report.timestamp: r for r in runs}
+    known = [runs_by_id[rid] for rid in queue if rid in runs_by_id]
     if len(known) >= 2:
         sub = (
             f"{len(known)} runs · baseline {run_label(known[0], numbers)} · "
@@ -94,7 +96,7 @@ def render_compare_header(state: dict[str, Any], runs: list[EvalRun]) -> html.He
     )
 
 
-def _empty_state() -> html.Section:
+def _empty_state(runs_in_range: int | None = None) -> html.Section:
     return html.Section(
         [
             html.H2("Pick runs to compare"),
@@ -116,6 +118,7 @@ def _empty_state() -> html.Section:
                         id="compare-quick-best",
                         className="btn btn-lg",
                         n_clicks=0,
+                        disabled=runs_in_range is not None and runs_in_range < 2,
                     ),
                     html.Button(
                         "Latest run of the last three revisions",
@@ -132,9 +135,28 @@ def _empty_state() -> html.Section:
                 ],
                 className="quick-picks",
             ),
+            *(
+                [_range_note(runs_in_range)]
+                if runs_in_range is not None and runs_in_range < 2
+                else []
+            ),
         ],
         className="sheet cmp-empty",
     )
+
+
+def _range_note(runs_in_range: int) -> html.P:
+    if runs_in_range == 0:
+        text = (
+            "No runs match the Summary filters, so Best vs worst in range has "
+            "nothing to pick. Widen the filters to use it."
+        )
+    else:
+        text = (
+            "Only one run matches the Summary filters, so Best vs worst in range "
+            "has nothing to compare it with."
+        )
+    return html.P(text, className="muted-note range-note", role="status")
 
 
 def _toolbar(runs: list[EvalRun], variant: int, ctx: _Ctx) -> html.Div:
@@ -609,43 +631,59 @@ def _strip(runs: list[EvalRun], ctx: _Ctx) -> html.Div:
     return html.Div(cards, className="sheet strip")
 
 
-def _narrative(runs: list[EvalRun], ctx: _Ctx) -> html.Div:
-    callouts = compute_compare_callouts(runs)
-    df = compute_case_matrix(runs)
-    lines: list[Any] = []
+_NARRATIVE_NAMES = 5
 
+
+def _changes_vs_baseline(runs: list[EvalRun], ctx: _Ctx) -> tuple[list[str], list[str]]:
+    """Every case fixed and every case broken against the baseline, each
+    named once with the first run where it changed (not truncated)."""
+    base = {c.test_name: c.passed for c in runs[0].report.results if c.test_name}
     fixed: list[str] = []
+    broken: list[str] = []
     seen_fixed: set[str] = set()
-    for run, c in zip(runs[1:], callouts, strict=False):
-        for name in c.improvements:
-            if name not in seen_fixed:
+    seen_broken: set[str] = set()
+    for run in runs[1:]:
+        for case in run.report.results:
+            name = case.test_name or ""
+            if name not in base:
+                continue
+            if not base[name] and case.passed and name not in seen_fixed:
                 seen_fixed.add(name)
                 fixed.append(f"{name} ({ctx.label(run)})")
+            elif base[name] and not case.passed and name not in seen_broken:
+                seen_broken.add(name)
+                broken.append(f"{name} ({ctx.label(run)})")
+    return fixed, broken
+
+
+def _name_list(names: list[str]) -> str:
+    shown = ", ".join(names[:_NARRATIVE_NAMES])
+    extra = len(names) - _NARRATIVE_NAMES
+    return f"{shown} and {extra} more" if extra > 0 else shown
+
+
+def _narrative(runs: list[EvalRun], ctx: _Ctx) -> html.Div:
+    df = compute_case_matrix(runs)
+    lines: list[Any] = []
+    fixed, broken = _changes_vs_baseline(runs, ctx)
+
     if fixed:
         n = len(fixed)
         lines.append(
             html.P(
                 [
                     html.B(f"{n} case{'s' if n != 1 else ''} fixed"),
-                    f" since the baseline: {', '.join(fixed)}.",
+                    f" since the baseline: {_name_list(fixed)}.",
                 ]
             )
         )
-
-    broken: list[str] = []
-    seen_broken: set[str] = set()
-    for run, c in zip(runs[1:], callouts, strict=False):
-        for name in c.regressions:
-            if name not in seen_broken:
-                seen_broken.add(name)
-                broken.append(f"{name} ({ctx.label(run)})")
     if broken:
         n = len(broken)
         lines.append(
             html.P(
                 [
                     state_word("regression", f"{n} regression{'s' if n != 1 else ''}"),
-                    f" against the baseline: {', '.join(broken)}.",
+                    f" against the baseline: {_name_list(broken)}.",
                 ]
             )
         )
@@ -708,7 +746,8 @@ def render_compare(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
     queue_runs = [runs_by_id[rid] for rid in queue_ids if rid in runs_by_id]
 
     if len(queue_runs) < 2:
-        return html.Div(_empty_state(), className="page cmp-wrap")
+        in_range = len(apply_filters(state_filters(state), runs))
+        return html.Div(_empty_state(in_range), className="page cmp-wrap")
 
     ctx = _Ctx(runs)
     variant = int(state.get("compare_variant", 1) or 1)

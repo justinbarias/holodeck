@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any
+from urllib.parse import parse_qsl, urlencode
 
 from holodeck.dashboard.filters import (
     Filters,
@@ -60,29 +61,52 @@ def open_in_explorer(state: dict[str, Any], run_id: str) -> dict[str, Any]:
     return {**state, "tab": "explorer", "explorer_run_id": run_id}
 
 
+_TABS = ("summary", "explorer", "compare")
+
+
 def url_search_from_state(state: dict[str, Any]) -> str:
-    filters = state_filters(state)
-    params = filters_to_query_params(filters)
+    """Query string for the address bar: filters, view, compare selection
+    and the Explorer selection. :func:`state_from_url_search` reverses it."""
+    params = filters_to_query_params(state_filters(state))
     if state.get("tab") and state["tab"] != "summary":
         params["tab"] = state["tab"]
+    queue = list(state.get("compare_queue") or [])
+    if queue:
+        params["cmp"] = ",".join(queue)
+    variant = int(state.get("compare_variant", 1) or 1)
+    if variant != 1:
+        params["layout"] = str(variant)
+    if state.get("explorer_run_id"):
+        params["run"] = str(state["explorer_run_id"])
+    if state.get("explorer_case_name"):
+        params["case"] = str(state["explorer_case_name"])
     if not params:
         return ""
-    return "?" + "&".join(f"{k}={v}" for k, v in params.items())
+    return "?" + urlencode(params, safe=",:")
 
 
 def state_from_url_search(search: str) -> dict[str, Any]:
+    """Rebuild app state from a query string written by
+    :func:`url_search_from_state`; unknown or malformed values fall back to
+    the defaults."""
     state = default_state()
-    if not search:
+    query = (search or "").lstrip("?")
+    if not query:
         return state
-    search = search.lstrip("?")
-    if not search:
-        return state
-    params: dict[str, str] = {}
-    for part in search.split("&"):
-        if "=" in part:
-            k, v = part.split("=", 1)
-            params[k] = v
-    if "tab" in params and params["tab"] in ("summary", "explorer", "compare"):
-        state = set_tab(state, params.pop("tab"))
-    filters = filters_from_query_params(params)
-    return set_filters(state, filters)
+    params = dict(parse_qsl(query))
+    tab = params.pop("tab", None)
+    if tab in _TABS:
+        state = set_tab(state, tab)
+    cmp = params.pop("cmp", "")
+    if cmp:
+        state["compare_queue"] = [r for r in cmp.split(",") if r][:3]
+    layout = params.pop("layout", "")
+    if layout in ("1", "2", "3"):
+        state["compare_variant"] = int(layout)
+    run_id = params.pop("run", "")
+    if run_id:
+        state["explorer_run_id"] = run_id
+    case = params.pop("case", "")
+    if case:
+        state["explorer_case_name"] = case
+    return set_filters(state, filters_from_query_params(params))

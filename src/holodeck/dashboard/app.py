@@ -25,6 +25,7 @@ from holodeck.dashboard.components.rail import render_rail
 from holodeck.dashboard.data_loader import load_runs_for_app, to_summary_dataframe
 from holodeck.dashboard.filters import Filters
 from holodeck.dashboard.filters import apply as apply_filters
+from holodeck.dashboard.revisions import chronological
 from holodeck.dashboard.views import render_compare, render_explorer, render_summary
 from holodeck.dashboard.views.compare import render_compare_header
 from holodeck.dashboard.views.summary import render_summary_header
@@ -277,6 +278,28 @@ def on_runs_search(value, state):
 
 
 @callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("url", "search"),
+    State("app-state", "data"),
+    prevent_initial_call="initial_duplicate",
+)
+def restore_from_url(search, state):
+    """Load the view a copied link describes (and follow back/forward).
+
+    ``sync_url`` writes the address from the state, which fires this callback
+    again; when the address already matches the state there is nothing to do,
+    so the two never loop.
+    """
+    state = state or state_mod.default_state()
+    restored = state_mod.state_from_url_search(search or "")
+    if state_mod.url_search_from_state(restored) == state_mod.url_search_from_state(
+        state
+    ):
+        raise dash.exceptions.PreventUpdate
+    return {**state, **restored}
+
+
+@callback(
     Output("url", "search"),
     Input("app-state", "data"),
     prevent_initial_call=True,
@@ -482,6 +505,17 @@ def on_compare_variant(value, state):
     return {**state, "compare_variant": v}
 
 
+def quick_pick_queue(source: str, state: dict, runs: list[EvalRun]) -> list[str]:
+    """Run ids a quick-pick button queues; fewer than two means no pick."""
+    if source == "compare-quick-best":
+        # "In range" means the Summary filters; never fall back to all runs.
+        in_range = apply_filters(state_mod.state_filters(state), runs)
+        return quick_pick_best_worst(in_range) if len(in_range) >= 2 else []
+    if source == "compare-quick-revisions":
+        return quick_pick_latest_per_revision(runs)
+    return quick_pick_latest(runs, 3 if source == "compare-quick-3" else 2)
+
+
 @callback(
     Output("app-state", "data", allow_duplicate=True),
     Input("compare-quick-2", "n_clicks"),
@@ -497,15 +531,7 @@ def on_compare_quick_pick(_n2, _n3, _best, _revisions, state):
         raise dash.exceptions.PreventUpdate
     state = state or state_mod.default_state()
     source = (trig.get("prop_id") or "").split(".")[0]
-    runs = get_runs()
-    if source == "compare-quick-best":
-        in_range = apply_filters(state_mod.state_filters(state), runs) or runs
-        queue = quick_pick_best_worst(in_range)
-    elif source == "compare-quick-revisions":
-        queue = quick_pick_latest_per_revision(runs)
-    else:
-        n = 3 if source == "compare-quick-3" else 2
-        queue = quick_pick_latest(runs, n)
+    queue = quick_pick_queue(source, state, get_runs())
     if len(queue) < 2:
         raise dash.exceptions.PreventUpdate
     return {**state, "compare_queue": queue}
@@ -565,7 +591,7 @@ def on_download_latest(n_clicks):
     runs = get_runs()
     if not runs:
         raise dash.exceptions.PreventUpdate
-    latest = max(runs, key=lambda r: r.report.timestamp)
+    latest = chronological(runs)[-1]
     stamp = latest.report.timestamp.replace(":", "-")
     return {
         "content": latest.model_dump_json(indent=2),

@@ -7,7 +7,7 @@ fit; Compare shows the full rail without filters.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date
 from typing import Any
 
 from dash import dcc, html
@@ -18,6 +18,7 @@ from holodeck.dashboard.filters import Filters
 from holodeck.dashboard.revisions import (
     revision_colour,
     revision_colour_map,
+    run_time,
     sorted_versions,
 )
 from holodeck.dashboard.state import state_filters
@@ -135,7 +136,7 @@ def _filters(state: dict[str, Any], runs: list[EvalRun]) -> html.Div:
     versions = sorted_versions(r.metadata.prompt_version.version for r in runs)
     models = distinct_values(runs, "model_name")
     tags = distinct_values(runs, "tags")
-    stamps = sorted(r.report.timestamp[:10] for r in runs)
+    stamps = sorted(run_time(r).astimezone(UTC).date().isoformat() for r in runs)
     pct = int(round(filters.min_pass_rate * 100))
 
     version_chips = []

@@ -13,6 +13,7 @@ from holodeck.dashboard.filters import Filters, apply
 from holodeck.dashboard.revisions import (
     REVISION_PALETTE,
     UNKNOWN_REVISION,
+    RunNumbers,
     revision_colour,
     revision_colour_map,
     run_label,
@@ -57,27 +58,13 @@ def test_nth_version_takes_nth_colour(runs: list[EvalRun]) -> None:
 
 
 @pytest.mark.unit
-def test_colours_do_not_shift_under_a_filter(runs: list[EvalRun]) -> None:
-    full = revision_colour_map(runs)
-    only_late = [r for r in runs if r.metadata.prompt_version.version == "v1.4"]
-    # Views always build the map from every loaded run; a subset would
-    # renumber, which is why callers must not pass filtered runs.
-    assert revision_colour_map(only_late)["v1.4"] != full["v1.4"]
-    assert full["v1.4"] == REVISION_PALETTE[5]
-
-
-@pytest.mark.unit
-def test_palette_wraps_after_eight() -> None:
-    versions = [f"v{i}" for i in range(1, 10)]
-    from types import SimpleNamespace
-
-    fake = [
-        SimpleNamespace(
-            metadata=SimpleNamespace(prompt_version=SimpleNamespace(version=v))
-        )
-        for v in versions
-    ]
-    cmap = revision_colour_map(fake)  # type: ignore[arg-type]
+def test_palette_wraps_after_eight(runs: list[EvalRun]) -> None:
+    nine: list[EvalRun] = []
+    for i in range(1, 10):
+        run = runs[0].model_copy(deep=True)
+        run.metadata.prompt_version.version = f"v{i}"
+        nine.append(run)
+    cmap = revision_colour_map(nine)
     assert cmap["v8"].name == "cherry"
     assert cmap["v9"] == REVISION_PALETTE[0]
 
@@ -88,8 +75,9 @@ def test_palette_wraps_after_eight() -> None:
 @pytest.mark.unit
 def test_runs_are_numbered_chronologically(runs: list[EvalRun]) -> None:
     numbers = run_numbers(reversed(runs))
-    assert numbers["2026-03-07T09:00:09.812000Z"] == 1
-    assert numbers["2026-04-16T22:59:09.812000Z"] == 24
+    assert numbers.number("2026-03-07T09:00:09.812000Z") == 1
+    assert numbers.number("2026-04-16T22:59:09.812000Z") == 24
+    assert run_label(runs[0], numbers) == "R1"
     assert run_label("2026-04-01T03:02:09.812000Z", numbers) == "R15"
     assert run_label("2026-05-01T00:00:00Z", numbers) == "2026-05-01T00:00"
 
@@ -179,7 +167,7 @@ def test_single_run_verdict(runs: list[EvalRun]) -> None:
     assert v is not None
     assert v.headline() == "R1 passes 7 of 12 cases."
     assert v.duration_sentence() is None
-    assert build_verdict([], {}) is None
+    assert build_verdict([], RunNumbers()) is None
 
 
 # ---------- quick picks + date filter ------------------------------------

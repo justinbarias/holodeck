@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from holodeck.dashboard.data_loader import detect_regressions
-from holodeck.dashboard.revisions import run_label
+from holodeck.dashboard.revisions import RunNumbers, chronological, run_label
 from holodeck.models.eval_run import EvalRun
 from holodeck.models.test_result import MetricResult, TestResult
 
@@ -31,7 +31,7 @@ def pass_rate(run: EvalRun) -> float:
 
 
 def _chronological(runs: list[EvalRun]) -> list[EvalRun]:
-    return sorted(runs, key=lambda r: r.report.timestamp)
+    return chronological(runs)
 
 
 def _case_map(run: EvalRun) -> dict[str, TestResult]:
@@ -91,7 +91,7 @@ def _newly_failed(previous: EvalRun, run: EvalRun) -> tuple[str, ...]:
     return tuple(out)
 
 
-def find_regressions(runs: list[EvalRun], numbers: dict[str, int]) -> list[Regression]:
+def find_regressions(runs: list[EvalRun], numbers: RunNumbers) -> list[Regression]:
     """Numbered regressions across ``runs`` in chronological order."""
     ordered = _chronological(runs)
     out: list[Regression] = []
@@ -102,9 +102,9 @@ def find_regressions(runs: list[EvalRun], numbers: dict[str, int]) -> list[Regre
             Regression(
                 number=k,
                 run_id=run.report.timestamp,
-                label=run_label(run.report.timestamp, numbers),
+                label=run_label(run, numbers),
                 version=run.metadata.prompt_version.version,
-                previous_label=run_label(previous.report.timestamp, numbers),
+                previous_label=run_label(previous, numbers),
                 previous_rate=pass_rate(previous),
                 rate=pass_rate(run),
                 newly_failed=_newly_failed(previous, run),
@@ -170,9 +170,7 @@ def _weakest_failed_metric(
     return worst.metric_name, float(worst.score), threshold
 
 
-def _failing_cases(
-    ordered: list[EvalRun], numbers: dict[str, int]
-) -> list[FailingCase]:
+def _failing_cases(ordered: list[EvalRun], numbers: RunNumbers) -> list[FailingCase]:
     latest = ordered[-1]
     previous = ordered[-2] if len(ordered) > 1 else None
     out: list[FailingCase] = []
@@ -194,7 +192,7 @@ def _failing_cases(
             FailingCase(
                 name=name,
                 streak=streak,
-                streak_start_label=run_label(start.report.timestamp, numbers),
+                streak_start_label=run_label(start, numbers),
                 passed_in_previous=bool(prior is not None and prior.passed),
                 metric_name=metric,
                 score=score,
@@ -256,7 +254,7 @@ class Verdict:
 
 def build_verdict(
     runs: list[EvalRun],
-    numbers: dict[str, int],
+    numbers: RunNumbers,
     regressions: list[Regression] | None = None,
 ) -> Verdict | None:
     """Verdict for the latest run in ``runs``; ``None`` when there are none."""
@@ -268,7 +266,7 @@ def build_verdict(
     if regressions is None:
         regressions = find_regressions(ordered, numbers)
     reg_number = next(
-        (r.number for r in regressions if r.run_id == latest.report.timestamp),
+        (r.number for r in regressions if r.label == run_label(latest, numbers)),
         None,
     )
     duration_delta: int | None = None
@@ -279,14 +277,12 @@ def build_verdict(
         )
     return Verdict(
         run_id=latest.report.timestamp,
-        label=run_label(latest.report.timestamp, numbers),
+        label=run_label(latest, numbers),
         version=latest.metadata.prompt_version.version,
         passed=latest.report.summary.passed,
         total=latest.report.summary.total_tests,
         previous_run_id=previous.report.timestamp if previous else None,
-        previous_label=(
-            run_label(previous.report.timestamp, numbers) if previous else None
-        ),
+        previous_label=(run_label(previous, numbers) if previous else None),
         previous_passed=previous.report.summary.passed if previous else None,
         previous_total=previous.report.summary.total_tests if previous else None,
         regression_number=reg_number,

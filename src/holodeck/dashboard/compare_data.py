@@ -13,7 +13,7 @@ from typing import Any
 
 import pandas as pd
 
-from holodeck.dashboard.revisions import sorted_versions
+from holodeck.dashboard.revisions import chronological, sorted_versions
 from holodeck.models.eval_run import EvalRun
 from holodeck.models.test_result import TestResult
 
@@ -443,7 +443,7 @@ def _run_rate(run: EvalRun) -> float:
 
 def quick_pick_latest(runs: list[EvalRun], n: int) -> list[str]:
     """The ``n`` newest runs, oldest first so the older one is the baseline."""
-    newest = sorted(runs, key=lambda r: r.report.timestamp)[-n:]
+    newest = chronological(runs)[-n:]
     return [r.report.timestamp for r in newest]
 
 
@@ -451,7 +451,7 @@ def quick_pick_best_worst(runs: list[EvalRun]) -> list[str]:
     """Worst then best pass rate; ties go to the most recent run."""
     if len(runs) < 2:
         return [r.report.timestamp for r in runs]
-    ordered = sorted(runs, key=lambda r: r.report.timestamp)
+    ordered = chronological(runs)
     worst = min(reversed(ordered), key=_run_rate)
     best = max(reversed(ordered), key=_run_rate)
     if worst is best:
@@ -463,7 +463,7 @@ def quick_pick_latest_per_revision(runs: list[EvalRun], limit: int = 3) -> list[
     """Latest run of each of the newest ``limit`` prompt versions, in revision
     order."""
     latest: dict[str, EvalRun] = {}
-    for run in sorted(runs, key=lambda r: r.report.timestamp):
+    for run in chronological(runs):
         latest[run.metadata.prompt_version.version] = run
     versions = sorted_versions(latest)[-limit:]
     return [latest[v].report.timestamp for v in versions]
