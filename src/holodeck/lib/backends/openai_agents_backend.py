@@ -23,7 +23,7 @@ import re
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from holodeck.lib.backends.base import (
     AgentSession,
@@ -41,13 +41,16 @@ from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
-    from agents import ModelSettings, OpenAIResponsesModel, RunConfig, RunResult
+    from agents import ModelSettings, OpenAIResponsesModel, RunConfig
     from agents.models.interface import Model
+    from agents.result import RunResultBase
+    from agents.stream_events import StreamEvent
     from openai import AsyncOpenAI
     from openai.types.shared import Reasoning
     from openai.types.shared.reasoning_effort import ReasoningEffort
     from pydantic import SecretStr
 
+    from holodeck.lib.backends.openai_agents_events import HandoffTracker
     from holodeck.lib.backends.openai_agents_tracing import TracingPolicy
 
 logger = logging.getLogger(__name__)
@@ -544,7 +547,7 @@ def _parse_tool_arguments(raw: Any) -> dict[str, Any]:
     return {}
 
 
-def _extract_thinking(result: RunResult) -> str:
+def _extract_thinking(result: RunResultBase) -> str:
     """Join reasoning-summary texts from a run's ``ReasoningItem``s (FR-004).
 
     Each ``ReasoningItem`` carries a ``summary`` list whose entries expose
@@ -553,7 +556,7 @@ def _extract_thinking(result: RunResult) -> str:
     models or runs without summaries yield an empty string.
 
     Args:
-        result: A ``RunResult`` from ``Runner.run``.
+        result: A completed run from ``Runner.run`` or ``Runner.run_streamed``.
 
     Returns:
         The reasoning summaries joined with a blank-line separator, or ``""``.
@@ -602,7 +605,7 @@ def _coerce_structured_output(final: object) -> dict[str, Any] | None:
 
 
 def _to_execution_result(
-    result: RunResult, *, structured: bool = False
+    result: RunResultBase, *, structured: bool = False
 ) -> ExecutionResult:
     """Map an SDK run result onto a provider-agnostic ``ExecutionResult``.
 
@@ -611,7 +614,7 @@ def _to_execution_result(
     ``thinking``, and — when *structured* — the parsed ``structured_output``.
 
     Args:
-        result: A ``RunResult`` from ``Runner.run``.
+        result: A completed run from ``Runner.run`` or ``Runner.run_streamed``.
         structured: Whether an output schema was set on the agent. When ``True``
             ``final_output`` is coerced into ``structured_output``; when ``False``
             ``structured_output`` stays ``None`` (the default behavior).
@@ -884,9 +887,9 @@ class OpenAIAgentsSession:
         """Stream the agent response token by token.
 
         Runs the SDK agent loop via ``Runner.run_streamed`` and forwards each
-        model text delta as it arrives. Text deltas surface as raw-response
-        events carrying a ``ResponseTextDeltaEvent``; tool-call and lifecycle
-        events are ignored for the streamed text channel.
+        model text delta as it arrives. Tool, handoff, and reasoning events
+        are published to ``tool_events`` in SDK order (FR-006); only text is
+        yielded.
 
         Args:
             message: The user message to send to the agent.
@@ -894,16 +897,98 @@ class OpenAIAgentsSession:
         Yields:
             String chunks of the agent response as the model produces them.
         """
+        from holodeck.lib.backends.openai_agents_events import HandoffTracker
+
+        tracker = HandoffTracker()
+        try:
+            async with contextlib.aclosing(
+                self._stream_turn(message, tracker)
+            ) as items:
+                async for item in items:
+                    if isinstance(item, str):
+                        yield item
+                    elif isinstance(item, ToolEvent):
+                        self._publish([item])
+        except BackendBudgetExceededError as exc:
+            # The budget tripped mid-stream; the deltas produced so far have
+            # already been yielded, so end the stream gracefully (FR-032).
+            # Open tool / handoff entries are closed as errors so the panel
+            # does not show them running forever.
+            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
+            return
+        except BaseException as exc:
+            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
+            raise
+
+    async def send_events(
+        self, message: str
+    ) -> AsyncGenerator[str | ToolEvent | ExecutionResult, None]:
+        """Stream one turn as text deltas and tool events in SDK order.
+
+        The AG-UI bridge consumes this so tool cards and text reach the client
+        live and correctly interleaved. Tool events are yielded, not published
+        to the bounded ``tool_events`` queue, so a long run cannot drop any.
+
+        Args:
+            message: The user message to send to the agent.
+
+        Yields:
+            ``str`` text deltas and ``ToolEvent`` records, in the order the
+            SDK produced them, then one ``ExecutionResult`` built from the
+            completed run exactly as ``send`` builds it (final output, tool
+            calls, token usage).
+
+        Raises:
+            BackendBudgetExceededError: The run tripped ``max_budget_usd``.
+                Open tool / handoff entries are yielded as ``error`` events
+                first; the caller decides whether the partial text suffices.
+            Exception: Any SDK failure, re-raised after the same close-out.
+        """
+        from holodeck.lib.backends.openai_agents_events import HandoffTracker
+
+        tracker = HandoffTracker()
+        try:
+            async with contextlib.aclosing(
+                self._stream_turn(message, tracker)
+            ) as items:
+                async for item in items:
+                    yield item
+        except Exception as exc:
+            for event in tracker.close(error=f"{type(exc).__name__}: {exc}"):
+                yield event
+            raise
+
+    async def _stream_turn(
+        self, message: str, tracker: HandoffTracker
+    ) -> AsyncGenerator[str | ToolEvent | ExecutionResult, None]:
+        """Run one streamed turn, yielding text deltas and tool events in order.
+
+        Text deltas surface as raw-response events carrying a
+        ``ResponseTextDeltaEvent``; run-item and agent-updated events map to
+        ``ToolEvent`` records through *tracker*. On a clean finish, open
+        handoffs are ended (they stay active until the run ends) and the
+        completed run is yielded as an ``ExecutionResult``. Failures
+        propagate; callers close *tracker* with the error. If the consumer
+        stops early (closes this generator or is cancelled), the SDK run is
+        cancelled before the event stream closes: closing ``stream_events``
+        at a yield would otherwise wait for the whole run, tools included.
+
+        Args:
+            message: The user message to send to the agent.
+            tracker: The run's handoff state.
+
+        Yields:
+            ``str`` text deltas and ``ToolEvent`` records in SDK order, then
+            the turn's ``ExecutionResult``.
+        """
         from agents import Runner
         from openai.types.responses import ResponseTextDeltaEvent
 
         from holodeck.lib.backends.openai_agents_events import (
-            HandoffTracker,
             tool_events_for_stream_event,
         )
         from holodeck.lib.backends.openai_agents_tracing import active_tracing_policy
 
-        tracker = HandoffTracker()
         # The streamed run executes on a task created inside this scope, so it
         # inherits the policy id for spans opened outside HoloDeck's RunConfig.
         with active_tracing_policy(self._tracing_policy_id):
@@ -915,29 +1000,26 @@ class OpenAIAgentsSession:
                 run_config=self._run_config(),
                 hooks=self._hooks(),
             )
+        # ``stream_events`` is an async generator; the SDK annotates it as an
+        # iterator, which hides the ``aclose`` used below.
+        events = cast("AsyncGenerator[StreamEvent, None]", result.stream_events())
         try:
-            async for event in result.stream_events():
+            async for event in events:
                 if event.type != "raw_response_event":
-                    # Tool, handoff, and reasoning items feed the event queue
-                    # in SDK order (FR-006); only text deltas are yielded.
-                    self._publish(tool_events_for_stream_event(event, tracker))
+                    for tool_event in tool_events_for_stream_event(event, tracker):
+                        yield tool_event
                     continue
                 data = event.data
                 if isinstance(data, ResponseTextDeltaEvent) and data.delta:
                     yield data.delta
-        except BackendBudgetExceededError as exc:
-            # The budget tripped mid-stream; the deltas produced so far have
-            # already been yielded, so end the stream gracefully (FR-032).
-            # Open tool / handoff entries are closed as errors so the panel
-            # does not show them running forever.
-            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
-            return
-        except BaseException as exc:
-            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
+            for tool_event in tracker.close():
+                yield tool_event
+            yield _to_execution_result(result, structured=self._structured_output)
+        except (GeneratorExit, asyncio.CancelledError):
+            result.cancel()
             raise
-        # Handoffs stay "active" until the run ends (the target agent keeps
-        # the conversation), so their ``end`` events are emitted here.
-        self._publish(tracker.close())
+        finally:
+            await events.aclose()
 
     async def close(self) -> None:
         """Release the SQLite session connection, if any."""

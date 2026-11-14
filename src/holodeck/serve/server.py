@@ -12,9 +12,11 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import anyio
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.types import Receive, Scope, Send
 
 from holodeck.lib.backends import BackendInitError, BackendSessionError
 from holodeck.lib.backends.validators import validate_credentials, validate_nodejs
@@ -53,6 +55,30 @@ _CAPACITY_MSG_TEMPLATE = (
     "Retry after in-flight turns complete."
 )
 _CAPACITY_RETRY_AFTER_SECONDS = 5
+
+
+class _ClosingStreamingResponse(StreamingResponse):
+    """A ``StreamingResponse`` that always closes its body generator.
+
+    When the client disconnects, Starlette stops iterating the body (a
+    ``send`` raises ``OSError``, or the disconnect listener cancels the
+    stream) but leaves the generator suspended, so its cleanup waits for
+    garbage collection. Until then the agent turn behind it keeps running,
+    tool side effects included, and the turn slot stays taken. Closing the
+    generator here stops the turn at once. The close is shielded so that a
+    cancelled scope cannot skip it.
+    """
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Stream the body, then close the body generator however it ended."""
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            body = self.body_iterator
+            if isinstance(body, AsyncGenerator):
+                with anyio.CancelScope(shield=True):
+                    await body.aclose()
+
 
 # Fallback active-turn cap when neither an explicit
 # claude.max_concurrent_sessions nor a cgroup memory limit is available
@@ -365,8 +391,9 @@ class AgentServer:
         owns the release.
         """
         try:
-            async for chunk in gen:
-                yield chunk
+            async with contextlib.aclosing(gen) as chunks:
+                async for chunk in chunks:
+                    yield chunk
         finally:
             self._release_turn_slot()
 
@@ -541,7 +568,7 @@ class AgentServer:
                 execution_config=self.execution_config,
             )
 
-            return StreamingResponse(
+            return _ClosingStreamingResponse(
                 self._turn_gated_stream(protocol.handle_request(input_data, session)),
                 media_type=protocol.content_type,
             )
@@ -615,7 +642,7 @@ class AgentServer:
             session.message_count += 1
 
             protocol = RESTProtocol()
-            return StreamingResponse(
+            return _ClosingStreamingResponse(
                 self._turn_gated_stream(protocol.handle_request(request, session)),
                 media_type=protocol.content_type,
             )
@@ -729,7 +756,7 @@ class AgentServer:
             session.message_count += 1
 
             protocol = RESTProtocol()
-            return StreamingResponse(
+            return _ClosingStreamingResponse(
                 self._turn_gated_stream(protocol.handle_request(chat_request, session)),
                 media_type=protocol.content_type,
             )

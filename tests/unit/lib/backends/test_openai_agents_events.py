@@ -22,7 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from holodeck.lib.backends.base import ToolEvent
+from holodeck.lib.backends.base import ExecutionResult, ToolEvent
 from holodeck.lib.backends.openai_agents_backend import (
     OpenAIAgentsSession,
     _to_execution_result,
@@ -505,3 +505,63 @@ class TestScriptedHandoffRun:
         ]
         assert result.tool_results[0]["result"] == "handoff:researcher"
         assert result.tool_results[1]["result"] == "42"
+
+    @pytest.mark.asyncio
+    async def test_send_events_yields_ordered_events_without_queue(self) -> None:
+        """``send_events`` yields the same ordered events and bypasses the queue."""
+        model = _scripted_model(SCRIPT)
+        session = OpenAIAgentsSession(_handoff_agent_pair(model), None)
+        items = [item async for item in session.send_events("go")]
+        *events, result = items
+        assert all(isinstance(item, ToolEvent) for item in events)
+        assert _kinds(events) == EXPECTED_ORDER  # type: ignore[arg-type]
+        assert session.tool_events.empty()
+        # The completed run closes the stream, as ``send`` would report it.
+        assert isinstance(result, ExecutionResult)
+        assert result.response == "Researched: 42"
+        assert [c["name"] for c in result.tool_calls] == [
+            "transfer_to_researcher",
+            "lookup",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_send_events_failure_yields_error_close_then_raises(self) -> None:
+        from agents.models.interface import Model
+        from openai.types.responses import Response, ResponseCompletedEvent
+
+        class _FailsAfterCall(Model):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def get_response(self, *_a: Any, **_k: Any) -> Any:
+                raise AssertionError("non-streaming path not exercised")
+
+            async def stream_response(self, *_a: Any, **_k: Any) -> AsyncIterator[Any]:
+                self.calls += 1
+                if self.calls == 1:
+                    yield ResponseCompletedEvent(
+                        type="response.completed",
+                        response=Response.model_validate(
+                            _response_payload(
+                                [_function_call("transfer_to_researcher", "call-h")]
+                            )
+                        ),
+                        sequence_number=0,
+                    )
+                    return
+                raise RuntimeError("upstream exploded")
+
+        session = OpenAIAgentsSession(_handoff_agent_pair(_FailsAfterCall()), None)
+        items: list[str | ToolEvent] = []
+        with pytest.raises(RuntimeError, match="upstream exploded"):
+            async for item in session.send_events("go"):
+                items.append(item)
+        events = [item for item in items if isinstance(item, ToolEvent)]
+        # The open handoff is closed as an error before the failure propagates.
+        assert _kinds(events) == [
+            ("start", "transfer_to_researcher"),
+            ("subagent_message", "transfer_to_researcher"),
+            ("error", "transfer_to_researcher"),
+        ]
+        assert "upstream exploded" in (events[-1].error or "")
+        assert session.tool_events.empty()
