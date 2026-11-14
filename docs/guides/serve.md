@@ -73,6 +73,33 @@ POST /awp
 
 Accepts `RunAgentInput` from the AG-UI specification and streams protocol events back. The AG-UI `thread_id` maps directly to a HoloDeck `session_id` for conversation continuity.
 
+### Multimodal content (AG-UI 1.0)
+
+A user message `content` is a string or a list of AG-UI 1.0 content parts. Media parts (`image`, `audio`, `video`, `document`) carry a `source`:
+
+```json
+{
+  "id": "m1",
+  "role": "user",
+  "content": [
+    { "type": "text", "text": "Summarize this document" },
+    {
+      "type": "document",
+      "source": { "type": "data", "value": "<base64>", "mimeType": "application/pdf" },
+      "metadata": { "filename": "report.pdf" }
+    }
+  ]
+}
+```
+
+| Source | Handling |
+| ------ | -------- |
+| `data` (inline base64) | Processed when `mimeType` is a supported type (see the REST section below). |
+| `url` | Skipped. URL fetches are disabled to prevent SSRF. A `url` source without `mimeType` is skipped before that check. |
+| `file` (provider file id) | Skipped. Provider file handles cannot be resolved by the server. |
+
+Parts with an unsupported MIME type are skipped with a warning. The optional `metadata.filename` string labels the extracted file content. The pre-1.0 flat `{"type": "binary", "mimeType": ...}` part is not accepted: the request fails validation with HTTP 422.
+
 ### CopilotKit integration
 
 Point a CopilotKit `HttpAgent` at the `/awp` endpoint:

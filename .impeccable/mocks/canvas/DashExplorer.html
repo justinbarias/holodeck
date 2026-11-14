@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HoloDeck test view · Explorer</title>
+</head>
+<body>
+
+
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&amp;family=Courier+Prime:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f6f9}
+a{color:#1d2347}a:hover{color:#3d4a99}
+.cue{font-family:"Courier Prime",ui-monospace,monospace}
+.rv{font-size:12px;font-weight:600;padding:3px 7px;border-radius:3px;white-space:nowrap}
+.rv-yellow{background:#f7e8a6;color:#6b5200}.rv-green{background:#d2ecd9;color:#1d6337}.rv-gold{background:#f1d7a4;color:#6e4700}.rv-buff{background:#e8dcc4;color:#5b4a2a}
+.col{background:#fff;border-right:1px solid #dde0e8;display:flex;flex-direction:column;min-width:0}
+.colh{padding:12px 14px;border-bottom:1px solid #dde0e8;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.row{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #eceef3;background:#fff;padding:10px 14px;font:13px "Public Sans",sans-serif;color:#15171e;cursor:pointer}
+.row.on{background:#e6e9f7;font-weight:600}
+.ok{color:#17703c;font-weight:600}.wn{color:#9a6400;font-weight:600}.ng{color:#c2312a;font-weight:600}
+.sec{background:#fff;border:1px solid #dde0e8;border-radius:8px}
+.sech{padding:14px 18px 4px}.sech h2{margin:0;font-size:15px;font-weight:600}.sech p{margin:3px 0 10px;font-size:12.5px;color:#555b6b}
+.kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid #eceef3}
+.kv div{padding:10px 18px;border-right:1px solid #eceef3;border-bottom:1px solid #eceef3;font-size:13.5px}
+.kv dt{font-size:12px;color:#555b6b}.kv dd{margin:3px 0 0;font-family:"Courier Prime",monospace}
+.turn{display:grid;grid-template-columns:64px minmax(0,1fr);column-gap:16px;padding:0 18px 16px}
+.mg{border-right:1px solid #8a90a3;position:relative}
+.q{position:absolute;right:10px;display:flex;align-items:center;gap:6px;font:700 13px "Courier Prime",monospace;color:#1d2347}
+.dot{width:8px;height:8px;border-radius:50%;background:#1f8a4c}
+.tc{border:1px solid #dde0e8;border-radius:7px;margin-bottom:8px}
+.tch{display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:13px;color:#555b6b}
+.tch b{font:700 13.5px "Courier Prime",monospace;color:#15171e}
+pre{margin:0;padding:8px 12px;background:#f7f8fb;border-top:1px solid #eceef3;font:12.5px/1.5 "Courier Prime",monospace}
+.met{display:grid;grid-template-columns:220px 140px 70px 80px minmax(0,1fr);gap:14px;align-items:start;padding:12px 18px;border-top:1px solid #eceef3;font-size:13.5px}
+.bt{height:8px;background:#eceef3;border-radius:1px;position:relative;margin-top:6px}.bt span{position:absolute;inset:0 auto 0 0;background:#1d2347}.bt i{position:absolute;left:70%;top:-3px;bottom:-3px;border-left:1.5px dashed #c2312a}
+</style>
+
+<div style="font-family: 'Public Sans', system-ui, sans-serif; color: #15171e; background: #f5f6f9; display: flex; flex-wrap: wrap; min-height: 1500px">
+  <aside style="flex: 0 0 72px; background: #1d2347; color: #eef0f9; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px 0">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="3" stroke="#eef0f9" stroke-width="1.6"></rect><path d="M7 2v20M12 2v20M17 2v20" stroke="#eef0f9" stroke-opacity=".35"></path><path d="M2 15h20" stroke="#eef0f9" stroke-width="1.6"></path></svg>
+    <a href="#" aria-label="Summary" style="width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #c6cbe8"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 16V9M8 16V4M13 16v-6M18 16V7" stroke="currentColor" stroke-width="1.7"></path></svg></a>
+    <a href="#" aria-label="Explorer" aria-current="page" style="width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #323a74; color: #fff"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="3" width="5" height="14" rx="1" stroke="currentColor" stroke-width="1.6"></rect><rect x="10" y="3" width="7.5" height="14" rx="1" stroke="currentColor" stroke-width="1.6"></rect></svg></a>
+    <a href="#" aria-label="Compare" style="width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #c6cbe8"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7 3v14M13 3v14M3 7h4M13 13h4" stroke="currentColor" stroke-width="1.6"></path></svg></a>
+  </aside>
+  <div class="col" style="flex: 0 0 220px">
+    <div class="colh">Runs <span class="cue" style="font-weight: 400; color: #555b6b">24</span><button aria-label="Collapse runs" style="margin-left: auto; width: 30px; height: 30px; border: 1px solid #dde0e8; border-radius: 5px; background: #fff"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 3 4.5 6l3 3" stroke="#555b6b" stroke-width="1.6" fill="none"></path></svg></button></div>
+    <button class="row on"><span style="display: flex; justify-content: space-between"><b class="cue">R24</b><span class="rv rv-buff">v1.4</span></span><span style="display: flex; justify-content: space-between; margin-top: 3px; color: #555b6b"><span>16 Apr 22:59</span><span class="ok">91.7%</span></span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between"><b class="cue">R23</b><span class="rv rv-buff">v1.4</span></span><span style="display: flex; justify-content: space-between; margin-top: 3px; color: #555b6b"><span>15 Apr 03:46</span><span class="ok">91.7%</span></span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between"><b class="cue">R22</b><span class="rv rv-buff">v1.4</span></span><span style="display: flex; justify-content: space-between; margin-top: 3px; color: #555b6b"><span>13 Apr · gpt-4o</span><span class="ok">91.7%</span></span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between"><b class="cue">R18</b><span class="rv rv-gold">v1.3</span></span><span style="display: flex; justify-content: space-between; margin-top: 3px; color: #555b6b"><span>6 Apr 04:41</span><span class="wn">83.3%</span></span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between"><b class="cue">R14</b><span class="rv rv-green">v1.2.1</span></span><span style="display: flex; justify-content: space-between; margin-top: 3px; color: #555b6b"><span>1 Apr 03:02</span><span class="ng">75.0%</span></span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between"><b class="cue">R11</b><span class="rv rv-yellow">v1.2</span></span><span style="display: flex; justify-content: space-between; margin-top: 3px; color: #555b6b"><span>26 Mar 18:23</span><span class="ng">75.0%</span></span></button>
+  </div>
+  <div class="col" style="flex: 0 0 260px">
+    <div class="colh">Test cases <span style="font-weight: 400; color: #555b6b">R24 · 11 of 12 pass</span></div>
+    <button class="row on"><span style="display: flex; justify-content: space-between; gap: 8px"><b class="cue" style="overflow: hidden; text-overflow: ellipsis">refund_eligible_standard</b><span class="ok">Pass</span></span><span style="display: block; margin-top: 3px; color: #555b6b; font-size: 12.5px">geval 0.82 · rag 0.86 · 3 tools</span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between; gap: 8px"><b class="cue">refund_outside_window</b><span class="ok">Pass</span></span><span style="display: block; margin-top: 3px; color: #555b6b; font-size: 12.5px">geval 1.00 · 2 tools</span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between; gap: 8px"><b class="cue">escalate_to_human</b><span class="ok">Pass</span></span><span style="display: block; margin-top: 3px; color: #555b6b; font-size: 12.5px">geval 0.86 · rag 0.88 · 2 tools</span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between; gap: 8px"><b class="cue">billing_dispute</b><span class="ng">Fail</span></span><span style="display: block; margin-top: 3px; color: #555b6b; font-size: 12.5px">geval 0.64 below 0.70 · 3 tools</span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between; gap: 8px"><b class="cue">order_status_query</b><span class="ok">Pass</span></span><span style="display: block; margin-top: 3px; color: #555b6b; font-size: 12.5px">geval 0.98 · 1 tool</span></button>
+    <button class="row"><span style="display: flex; justify-content: space-between; gap: 8px"><b class="cue">greeting_smalltalk</b><span class="ok">Pass</span></span><span style="display: block; margin-top: 3px; color: #555b6b; font-size: 12.5px">geval 1.00 · rag 0.97 · no tools</span></button>
+  </div>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px">
+    <section class="sec">
+      <div style="padding: 16px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px">
+        <span class="ok" style="display: inline-flex; align-items: center; gap: 6px; background: #e4f3ea; padding: 4px 10px; border-radius: 4px"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg>Pass</span>
+        <h1 class="cue" style="margin: 0; font-size: 20px">refund_eligible_standard</h1>
+        <span style="font-size: 13px; color: #555b6b">Customer requests a refund for a faulty item inside the return window.</span>
+      </div>
+      <dl class="kv" style="margin: 0">
+        <div><dt>Run</dt><dd>R24 · 16 Apr 22:59</dd></div><div><dt>Revision</dt><dd><span class="rv rv-buff" style="font-family: 'Public Sans'">v1.4</span></dd></div><div><dt>Model · temperature</dt><dd>claude-sonnet-4.5 · 0.2</dd></div><div style="border-right: 0"><dt>Commit</dt><dd>a3f96220</dd></div>
+      </dl>
+    </section>
+    <details class="sec">
+      <summary style="list-style: none; cursor: pointer"><div class="sech"><h2>Agent configuration at run time</h2><p>Captured from agent.yaml when the run started. Fields holding secrets are removed before saving.</p></div></summary>
+      <dl class="kv" style="margin: 0; grid-template-columns: repeat(3, minmax(0, 1fr))">
+        <div><dt>Backend</dt><dd>claude</dd></div><div><dt>Instructions</dt><dd>instructions/system-prompt.md</dd></div><div style="border-right: 0"><dt>Tools</dt><dd>lookup_order, issue_refund, send_email, kb_search</dd></div>
+        <div><dt>Max turns</dt><dd>12</dd></div><div><dt>Evaluation model</dt><dd>gpt-4o (per metric: faithfulness → gpt-4o)</dd></div><div style="border-right: 0"><dt>Tags</dt><dd>#rag-tuning</dd></div>
+      </dl>
+    </details>
+    <section class="sec">
+      <div class="sech"><h2>Conversation</h2><p>User input, every tool cue in order, then the agent's answer.</p></div>
+      <div class="turn">
+        <div class="mg"><div class="q" style="top: 74px"><span class="dot"></span>Q1</div><div class="q" style="top: 196px"><span class="dot"></span>Q2</div><div class="q" style="top: 240px"><span class="dot"></span>Q3</div></div>
+        <div>
+          <div style="background: #1d2347; color: #fff; padding: 10px 14px; border-radius: 12px 12px 3px 12px; font-size: 14px; line-height: 1.5; margin: 0 0 12px auto; max-width: 620px">Hi, I ordered noise-cancelling headphones on April 2 (order #A-8844) and they arrived yesterday but the right cup rattles. I'd like a refund please.</div>
+          <div class="tc"><div class="tch"><b>lookup_order</b>order_id A-8844<span class="ok" style="font-size: 12px">Done</span><span style="margin-left: auto; font-variant-numeric: tabular-nums">144 B · 0.74 s</span></div>
+            <pre>{ "id": "A-8844", "status": "delivered", "total": 249.0, "ship_date": "2026-04-03" }</pre></div>
+          <div class="tc"><div class="tch"><b>issue_refund</b>$249.00 · faulty_item<span class="ok" style="font-size: 12px">Done</span><span style="margin-left: auto">77 B · 0.61 s</span></div></div>
+          <div class="tc"><div class="tch"><b>send_email</b>return_label to dana@example.com<span class="ok" style="font-size: 12px">Done</span><span style="margin-left: auto">42 B · 0.33 s</span></div></div>
+          <div style="font-size: 12px; color: #555b6b; margin: 12px 0 4px">Agent · claude-sonnet-4.5</div>
+          <p style="margin: 0; font-size: 14.5px; line-height: 1.6; max-width: 72ch">I'm sorry the headphones arrived faulty. I've confirmed order #A-8844 shipped on April 3, so you're within the 30-day return window. I've issued a full refund of $249.00 to your original payment method; it should appear in 3–5 business days, and I've emailed you a prepaid return label.</p>
+        </div>
+      </div>
+    </section>
+    <section class="sec">
+      <div class="sech" style="display: flex; justify-content: space-between; align-items: baseline"><div><h2>Expected tools</h2><p>expected_tools from the test case against what the agent called.</p></div><span class="ok">2 of 2 matched</span><span style="color: #8a5a00; font-weight: 600; margin-left: 10px">1 unexpected</span></div>
+      <ul style="list-style: none; margin: 0; padding: 0; font-size: 13.5px">
+        <li style="display: grid; grid-template-columns: 200px 1fr; padding: 9px 18px; border-top: 1px solid #eceef3"><span class="cue">lookup_order</span><span class="ok">Called · Q1</span></li>
+        <li style="display: grid; grid-template-columns: 200px 1fr; padding: 9px 18px; border-top: 1px solid #eceef3"><span class="cue">issue_refund</span><span class="ok">Called · Q2</span></li>
+        <li style="display: grid; grid-template-columns: 200px 1fr; padding: 9px 18px; border-top: 1px solid #eceef3"><span class="cue">send_email</span><span style="color: #8a5a00; font-weight: 600"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="vertical-align:-1px"><path d="M6 1.5 11 10.5H1Z" stroke="currentColor" stroke-width="1.5" fill="none"></path></svg> Unexpected call at Q3</span></li>
+      </ul>
+    </section>
+    <section class="sec">
+      <div class="sech"><h2>Evaluations</h2><p>Score, threshold and the judge's reasoning for every metric on this case.</p></div>
+      <div class="met" style="font-size: 12px; color: #555b6b; font-weight: 600"><span>Metric</span><span>Score</span><span></span><span>Result</span><span>Reasoning</span></div>
+      <div class="met"><span><b class="cue">tone_of_voice</b><span style="display: block; font-size: 12px; color: #555b6b">G-Eval · gpt-4o</span></span><span><b style="font-variant-numeric: tabular-nums">0.82</b><span class="bt"><span style="width: 82%"></span><i></i></span></span><span style="color: #555b6b">≥ 0.70</span><span class="ok">Pass</span><span style="line-height: 1.5">Empathetic opening, states the outcome first, no blame on the customer. Slightly long final sentence.</span></div>
+      <div class="met"><span><b class="cue">faithfulness</b><span style="display: block; font-size: 12px; color: #555b6b">RAG · gpt-4o</span></span><span><b>0.86</b><span class="bt"><span style="width: 86%"></span><i></i></span></span><span style="color: #555b6b">≥ 0.70</span><span class="ok">Pass</span><span style="line-height: 1.5">All claims match the order record; the 30-day window comes from the returns policy passage.</span></div>
+      <div class="met"><span><b class="cue">policy_compliance</b><span style="display: block; font-size: 12px; color: #555b6b">G-Eval · gpt-4o</span></span><span><b class="ng">0.64</b><span class="bt"><span style="width: 64%; background: #c2312a"></span><i></i></span></span><span style="color: #555b6b">≥ 0.70</span><span class="ng">Fail</span><span style="line-height: 1.5">Refund issued before confirming the item would be returned; policy requires the return label first.</span></div>
+    </section>
+  </main>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

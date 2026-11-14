@@ -106,121 +106,11 @@ def test_conversation_section_renders_per_turn_details_when_turns_present() -> N
     assert "Turn 2" in rendered_json
 
 
-# ---------- T013: single-turn conversation section byte-identity ----------
-
-_SINGLE_TURN_GOLDEN = {
-    "props": {
-        "children": [
-            {
-                "props": {
-                    "children": [
-                        {
-                            "props": {
-                                "children": [
-                                    {
-                                        "props": {
-                                            "children": "CONVERSATION",
-                                            "className": "eyebrow",
-                                        },
-                                        "type": "Div",
-                                        "namespace": "dash_html_components",
-                                    },
-                                    {
-                                        "props": {"children": "Thread with tool calls"},
-                                        "type": "H3",
-                                        "namespace": "dash_html_components",
-                                    },
-                                    {
-                                        "props": {
-                                            "children": (
-                                                "User input, agent response, "
-                                                "and every tool invocation that "
-                                                "happened in between."
-                                            ),
-                                            "className": "subtitle",
-                                        },
-                                        "type": "P",
-                                        "namespace": "dash_html_components",
-                                    },
-                                ],
-                                "className": "summary-text",
-                            },
-                            "type": "Div",
-                            "namespace": "dash_html_components",
-                        }
-                    ]
-                },
-                "type": "Summary",
-                "namespace": "dash_html_components",
-            },
-            {
-                "props": {
-                    "children": [
-                        {
-                            "props": {
-                                "children": [
-                                    {
-                                        "props": {
-                                            "children": "USER",
-                                            "className": "who",
-                                        },
-                                        "type": "Div",
-                                        "namespace": "dash_html_components",
-                                    },
-                                    {
-                                        "props": {"children": "hi"},
-                                        "type": "Div",
-                                        "namespace": "dash_html_components",
-                                    },
-                                ],
-                                "className": "bubble user",
-                            },
-                            "type": "Div",
-                            "namespace": "dash_html_components",
-                        },
-                        {
-                            "props": {
-                                "children": [
-                                    {
-                                        "props": {
-                                            "children": "AGENT · gpt-x",
-                                            "className": "who",
-                                        },
-                                        "type": "Div",
-                                        "namespace": "dash_html_components",
-                                    },
-                                    {
-                                        "props": {
-                                            "children": "hello",
-                                            "className": "md-assistant",
-                                            "link_target": "_blank",
-                                        },
-                                        "type": "Markdown",
-                                        "namespace": "dash_core_components",
-                                    },
-                                ],
-                                "className": "bubble assistant",
-                            },
-                            "type": "Div",
-                            "namespace": "dash_html_components",
-                        },
-                    ],
-                    "className": "thread",
-                },
-                "type": "Div",
-                "namespace": "dash_html_components",
-            },
-        ],
-        "className": "panel hd-explorer-section",
-        "open": True,
-    },
-    "type": "Details",
-    "namespace": "dash_html_components",
-}
+# ---------- T013: single-turn conversation section ------------------------
 
 
 @pytest.mark.unit
-def test_single_turn_conversation_section_unchanged() -> None:
+def test_single_turn_conversation_section_renders_user_then_agent() -> None:
     conv = ConversationView(
         user="hi",
         assistant="hello",
@@ -228,7 +118,49 @@ def test_single_turn_conversation_section_unchanged() -> None:
         turns=None,
     )
     out = _conversation_section(conv, "gpt-x")
-    assert _deep_plotly(out) == _SINGLE_TURN_GOLDEN
+    assert isinstance(out, html.Section)
+    assert "hd-explorer-section" in (getattr(out, "className", "") or "")
+    rendered = json.dumps(_deep_plotly(out), default=str, ensure_ascii=False)
+    # The heading speaks for itself; no eyebrow label above it.
+    assert '"Conversation"' in rendered
+    assert "eyebrow" not in rendered
+    # User bubble comes before the agent reply, which names the model.
+    assert rendered.index('"hi"') < rendered.index("Agent · gpt-x")
+    md = list(
+        _find_all(
+            out,
+            lambda n: (getattr(n, "className", "") or "") == "md-assistant",
+        )
+    )
+    assert len(md) == 1 and md[0].children == "hello"
+    # No per-turn blocks on the single-turn path.
+    assert not list(
+        _find_all(
+            out,
+            lambda n: "hd-explorer-turn" in (getattr(n, "className", "") or ""),
+        )
+    )
+
+
+@pytest.mark.unit
+def test_single_turn_tool_calls_are_numbered_cues() -> None:
+    tools = [
+        ToolCallView(
+            name=name,
+            args={},
+            result={"ok": True},
+            result_size_bytes=12,
+            duration_ms=10,
+            error=None,
+        )
+        for name in ("lookup_order", "issue_refund")
+    ]
+    conv = ConversationView(user="q", assistant="a", tool_calls=tools, turns=None)
+    rendered = json.dumps(
+        _deep_plotly(_conversation_section(conv, "m")), default=str, ensure_ascii=False
+    )
+    assert '"Q1"' in rendered and '"Q2"' in rendered
+    assert rendered.index("lookup_order") < rendered.index("issue_refund")
 
 
 # ---------- T014: cases column turn-count chip ----------------------------

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Prompt Book · foundations</title>
+</head>
+<body>
+
+
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&amp;family=Courier+Prime:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f6f9}
+a{color:#1d2347}a:hover{color:#3d4a99}
+.cue{font-family:"Courier Prime",ui-monospace,monospace}
+.sw{border:1px solid #dde0e8;border-radius:8px;overflow:hidden;background:#fff}
+.sw div:first-child{height:72px}
+.sw p{margin:0;padding:8px 10px;font-size:12.5px;line-height:1.45}
+.sw b{display:block;font-size:13px}
+h2{margin:0 0 6px;font-size:20px;font-weight:600;letter-spacing:-.01em}
+.hint{margin:0 0 16px;font-size:13.5px;color:#555b6b;line-height:1.55;max-width:80ch}
+.rv{font-size:12px;font-weight:600;padding:4px 9px;border-radius:3px;white-space:nowrap}
+.btn{font:600 14px "Public Sans",sans-serif;border-radius:7px;padding:0 16px;min-height:44px}
+</style>
+
+<div style="font-family: 'Public Sans', system-ui, sans-serif; color: #15171e; background: #f5f6f9; padding: 48px 56px; display: flex; flex-direction: column; gap: 44px">
+  <section>
+    <h2>House and page</h2>
+    <p class="hint">The rail and primary actions are house blue, the colour of backstage running lights. Work sits on script-white sheets over a cool page ground. Hierarchy comes from hairline rules, not shadows.</p>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px">
+      <div class="sw"><div style="background: #1d2347"></div><p><b>House</b><span class="cue">#1d2347</span> rail, primary, ink of cues</p></div>
+      <div class="sw"><div style="background: #283063"></div><p><b>House raised</b><span class="cue">#283063</span> cards on the rail</p></div>
+      <div class="sw"><div style="background: #f5f6f9"></div><p><b>Page</b><span class="cue">#f5f6f9</span> ground</p></div>
+      <div class="sw"><div style="background: #ffffff"></div><p><b>Sheet</b><span class="cue">#ffffff</span> cards, header</p></div>
+      <div class="sw"><div style="background: #dde0e8"></div><p><b>Rule</b><span class="cue">#dde0e8</span> hairlines; #eceef3 inner</p></div>
+      <div class="sw"><div style="background: #15171e"></div><p><b>Ink</b><span class="cue">#15171e</span> text; #555b6b secondary</p></div>
+    </div>
+  </section>
+  <section>
+    <h2>Revision colours</h2>
+    <p class="hint">Script revision pages in their industry order. The nth prompt version, compilation or source document takes the nth colour, so the same version keeps its colour on every screen. Tint for fills; same-hue ink for text on them (AA). Used only for prompt versions and document compilations; plain source documents get a lettered neutral chip.</p>
+    <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px">
+      <div class="sw"><div style="background: #cfe0f8"></div><p><b style="color: #234f99">1 Blue</b><span class="cue">#cfe0f8 / #234f99</span></p></div>
+      <div class="sw"><div style="background: #f9d6e4"></div><p><b style="color: #93305e">2 Pink</b><span class="cue">#f9d6e4 / #93305e</span></p></div>
+      <div class="sw"><div style="background: #f7e8a6"></div><p><b style="color: #6b5200">3 Yellow</b><span class="cue">#f7e8a6 / #6b5200</span></p></div>
+      <div class="sw"><div style="background: #d2ecd9"></div><p><b style="color: #1d6337">4 Green</b><span class="cue">#d2ecd9 / #1d6337</span></p></div>
+      <div class="sw"><div style="background: #f1d7a4"></div><p><b style="color: #6e4700">5 Goldenrod</b><span class="cue">#f1d7a4 / #6e4700</span></p></div>
+      <div class="sw"><div style="background: #e8dcc4"></div><p><b style="color: #5b4a2a">6 Buff</b><span class="cue">#e8dcc4 / #5b4a2a</span></p></div>
+      <div class="sw"><div style="background: #f6d3c6"></div><p><b style="color: #8a3a1c">7 Salmon</b><span class="cue">#f6d3c6 / #8a3a1c</span></p></div>
+      <div class="sw"><div style="background: #efc6cd"></div><p><b style="color: #85202f">8 Cherry</b><span class="cue">#efc6cd / #85202f</span></p></div>
+    </div>
+  </section>
+  <section>
+    <h2>Cue lights and state</h2>
+    <p class="hint">State always pairs a light with an icon and a word. Green is go and done, amber is standby or degraded, red is failed or a regression. Pass and fail never rely on colour alone. Words: the chat says Running, Done, Failed; the dashboard says Pass, Fail, Regression.</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: center; font-size: 14px">
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #17703c"><span style="width: 10px; height: 10px; border-radius: 50%; background: #1f8a4c"></span>Done · #17703c text, #1f8a4c light</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #9a6400"><span style="width: 10px; height: 10px; border-radius: 50%; background: #d9a227; box-shadow: 0 0 0 4px rgba(217,162,39,.22)"></span>Running · #9a6400 text, #d9a227 light</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #c2312a"><span style="width: 10px; height: 10px; border-radius: 50%; background: #c2312a"></span>Failed · #c2312a</span>
+      <span class="cue" style="display: inline-block; font-size: 12px; font-weight: 700; color: #c2312a; border: 1.5px solid #c2312a; padding: 0 6px; border-radius: 2px; transform: rotate(-1.5deg)">CLOSED 1 JUL 2026</span>
+      <span style="display: inline-flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums"><span style="width: 120px; height: 5px; background: #eceef3; display: inline-block"><span style="display: block; width: 64%; height: 100%; background: #1d2347"></span></span>Duration bar · 2.31 s</span>
+    </div>
+  </section>
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px">
+    <div>
+      <h2>Type</h2>
+      <p class="hint">Public Sans for everything people read. Courier Prime, the screenwriting Courier, only for cues, tool names, ids, paths and numbers that are data. Two weights: 400 and 600.</p>
+      <div style="display: flex; flex-direction: column; gap: 12px; background: #fff; border: 1px solid #dde0e8; border-radius: 8px; padding: 20px">
+        <div style="font-size: 28px; font-weight: 600; letter-spacing: -.02em">Welcome title 28 / 600</div>
+        <div style="font-size: 20px; font-weight: 600; letter-spacing: -.01em">Section 20 / 600</div>
+        <div style="font-size: 17px; font-weight: 600">Page title 17 / 600</div>
+        <div style="font-size: 15.5px; line-height: 1.62">Answer body 15.5 / 1.62, at most 72 characters a line.</div>
+        <div style="font-size: 13.5px">Table and card text 13.5</div>
+        <div style="font-size: 12.5px; color: #555b6b">Secondary and captions 12.5</div>
+        <div class="cue" style="font-size: 14px; font-weight: 700">Q3 · memory_timeline · R24 · a3f9622</div>
+      </div>
+    </div>
+    <div>
+      <h2>Controls</h2>
+      <p class="hint">Standard controls in house blue. Targets 44 px; focus is a 2 px house-blue ring with a 2 px offset; disabled is 45% opacity.</p>
+      <div style="display: flex; flex-direction: column; gap: 16px; background: #fff; border: 1px solid #dde0e8; border-radius: 8px; padding: 20px">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+          <button class="btn" style="background: #1d2347; color: #fff; border: 0">Send</button>
+          <button class="btn" style="background: #fff; color: #1d2347; border: 1px solid #1d2347">Stop</button>
+          <button class="btn" style="background: #fff; color: #15171e; border: 1px solid #8a90a3">Export CSV</button>
+          <button class="btn" style="background: none; color: #1d2347; border: 0">Show more</button>
+          <button class="btn" style="background: #1d2347; color: #fff; border: 0; outline: 2px solid #1d2347; outline-offset: 2px">Focused</button>
+          <button class="btn" disabled style="background: #1d2347; color: #fff; border: 0; opacity: .45">Disabled</button>
+        </div>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600">Message<input placeholder="Ask about Family Assistance law as at a date…" style="font: 15px 'Public Sans'; border: 1px solid #8a90a3; border-radius: 10px; padding: 0 14px; min-height: 44px"></label>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+          <span class="rv" style="background: #cfe0f8; color: #234f99">v1.0</span><span class="rv" style="background: #f9d6e4; color: #93305e">v1.1</span><span class="rv" style="background: #f7e8a6; color: #6b5200">v1.2</span>
+          <span style="display: inline-flex; border: 1px solid #8a90a3; border-radius: 6px; overflow: hidden; margin-left: 12px"><button style="font: 600 13px 'Public Sans'; border: 0; background: #1d2347; color: #fff; padding: 0 12px; min-height: 34px">RAG</button><button style="font: 13px 'Public Sans'; border: 0; background: #fff; color: #555b6b; padding: 0 12px; min-height: 34px">G-Eval</button><button style="font: 13px 'Public Sans'; border: 0; background: #fff; color: #555b6b; padding: 0 12px; min-height: 34px">NLP</button></span>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <h2>The cue margin</h2>
+    <p class="hint">The signature move. A 76 px ruled margin beside the conversation numbers every tool call as a cue with its light; a bracket ties cues to the answer lines they fed. The composer shows the next cue number. Runs on the dashboard read the same way: R24.</p>
+    <div style="display: grid; grid-template-columns: 76px minmax(0, 640px); column-gap: 22px; background: #fff; border: 1px solid #dde0e8; border-radius: 8px; padding: 24px">
+      <div style="position: relative; border-right: 1px solid #8a90a3; height: 120px">
+        <div class="cue" style="position: absolute; right: 14px; top: 8px; display: flex; align-items: center; gap: 6px; font-weight: 700; color: #1d2347"><span style="width: 9px; height: 9px; border-radius: 50%; background: #1f8a4c"></span>Q1</div>
+        <div class="cue" style="position: absolute; right: 14px; top: 44px; display: flex; align-items: center; gap: 6px; font-weight: 700; color: #9a6400"><span style="width: 9px; height: 9px; border-radius: 50%; background: #d9a227"></span>Q2</div>
+        <div style="position: absolute; right: -1px; top: 80px; width: 7px; height: 36px; border: 1.5px solid #1d2347; border-right: 0"></div>
+      </div>
+      <div style="font-size: 14px; color: #555b6b; line-height: 1.6">Q1 done, Q2 running; the bracket spans the sentence that cites them.</div>
+    </div>
+  </section>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

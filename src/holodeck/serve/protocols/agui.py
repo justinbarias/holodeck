@@ -9,10 +9,12 @@ See: https://github.com/ag-ui-protocol/ag-ui for protocol specification.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
+from ag_ui.core import AudioPart, DocumentPart, ImagePart, TextPart, VideoPart
 from ag_ui.core.events import (
     BaseEvent,
     EventType,
@@ -49,6 +51,7 @@ from holodeck.serve.file_utils import (
 from holodeck.serve.protocols.base import Protocol
 
 if TYPE_CHECKING:
+    from holodeck.chat.executor import AgentExecutor
     from holodeck.models.config import ExecutionConfig
     from holodeck.models.tool_execution import ToolExecution
     from holodeck.serve.session_store import ServerSession
@@ -120,11 +123,9 @@ def extract_message_and_files_from_input(
                         part_type = part.get("type", "unknown")
                         if part_type == "text":
                             text_parts.append(part.get("text", ""))
-                    # Handle AG-UI Pydantic object (TextInputContent)
-                    elif (
-                        hasattr(part, "type") and getattr(part, "type", None) == "text"
-                    ):
-                        text_parts.append(getattr(part, "text", ""))
+                    # Handle AG-UI 1.0 text part
+                    elif isinstance(part, TextPart):
+                        text_parts.append(part.text)
                     # Handle plain string
                     elif isinstance(part, str):
                         text_parts.append(part)
@@ -203,6 +204,16 @@ def extract_message_from_input(input_data: RunAgentInput) -> str:
                             )
                     elif isinstance(part, str):
                         text_parts.append(part)
+                    elif isinstance(part, TextPart):
+                        text_parts.append(part.text)
+                    elif isinstance(
+                        part, ImagePart | AudioPart | VideoPart | DocumentPart
+                    ):
+                        logger.warning(
+                            "Skipping non-text content part (type: %s). "
+                            "Only 'text' content parts are supported.",
+                            part.type,
+                        )
 
                 # Validate that we have at least some text content
                 if not text_parts:
@@ -636,6 +647,69 @@ def _reasoning_events(
     ]
 
 
+async def _stream_turn_events(
+    executor: AgentExecutor,
+    message: str,
+    first_message_id: str,
+    tool_msg_ids: dict[str, str],
+) -> AsyncGenerator[BaseEvent, None]:
+    """Translate one ordered turn stream into AG-UI events as they arrive.
+
+    Text deltas become ``TEXT_MESSAGE_CONTENT`` events on an assistant message
+    opened at the first delta. A tool or reasoning event closes that message,
+    so text after a tool call starts a new message and the client renders
+    text, tool card, text in run order. If the turn fails, the open text
+    message and any open tool call are closed before the error propagates,
+    so the caller's ``RUN_ERROR`` never leaves a message unterminated.
+
+    Args:
+        executor: Executor whose session supports ``execute_turn_events``.
+        message: The user message for this turn.
+        first_message_id: Id for the first text message.
+        tool_msg_ids: Mutable ``tool_use_id`` → parent message id mapping
+            shared with ``_tool_event_to_agui``.
+
+    Yields:
+        AG-UI events, excluding ``RUN_STARTED`` / ``RUN_FINISHED``.
+    """
+    text_message_id: str | None = None
+    next_message_id: str | None = first_message_id
+    try:
+        async with contextlib.aclosing(executor.execute_turn_events(message)) as items:
+            async for item in items:
+                if isinstance(item, str):
+                    if text_message_id is None:
+                        text_message_id = next_message_id or str(ULID())
+                        next_message_id = None
+                        yield create_text_message_start(text_message_id)
+                    yield create_text_message_content(text_message_id, item)
+                    continue
+                if not isinstance(item, ToolEvent):
+                    # The final AgentResponse: already streamed, nothing to emit.
+                    continue
+                agui_events = _tool_event_to_agui(item, tool_msg_ids)
+                if agui_events and text_message_id is not None:
+                    yield create_text_message_end(text_message_id)
+                    text_message_id = None
+                for agui_evt in agui_events:
+                    yield agui_evt
+    except Exception as exc:
+        if text_message_id is not None:
+            yield create_text_message_end(text_message_id)
+        for tool_use_id in list(tool_msg_ids):
+            failed = ToolEvent(
+                kind="error",
+                tool_name="",
+                tool_use_id=tool_use_id,
+                error=f"run failed: {type(exc).__name__}",
+            )
+            for agui_evt in _tool_event_to_agui(failed, tool_msg_ids):
+                yield agui_evt
+        raise
+    if text_message_id is not None:
+        yield create_text_message_end(text_message_id)
+
+
 # =============================================================================
 # T024-T025: AGUIProtocol class with AgentExecutor integration
 # =============================================================================
@@ -776,6 +850,20 @@ class AGUIProtocol(Protocol):
             else:
                 full_message = text_message
 
+            # Every attachment was skipped (url/file sources, empty data,
+            # conversion failures) and there is no text: do not run an empty
+            # model turn. Tool-resume turns (latest role ``tool``) are exempt.
+            if latest_message_role(input_data) == "user" and not full_message.strip():
+                logger.error(
+                    "No content left in user message after file processing "
+                    "(binary_parts=%d)",
+                    len(binary_parts),
+                )
+                raise ValueError(
+                    "No content found in user message. "
+                    "Message contained no text and no processable file content."
+                )
+
             executor = session.agent_executor
             provider = executor.agent_config.model.provider
             if provider in (ProviderEnum.ANTHROPIC, ProviderEnum.ANTHROPIC.value):
@@ -828,6 +916,20 @@ class AGUIProtocol(Protocol):
                 session.session_id,
             )
             tool_msg_ids: dict[str, str] = {}
+
+            if executor.streams_turn_events is True:
+                # Live path (OpenAI Agents): text deltas and tool events arrive
+                # on one ordered stream, so each is emitted as it happens.
+                async with contextlib.aclosing(
+                    _stream_turn_events(
+                        executor, full_message, message_id, tool_msg_ids
+                    )
+                ) as agui_events:
+                    async for agui_evt in agui_events:
+                        yield encoder.encode(agui_evt)
+                yield encoder.encode(create_run_finished_event(thread_id, run_id))
+                logger.debug("Completed streamed request for run %s", run_id)
+                return
 
             if isinstance(tool_queue, asyncio.Queue):
                 # Real-time path: run execute_turn as a task, drain events
