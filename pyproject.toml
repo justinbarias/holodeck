@@ -60,9 +60,9 @@ dependencies = [
     "httpx>=0.27",
     "authlib>=1.9.1",  # PYSEC-2026-4354..4360, CVE-2026-96760/116672 fix
     "azure-core>=1.38.0",
-    "claude-agent-sdk==0.2.179",  # >=0.2.121 for CVE-2026-96620; see ENABLE_TOOL_SEARCH in claude_backend
+    "claude-agent-sdk==0.2.180",  # >=0.2.121 for CVE-2026-96620; see ENABLE_TOOL_SEARCH in claude_backend
     "python-frontmatter>=1.1,<2.0",
-    "litellm>=1.108.3,<1.109",  # >=1.100.4 for PYSEC-2026-4066, GHSA-g5ff-637f-6q2m, CVE-2026-114612; 1.108 for openai 3
+    "litellm>=1.108.3,<1.110",  # >=1.100.4 for PYSEC-2026-4066, GHSA-g5ff-637f-6q2m, CVE-2026-114612; 1.108 for openai 3
     # FEEL evaluator; the exact pin is load-bearing for correctness, not just
     # stability: feel.py shares FEELTransformer singletons across concurrent
     # evaluations on the strength of 1.2.0's verified statelessness.
@@ -108,7 +108,7 @@ eval = [
     "deepeval>=4.3.3,<5",
     # DeepEval's AnthropicModel/OllamaModel (built in lib/evaluators/deepeval/config.py)
     # import these lazily and fail without them; nothing else installs them.
-    "anthropic>=0.72.0,<2.7.0",
+    "anthropic>=0.72.0,<2.9.0",
     "ollama>=0.4,<1.0",
 ]
 # NLP overlap metrics (metric: bleu, rouge, meteor). No model calls.
@@ -219,7 +219,7 @@ deploy-all = [
 # (SandboxedWorkflowRunner.prepare_workflow), an API the SDK marks "not yet
 # stable". Loosen to a range once that surface stabilizes.
 temporal = [
-    "temporalio==1.35.0",
+    "temporalio==1.36.0",
 ]
 # Temporal knowledge graph memory (spec 043): the Graphiti MemoryBackend.
 # One minor only: every Graphiti call sits in
