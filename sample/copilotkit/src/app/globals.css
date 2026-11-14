@@ -42,6 +42,31 @@ body {
   background: #fafafa;
 }
 
+/* Notice for files that were not attached (unsupported type) */
+.holodeck-file-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.875rem;
+}
+
+.holodeck-file-notice__dismiss {
+  flex-shrink: 0;
+  padding: 0 0.375rem;
+  border-radius: 0.25rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.holodeck-file-notice__dismiss:hover {
+  background: rgba(146, 64, 14, 0.1);
+}
+
 .holodeck-main {
   background: #f9fafb;
 }
@@ -118,6 +143,16 @@ html.dark .holodeck-header p {
 html.dark .holodeck-file-bar {
   border-bottom-color: #27272a;
   background: #18181b;
+}
+
+html.dark .holodeck-file-notice {
+  border-bottom-color: #78350f;
+  background: #1c1917;
+  color: #fcd34d;
+}
+
+html.dark .holodeck-file-notice__dismiss:hover {
+  background: rgba(252, 211, 77, 0.15);
 }
 
 html.dark .holodeck-main {
