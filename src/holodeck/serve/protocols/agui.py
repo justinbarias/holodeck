@@ -13,6 +13,7 @@ import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
+from ag_ui.core import AudioPart, DocumentPart, ImagePart, TextPart, VideoPart
 from ag_ui.core.events import (
     BaseEvent,
     EventType,
@@ -120,11 +121,9 @@ def extract_message_and_files_from_input(
                         part_type = part.get("type", "unknown")
                         if part_type == "text":
                             text_parts.append(part.get("text", ""))
-                    # Handle AG-UI Pydantic object (TextInputContent)
-                    elif (
-                        hasattr(part, "type") and getattr(part, "type", None) == "text"
-                    ):
-                        text_parts.append(getattr(part, "text", ""))
+                    # Handle AG-UI 1.0 text part
+                    elif isinstance(part, TextPart):
+                        text_parts.append(part.text)
                     # Handle plain string
                     elif isinstance(part, str):
                         text_parts.append(part)
@@ -203,6 +202,16 @@ def extract_message_from_input(input_data: RunAgentInput) -> str:
                             )
                     elif isinstance(part, str):
                         text_parts.append(part)
+                    elif isinstance(part, TextPart):
+                        text_parts.append(part.text)
+                    elif isinstance(
+                        part, ImagePart | AudioPart | VideoPart | DocumentPart
+                    ):
+                        logger.warning(
+                            "Skipping non-text content part (type: %s). "
+                            "Only 'text' content parts are supported.",
+                            part.type,
+                        )
 
                 # Validate that we have at least some text content
                 if not text_parts:
@@ -775,6 +784,20 @@ class AGUIProtocol(Protocol):
                 )
             else:
                 full_message = text_message
+
+            # Every attachment was skipped (url/file sources, empty data,
+            # conversion failures) and there is no text: do not run an empty
+            # model turn. Tool-resume turns (latest role ``tool``) are exempt.
+            if latest_message_role(input_data) == "user" and not full_message.strip():
+                logger.error(
+                    "No content left in user message after file processing "
+                    "(binary_parts=%d)",
+                    len(binary_parts),
+                )
+                raise ValueError(
+                    "No content found in user message. "
+                    "Message contained no text and no processable file content."
+                )
 
             executor = session.agent_executor
             provider = executor.agent_config.model.provider
