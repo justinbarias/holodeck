@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HoloDeck chat · progressive disclosure</title>
+</head>
+<body>
+
+
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&amp;family=Courier+Prime:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f6f9}
+a{color:#1d2347}a:hover{color:#3d4a99}
+.cue{font-family:"Courier Prime",ui-monospace,monospace}
+.rv{font-size:12px;font-weight:600;padding:3px 8px;border-radius:3px;white-space:nowrap}
+.rv-blue{background:#cfe0f8;color:#234f99}.rv-pink{background:#f9d6e4;color:#93305e}
+.card{background:#fff;border:1px solid #dde0e8;border-radius:8px;overflow:hidden}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto 20px;gap:12px;align-items:center;width:100%;min-height:44px;padding:0 14px;border:0;background:#fff;text-align:left;font:13px "Public Sans",sans-serif;color:#555b6b;cursor:pointer}
+.row b{font:700 14px "Courier Prime",monospace;color:#15171e}
+.hl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#2b2e38}
+.st{display:inline-flex;align-items:center;gap:5px;font-weight:600;font-size:12px;white-space:nowrap}
+.go{color:#17703c}.run{color:#9a6400}.ng{color:#c2312a}
+.dur{display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.track{width:90px;height:5px;background:#eceef3;display:inline-block}.track span{display:block;height:100%;background:#1d2347}
+.mg{border-right:1px solid #8a90a3;position:relative}
+.q{position:absolute;right:12px;display:flex;align-items:center;gap:6px;font:700 13.5px "Courier Prime",monospace;color:#1d2347;white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%}
+.lane{display:grid;grid-template-columns:76px minmax(0,1fr);column-gap:20px}
+h2{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.hint{margin:0;font-size:13.5px;color:#555b6b;line-height:1.55;max-width:72ch}
+.user{justify-self:end;margin-left:auto;background:#1d2347;color:#fff;padding:10px 14px;border-radius:12px 12px 3px 12px;max-width:560px;font-size:14.5px;line-height:1.5}
+</style>
+
+<div style="font-family: 'Public Sans', system-ui, sans-serif; color: #15171e; background: #f5f6f9; padding: 48px 56px; display: flex; flex-direction: column; gap: 44px">
+  <section style="display: flex; flex-direction: column; gap: 10px">
+    <h2>Progressive disclosure for every tool call</h2>
+    <p class="hint">Every tool card is one 44 px row until someone asks for more. The row is a real button: tool name, a plain one-line headline, status with icon and word, duration, chevron. Finished cards stay closed, so the answer is never pushed down. More than three calls in a turn fold into one group row.</p>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h3>1 · Streaming: cues arrive one by one</h3>
+      <p class="hint">Each row appears the moment its call starts, runs with a growing bar, then settles to Done in place. No layout jump when it finishes.</p>
+      <div class="lane" style="margin-top: 6px">
+        <div class="mg" style="height: 200px"><div class="q" style="top: 12px"><span class="dot" style="background: #1f8a4c"></span>Q1</div><div class="q" style="top: 64px"><span class="dot" style="background: #1f8a4c"></span>Q2</div><div class="q" style="top: 116px; color: #9a6400"><span class="dot" style="background: #d9a227; box-shadow: 0 0 0 4px rgba(217,162,39,.22)"></span>Q3</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div class="card"><button class="row" aria-expanded="false"><b>memory_timeline</b><span class="hl">2 facts · 1 current: 90% at or below the lower income threshold</span><span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.5" fill="none"></path></svg>Done</span><span class="dur"><span class="track"><span style="width: 58%"></span></span>2.31 s</span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5" stroke="#555b6b" stroke-width="1.5" fill="none"></path></svg></button></div>
+          <div class="card"><button class="row" aria-expanded="false"><b>memory_search</b><span class="hl">3 hits for “lower income threshold 2020”</span><span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.5" fill="none"></path></svg>Done</span><span class="dur"><span class="track"><span style="width: 28%"></span></span>1.12 s</span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5" stroke="#555b6b" stroke-width="1.5" fill="none"></path></svg></button></div>
+          <div class="card"><button class="row" aria-expanded="false" disabled style="cursor: default"><b>family_assistance_act_search</b><span class="hl">Schedule 2 clause 3(4)</span><span class="st run"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-dasharray="14 6"></circle></svg>Running</span><span class="dur"><span class="track"><span style="width: 12%; background: #d9a227"></span></span>0.48 s</span><span></span></button></div>
+          <div style="font-size: 13.5px; color: #555b6b; display: flex; align-items: center; gap: 8px; padding-top: 4px"><span style="width: 2px; height: 16px; background: #1d2347"></span>Waiting for Q3 before answering…</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h3>2 · Expanded on request</h3>
+      <p class="hint">Clicking a row opens its full view in place. The choice is remembered for that call. Here the memory timeline is open; the search stays closed.</p>
+      <div class="lane" style="margin-top: 6px">
+        <div class="mg" style="height: 250px"><div class="q" style="top: 12px"><span class="dot" style="background: #1f8a4c"></span>Q1</div><div class="q" style="top: 200px"><span class="dot" style="background: #1f8a4c"></span>Q2</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div class="card"><button class="row" aria-expanded="true" style="border-bottom: 1px solid #eceef3"><b>memory_timeline</b><span class="hl">2 facts · 1 current</span><span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.5" fill="none"></path></svg>Done</span><span class="dur"><span class="track"><span style="width: 58%"></span></span>2.31 s</span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 8.5 7 5l3.5 3.5" stroke="#555b6b" stroke-width="1.5" fill="none"></path></svg></button>
+            <div style="display: grid; grid-template-columns: 110px minmax(0, 1fr); font-size: 13.5px">
+              <div class="rv rv-blue" style="border-radius: 0; padding: 10px 12px">1 Jul 2020</div><div style="padding: 10px 14px; border-bottom: 1px solid #eceef3; line-height: 1.45"><s style="color: #6b7080">85% at or below the lower income threshold of $65,710.</s> <span class="cue" style="font-size: 11px; font-weight: 700; color: #c2312a; border: 1.5px solid #c2312a; padding: 0 5px; border-radius: 2px">CLOSED 1 JUL 2026</span></div>
+              <div class="rv rv-pink" style="border-radius: 0; padding: 10px 12px">1 Jul 2026</div><div style="padding: 10px 14px; line-height: 1.45">90% at or below the lower income threshold; base $80,000, indexed.</div>
+            </div>
+            <div style="padding: 8px 14px; border-top: 1px solid #eceef3; display: flex; gap: 16px; font-size: 13px"><a href="#">Show timeline chart</a><a href="#">Arguments and raw result</a></div>
+          </div>
+          <div class="card"><button class="row" aria-expanded="false"><b>family_assistance_act_search</b><span class="hl">3 passages · Schedule 2 clause 3(1)</span><span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.5" fill="none"></path></svg>Done</span><span class="dur"><span class="track"><span style="width: 22%"></span></span>0.88 s</span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5" stroke="#555b6b" stroke-width="1.5" fill="none"></path></svg></button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h3>3 · More than three calls fold into a group</h3>
+      <p class="hint">The margin shows the cue range. One row says how many calls, how long, and whether any failed. Expanding shows the individual rows, still closed.</p>
+      <div class="lane" style="margin-top: 6px">
+        <div class="mg" style="height: 120px"><div class="q" style="top: 12px"><span class="dot" style="background: #1f8a4c"></span>Q1–Q6</div><div style="position: absolute; right: -1px; top: 60px; width: 7px; height: 52px; border: 1.5px solid #1d2347; border-right: 0"></div></div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="card"><button class="row" aria-expanded="false" style="grid-template-columns: minmax(0, 1fr) auto auto 20px"><span class="hl" style="color: #15171e; font-weight: 600">6 tool calls · memory_timeline, memory_search ×2, act_search ×2, memory_provenance</span><span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.5" fill="none"></path></svg>All done</span><span class="dur">7.42 s</span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5" stroke="#555b6b" stroke-width="1.5" fill="none"></path></svg></button></div>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; max-width: 72ch">It rose by <b>5 percentage points</b>, from <b>85%</b> (1 July 2020) to <b>90%</b> (1 July 2026).</p>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h3>4 · A failure stays one line, in its own words</h3>
+      <p class="hint">The headline carries the first sentence of the error. Expanding shows what the agent did next and how to recover.</p>
+      <div class="lane" style="margin-top: 6px">
+        <div class="mg" style="height: 110px"><div class="q" style="top: 12px; color: #c2312a"><span class="dot" style="background: #c2312a"></span>Q4</div><div class="q" style="top: 62px"><span class="dot" style="background: #1f8a4c"></span>Q5</div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div class="card" style="border-color: #f0c4c1"><button class="row" aria-expanded="false"><b>memory_search</b><span class="hl" style="color: #8f1f19">The date “last July” was not understood.</span><span class="st ng"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5"></path></svg>Failed</span><span class="dur">0.05 s</span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5" stroke="#555b6b" stroke-width="1.5" fill="none"></path></svg></button></div>
+          <div class="card"><button class="row" aria-expanded="false"><b>memory_search</b><span class="hl">2 hits for “base rate” on 1 Jul 2025</span><span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.5" fill="none"></path></svg>Done</span><span class="dur">0.94 s</span><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5" stroke="#555b6b" stroke-width="1.5" fill="none"></path></svg></button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

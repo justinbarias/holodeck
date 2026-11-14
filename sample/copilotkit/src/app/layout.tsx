@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Courier_Prime, Public_Sans } from "next/font/google";
 import { CopilotKit } from "@copilotkit/react-core";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import {
@@ -11,14 +11,19 @@ import "./globals.css";
 
 export const dynamic = "force-dynamic";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Self-hosted at build time by next/font: no runtime Google Fonts request.
+const publicSans = Public_Sans({
+  variable: "--font-public-sans",
   subsets: ["latin"],
+  weight: ["400", "600"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const courierPrime = Courier_Prime({
+  variable: "--font-courier-prime",
   subsets: ["latin"],
+  weight: ["400", "700"],
+  display: "swap",
 });
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,6 +33,13 @@ export async function generateMetadata(): Promise<Metadata> {
     description: config.agentDescription,
   };
 }
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#1d2347" },
+    { media: "(prefers-color-scheme: dark)", color: "#12162e" },
+  ],
+};
 
 const COPILOTKIT_ENDPOINT = "/api/copilotkit";
 
@@ -39,15 +51,18 @@ export default function RootLayout({
   const clientConfig = toClientRuntimeConfig(getServerRuntimeConfig());
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${publicSans.variable} ${courierPrime.variable}`}
+    >
+      <body>
         <ThemeProvider>
           <RuntimeConfigProvider value={clientConfig}>
             <CopilotKit
               runtimeUrl={COPILOTKIT_ENDPOINT}
               agent={clientConfig.agentId}
+              enableInspector={false}
             >
               {children}
             </CopilotKit>

@@ -69,7 +69,7 @@ def test_compute_case_matrix_shape(seed_runs):
     # Columns: one score/passed/regression/improvement group per run plus the name
     assert "case_name" in df.columns
     for run in runs:
-        rid = run.report.timestamp
+        rid = run.run_id
         assert f"score::{rid}" in df.columns
         assert f"passed::{rid}" in df.columns
         assert f"regression::{rid}" in df.columns
@@ -86,8 +86,8 @@ def test_compute_case_matrix_shape(seed_runs):
 def test_regression_improvement_flags_from_baseline(seed_runs):
     runs = seed_runs[:2]
     df = compute_case_matrix(runs)
-    base_id = runs[0].report.timestamp
-    other_id = runs[1].report.timestamp
+    base_id = runs[0].run_id
+    other_id = runs[1].run_id
 
     # Baseline must never have regression/improvement flags set
     assert not df[f"regression::{base_id}"].any()

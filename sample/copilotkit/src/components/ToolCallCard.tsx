@@ -1,3 +1,17 @@
+"use client";
+
+import { useState } from "react";
+import { CopyButton } from "@/components/tool-card/CopyButton";
+import { ToolCardShell } from "@/components/tool-card/ToolCardShell";
+import {
+  argumentsHeadline,
+  byteLength,
+  decodeResult,
+  firstSentence,
+  formatBytes,
+  toolFailure,
+} from "@/lib/tool-view";
+
 export type ToolCallStatus = "inProgress" | "complete" | "executing";
 
 export interface ToolCallCardProps {
@@ -5,72 +19,161 @@ export interface ToolCallCardProps {
   args?: Record<string, unknown>;
   status: ToolCallStatus;
   result?: unknown;
+  /** The AG-UI tool message `error` field. */
+  error?: string | null;
+  /** The run ended before a result arrived. */
+  stopped?: boolean;
 }
 
+/** Plain-text results longer than this start clamped. */
+const TEXT_PREVIEW_CHARS = 280;
+
 /**
- * The generic tool-call card: name, status, arguments and the raw result.
- * Used for every tool without a dedicated view, and as the fallback when a
- * dedicated view cannot read the result.
+ * The generic tool card, for every tool without a dedicated view and as the
+ * fallback when a dedicated view cannot read the result. Collapsed it is one
+ * row; expanded it shows the arguments, the result and copy actions.
  */
-export function ToolCallCard({ name, args, status, result }: ToolCallCardProps) {
-  const isInProgress = status === "inProgress";
-  const isComplete = status === "complete";
+export function ToolCallCard({ name, args, status, result, error, stopped }: ToolCallCardProps) {
+  const running = status !== "complete";
+  const failure = running ? null : toolFailure(result, error);
+  const argsHeadline = argumentsHeadline(args);
+
+  if (running) {
+    return (
+      <ToolCardShell
+        name={name}
+        headline={argsHeadline || "Preparing the call…"}
+        tone="running"
+        status="Running"
+        expandable={args !== undefined}
+      >
+        <ArgumentsTable args={args} />
+      </ToolCardShell>
+    );
+  }
+
+  if (failure) {
+    return (
+      <ToolCardShell
+        name={name}
+        headline={firstSentence(failure)}
+        tone="failed"
+        status="Failed"
+        expandable
+      >
+        <p className="pb-card__message">
+          <strong>{firstSentence(failure)}</strong>{" "}
+          {failure.slice(firstSentence(failure).length).trim()}
+        </p>
+        <ArgumentsTable args={args} />
+        <CopyRow args={args} result={result} />
+      </ToolCardShell>
+    );
+  }
+
+  if (stopped && result === undefined) {
+    return (
+      <ToolCardShell
+        name={name}
+        headline={argsHeadline ? `${argsHeadline} · no result` : "No result"}
+        tone="empty"
+        status="Stopped"
+        expandable
+      >
+        <p className="pb-card__message">The run ended before this tool returned a result.</p>
+        <ArgumentsTable args={args} />
+      </ToolCardShell>
+    );
+  }
 
   return (
-    <div className="holodeck-tool-call">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.2rem",
-          marginBottom: isComplete && result ? "0.2rem" : 0,
-        }}
-      >
-        <span style={{ fontSize: "1rem" }}>
-          {isInProgress ? "⏳" : isComplete ? "✅" : "🔧"}
-        </span>
-        <span style={{ fontWeight: 600 }}>{formatToolName(name)}</span>
-        <span
-          className={
-            isInProgress
-              ? "holodeck-tool-badge holodeck-tool-badge--progress"
-              : "holodeck-tool-badge holodeck-tool-badge--complete"
-          }
-        >
-          {isInProgress ? "Running..." : isComplete ? "Complete" : String(status)}
-        </span>
+    <ToolCardShell name={name} headline={argsHeadline} tone="done" status="Done" expandable>
+      <ArgumentsTable args={args} />
+      <ResultView result={result} />
+      <CopyRow args={args} result={result} />
+    </ToolCardShell>
+  );
+}
+
+function ArgumentsTable({ args }: { args?: Record<string, unknown> }) {
+  if (!args) return null;
+  const entries = Object.entries(args);
+  return (
+    <div className="pb-section">
+      <h4 className="pb-section__title">Arguments</h4>
+      {entries.length === 0 ? (
+        <p className="pb-card__message pb-quiet">No arguments.</p>
+      ) : (
+        <dl className="pb-kv">
+          {entries.map(([key, value]) => (
+            <div key={key} className="pb-kv__row">
+              <dt>{key}</dt>
+              <dd className="pb-data">
+                {JSON.stringify(value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}
+
+function resultText(result: unknown): { text: string; json: boolean } {
+  const value = decodeResult(result);
+  if (typeof value === "string") return { text: value, json: false };
+  if (value === undefined) return { text: "", json: false };
+  return { text: JSON.stringify(value, null, 2), json: true };
+}
+
+function ResultView({ result }: { result: unknown }) {
+  const [full, setFull] = useState(false);
+  const { text, json } = resultText(result);
+  if (!text) {
+    return (
+      <div className="pb-section">
+        <h4 className="pb-section__title">Result</h4>
+        <p className="pb-card__message pb-quiet">The tool returned an empty result.</p>
       </div>
-
-      {/* Show arguments (open while in progress, collapsed when complete) */}
-      {args && Object.keys(args).length > 0 ? (
-        <details className="holodeck-tool-details" open={isInProgress}>
-          <summary>Arguments</summary>
-          <pre>{JSON.stringify(args, null, 2)}</pre>
-        </details>
-      ) : null}
-
-      {/* Show result when complete */}
-      {isComplete && result ? (
-        <details className="holodeck-tool-details">
-          <summary>Result</summary>
-          <pre>
-            {typeof result === "string"
-              ? result
-              : JSON.stringify(result, null, 2)}
-          </pre>
-        </details>
+    );
+  }
+  const size = formatBytes(byteLength(text));
+  if (json) {
+    return (
+      <div className="pb-section">
+        <h4 className="pb-section__title">
+          Result <span className="pb-section__aside pb-data">{size} · JSON</span>
+        </h4>
+        <pre className="pb-pre">{text}</pre>
+      </div>
+    );
+  }
+  const long = text.length > TEXT_PREVIEW_CHARS;
+  return (
+    <div className="pb-section">
+      <h4 className="pb-section__title">
+        Result <span className="pb-section__aside pb-data">{size} · text</span>
+      </h4>
+      <p className="pb-card__text">
+        {long && !full ? `${text.slice(0, TEXT_PREVIEW_CHARS).trimEnd()}…` : text}
+      </p>
+      {long ? (
+        <button type="button" className="pb-link" onClick={() => setFull((v) => !v)}>
+          {full ? "Show less" : `Show full result · ${size}`}
+        </button>
       ) : null}
     </div>
   );
 }
 
-/**
- * Format tool name for display.
- * Converts snake_case to Title Case with spaces.
- */
-export function formatToolName(name: string): string {
-  return name
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+function CopyRow({ args, result }: { args?: Record<string, unknown>; result: unknown }) {
+  const { text } = resultText(result);
+  const argsText = args ? JSON.stringify(args, null, 2) : "";
+  if (!text && !argsText) return null;
+  return (
+    <div className="pb-actions">
+      {text ? <CopyButton text={text} label="Copy result" /> : null}
+      {argsText ? <CopyButton text={argsText} label="Copy arguments" /> : null}
+    </div>
+  );
 }

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HoloDeck chat · tool components</title>
+</head>
+<body>
+
+
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&amp;family=Courier+Prime:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f6f9}
+a{color:#1d2347}a:hover{color:#3d4a99}
+.cue{font-family:"Courier Prime",ui-monospace,monospace}
+.rv{font-size:12px;font-weight:600;padding:4px 9px;border-radius:3px;white-space:nowrap}
+.rv-blue{background:#cfe0f8;color:#234f99}.rv-pink{background:#f9d6e4;color:#93305e}.rv-yellow{background:#f7e8a6;color:#6b5200}.rv-green{background:#d2ecd9;color:#1d6337}.rv-gold{background:#f1d7a4;color:#6e4700}
+.card{background:#fff;border:1px solid #dde0e8;border-radius:8px;box-shadow:0 1px 2px rgba(20,24,40,.05);overflow:hidden}
+.ch{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 14px;border-bottom:1px solid #eceef3;font-size:13px;color:#555b6b}
+.ch b{font-family:"Courier Prime",monospace;font-size:14px;color:#15171e}
+.st{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12px}
+.go{color:#17703c}.sb{color:#9a6400}.ng{color:#c2312a}
+.dur{margin-left:auto;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.track{width:120px;height:5px;background:#eceef3;border-radius:1px;overflow:hidden;display:inline-block}
+.track span{display:block;height:100%;background:#1d2347}
+.kv{display:grid;grid-template-columns:140px minmax(0,1fr);font-size:13.5px}
+.kv dt{padding:7px 14px;color:#555b6b;border-bottom:1px solid #eceef3}
+.kv dd{margin:0;padding:7px 14px;border-bottom:1px solid #eceef3;font-family:"Courier Prime",monospace}
+pre{margin:0;padding:12px 14px;background:#f7f8fb;font:13px/1.5 "Courier Prime",monospace;color:#15171e;overflow-x:auto}
+.sec{font-size:12px;font-weight:600;color:#555b6b;padding:10px 14px 6px}
+.lbtn{display:inline-flex;align-items:center;gap:6px;font:600 13px "Public Sans",sans-serif;color:#1d2347;background:none;border:0;padding:10px 14px;min-height:44px;cursor:pointer}
+.stamp{display:inline-block;font:700 11px "Courier Prime",monospace;color:#c2312a;border:1.5px solid #c2312a;padding:0 5px;border-radius:2px;transform:rotate(-1.5deg)}
+.hint{font-size:13px;color:#555b6b;line-height:1.5}
+.dc{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 8px 3px 3px;border-radius:3px;background:#eceef3;color:#2b2e38;white-space:nowrap}.dc b{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:2px;background:#fff;font:700 11px "Courier Prime",monospace;color:#15171e}
+h2{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0 0 10px;font-size:15px;font-weight:600}
+</style>
+
+<div style="font-family: 'Public Sans', system-ui, sans-serif; color: #15171e; background: #f5f6f9; padding: 48px 56px; display: flex; flex-direction: column; gap: 48px">
+
+  <section style="display: flex; flex-direction: column; gap: 16px">
+    <h2>Generic tool card</h2>
+    <p class="hint" style="margin: 0; max-width: 72ch">Every tool the agent calls lands here unless it has a dedicated view. One card per cue: name in Courier, a plain-language summary, a status with icon and word, and a duration bar on the thread's shared time scale.</p>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <h3>Running · standby</h3>
+        <div class="card"><div class="ch" style="border: 0"><b>lookup_order</b>order_id A-8844
+          <span class="st sb"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-dasharray="14 6"></circle></svg>Running</span>
+          <span class="dur"><span class="track"><span style="width: 30%; background: #c9a24a"></span></span>0.42 s</span></div></div>
+        <h3 style="margin-top: 10px">Done · collapsed</h3>
+        <div class="card"><div class="ch" style="border: 0"><b>issue_refund</b>$249.00 · faulty_item
+          <span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg>Done</span>
+          <span class="dur"><span class="track"><span style="width: 18%"></span></span>0.61 s</span>
+          <button class="lbtn" style="padding: 0 4px; min-height: 32px" aria-expanded="false">Details<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" stroke="currentColor" stroke-width="1.6" fill="none"></path></svg></button></div></div>
+        <h3 style="margin-top: 10px">Failed</h3>
+        <div class="card" style="border-color: #f0c4c1">
+          <div class="ch"><b>send_email</b>template return_label
+            <span class="st ng"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.8"></path></svg>Failed</span>
+            <span class="dur"><span class="track"><span style="width: 100%; background: #c2312a"></span></span>30.00 s</span></div>
+          <div style="padding: 10px 14px; font-size: 13.5px; line-height: 1.5"><b>Timed out after 30 s.</b> The mail server did not answer. The agent continued without sending the label; check the SMTP tool configuration and retry.</div>
+        </div>
+        <h3 style="margin-top: 10px">Unknown tool, plain-text result</h3>
+        <div class="card"><div class="ch"><b>mcp__filesystem__read_file</b>./data/cias.md
+          <span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg>Done</span>
+          <span class="dur"><span class="track"><span style="width: 8%"></span></span>0.09 s</span></div>
+          <p style="margin: 0; padding: 10px 14px; font-size: 13.5px; line-height: 1.55; color: #2b2e38">Critical Infrastructure Assurance Standard, section 4. Operators must notify the agency within 72 hours of a reportable incident…</p>
+          <button class="lbtn">Show full result · 4.2 KB</button></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <h3>Done · expanded</h3>
+        <div class="card">
+          <div class="ch"><b>lookup_order</b>order_id A-8844
+            <span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg>Done</span>
+            <span class="dur"><span class="track"><span style="width: 22%"></span></span>0.74 s</span>
+            <button class="lbtn" style="padding: 0 4px; min-height: 32px" aria-expanded="true">Hide<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5 6 4.5l3 3" stroke="currentColor" stroke-width="1.6" fill="none"></path></svg></button></div>
+          <div class="sec">Arguments</div>
+          <dl class="kv" style="margin: 0"><dt>order_id</dt><dd>"A-8844"</dd><dt>include_items</dt><dd>true</dd></dl>
+          <div class="sec" style="display: flex; justify-content: space-between">Result <span class="cue" style="font-weight: 400">144 B · JSON</span></div>
+          <pre>{
+  "id": "A-8844",
+  "status": "delivered",
+  "total": 249.0,
+  "ship_date": "2026-04-03",
+  "items": [
+    { "sku": "HP-NC-770", "name": "NC-770 Headphones" }
+  ]
+}</pre>
+          <div style="display: flex; gap: 4px; border-top: 1px solid #eceef3"><button class="lbtn">Copy result</button><button class="lbtn">Copy arguments</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 16px">
+    <h2>memory_timeline · fact timeline</h2>
+    <p class="hint" style="margin: 0; max-width: 72ch">Facts about one entity over valid time. Plain source documents get a lettered neutral chip; revision colours are kept for prompt versions and compilations. Current facts are drawn in house blue, closed facts in grey. Nothing disappears: a closed fact stays, struck through and stamped with the date it stopped holding.</p>
+    <div class="card" style="max-width: 940px">
+      <div class="ch"><b>memory_timeline</b>Family Benefit base rate
+        <span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg>4 facts · 2 current</span>
+        <span class="dur"><span class="track"><span style="width: 52%"></span></span>1.94 s</span></div>
+      <div style="padding: 14px 14px 6px">
+        <div style="display: grid; grid-template-columns: 150px minmax(0, 1fr); row-gap: 8px; align-items: center; font-size: 12.5px">
+          <span></span>
+          <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); color: #555b6b; border-bottom: 1px solid #dde0e8; padding-bottom: 4px; font-variant-numeric: tabular-nums"><span>2020</span><span>2021</span><span>2022</span><span>2023</span><span>2024</span><span>2025</span><span>2026</span></div>
+          <span class="dc" style="justify-self: start"><b>A</b>rate-2020.md</span>
+          <div style="position: relative; height: 18px"><span style="position: absolute; left: 0; width: 57%; top: 4px; height: 10px; background: #a3a9bd; border-radius: 1px"></span><span style="position: absolute; left: 57%; top: 0; height: 18px; border-left: 1.5px solid #c2312a"></span></div>
+          <span class="dc" style="justify-self: start"><b>B</b>rate-2024.md</span>
+          <div style="position: relative; height: 18px"><span style="position: absolute; left: 57%; right: 0; top: 4px; height: 10px; background: #1d2347; border-radius: 1px"></span></div>
+          <span class="dc" style="justify-self: start"><b>C</b>eligibility.md</span>
+          <div style="position: relative; height: 18px"><span style="position: absolute; left: 14%; right: 0; top: 4px; height: 10px; background: #1d2347; border-radius: 1px"></span></div>
+        </div>
+      </div>
+      <div style="padding: 6px 14px 4px; font-size: 13px; font-weight: 600">As of 13 November 2026 · 2 facts hold</div>
+      <ul style="list-style: none; margin: 0; padding: 0 14px 4px; font-size: 14px; line-height: 1.5">
+        <li style="display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 12px; padding: 9px 0; border-bottom: 1px solid #eceef3"><span class="dc" style="align-self: start"><b>B</b>1 Jul 2024 –</span><span>The base rate of Family Benefit is 150 dollars per fortnight for each child.</span><button class="lbtn" style="padding: 0; min-height: 24px; font-size: 12.5px">Provenance</button></li>
+        <li style="display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 12px; padding: 9px 0; border-bottom: 1px solid #eceef3"><span class="dc" style="align-self: start"><b>C</b>1 Jan 2021 –</span><span>A child must be under 16 to qualify for the base rate.</span><button class="lbtn" style="padding: 0; min-height: 24px; font-size: 12.5px">Provenance</button></li>
+      </ul>
+      <div style="padding: 10px 14px 4px; font-size: 13px; font-weight: 600; color: #555b6b">Closed · 2</div>
+      <ul style="list-style: none; margin: 0; padding: 0 14px 6px; font-size: 14px; line-height: 1.5">
+        <li style="display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 12px; padding: 9px 0; border-bottom: 1px solid #eceef3"><span class="dc" style="align-self: start"><b>A</b>1 Jul 2020</span><span><s style="color: #6b7080">The base rate of Family Benefit is 120 dollars per fortnight for each child.</s> <span class="stamp">CLOSED 1 JUL 2024</span></span><button class="lbtn" style="padding: 0; min-height: 24px; font-size: 12.5px">Provenance</button></li>
+        <li style="display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 12px; padding: 9px 0"><span class="dc" style="align-self: start"><b>A</b>1 Jul 2020</span><span><s style="color: #6b7080">Payments are made monthly.</s> <span class="stamp">RETRACTED 3 MAR 2026</span><span class="hint" style="display: block">Known until 3 Mar 2026; the source line changed in a later compilation.</span></span><button class="lbtn" style="padding: 0; min-height: 24px; font-size: 12.5px">Provenance</button></li>
+      </ul>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 16px">
+    <h2>memory_search · as-of results</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start">
+      <div class="card">
+        <div class="ch"><b>memory_search</b>“base rate of Family Benefit”
+          <span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg>3 hits</span>
+          <span class="dur"><span class="track"><span style="width: 30%"></span></span>1.12 s</span></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 10px 14px; font-size: 12.5px; color: #555b6b; border-bottom: 1px solid #eceef3"><span>Facts that held on <b style="color: #15171e">1 Mar 2023</b></span><span>using what was recorded by <b style="color: #15171e">11 Nov 2026 12:00</b></span></div>
+        <ol style="margin: 0; padding: 0; list-style: none; font-size: 14px; line-height: 1.5">
+          <li style="padding: 10px 14px; border-bottom: 1px solid #eceef3; display: grid; gap: 4px"><span style="display: flex; gap: 8px; align-items: center"><span class="cue" style="font-weight: 700">Fact</span><span class="dc"><b>A</b>1 Jul 2020 – 1 Jul 2024</span><span class="cue" style="margin-left: auto; color: #555b6b; font-size: 12.5px">0.912</span></span>The base rate of Family Benefit is 120 dollars per fortnight for each child.<span class="hint">Replaced from 1 Jul 2024 by the $150 rate</span></li>
+          <li style="padding: 10px 14px; border-bottom: 1px solid #eceef3; display: grid; gap: 4px"><span style="display: flex; gap: 8px; align-items: center"><span class="cue" style="font-weight: 700">Fact</span><span class="dc"><b>C</b>1 Jan 2021 –</span><span class="cue" style="margin-left: auto; color: #555b6b; font-size: 12.5px">0.804</span></span>A child must be under 16 to qualify for the base rate.</li>
+          <li style="padding: 10px 14px; display: grid; gap: 4px"><span style="display: flex; gap: 8px; align-items: center"><span class="cue" style="font-weight: 700">Passage</span><span class="cue" style="font-size: 12.5px; color: #555b6b">docs/rate-2020.md · chunk 1</span><span class="cue" style="margin-left: auto; color: #555b6b; font-size: 12.5px">0.611</span></span><span style="display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden">Family Benefit rates, section 1. The base rate is paid for each eligible child and is reviewed on 1 July each year. The rate in this schedule applies from 1 July 2020 until the schedule is replaced…</span><button class="lbtn" style="padding: 0; min-height: 28px; justify-self: start">Show more</button></li>
+        </ol>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 24px">
+        <div class="card">
+          <div class="ch"><b>memory_search</b>“Harbour Grant payment amount”
+            <span class="st sb"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5 11 10.5H1Z" stroke="currentColor" stroke-width="1.5" fill="none"></path><path d="M6 5v2.5" stroke="currentColor" stroke-width="1.5"></path></svg>Degraded</span>
+            <span class="dur"><span class="track"><span style="width: 14%"></span></span>0.48 s</span></div>
+          <div role="status" style="display: flex; gap: 10px; padding: 10px 14px; background: #fbf3df; font-size: 13.5px; line-height: 1.5; color: #4d3a00"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M8 2 14.5 13.5h-13Z" stroke="currentColor" stroke-width="1.4" fill="none"></path><path d="M8 6.5v3M8 11.5v.5" stroke="currentColor" stroke-width="1.4"></path></svg><span><b>Keyword passages only.</b> The fact graph did not answer, so these results are document passages without dates. Treat them as unverified for 1 Mar 2023.</span></div>
+          <div style="padding: 10px 14px; font-size: 14px; line-height: 1.5"><span class="cue" style="font-weight: 700">Passage</span> <span class="cue" style="font-size: 12.5px; color: #555b6b">docs/harbour-grant-2023.md · chunk 2</span><p style="margin: 4px 0 0">Harbour Grant payment guide, section 2. Each eligible household receives a Harbour Grant payment every month…</p></div>
+        </div>
+        <div class="card" style="border-color: #f0c4c1">
+          <div class="ch"><b>memory_search</b>“base rate” · valid_at “last July”
+            <span class="st ng"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.8"></path></svg>Invalid argument</span></div>
+          <div style="padding: 12px 14px; font-size: 13.5px; line-height: 1.55"><b>The date “last July” was not understood.</b> The agent asked memory for a date it could not read and will usually retry with an exact date such as 2025-07-01.</div>
+        </div>
+        <div class="card">
+          <div class="ch" style="border: 0"><b>memory_search</b>“tribunal review”
+            <span class="st" style="color: #555b6b">No hits</span>
+            <span class="hint" style="margin-left: auto">Nothing held on 1 Jul 2026 for this query.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 16px">
+    <h2>memory_provenance · where a fact came from</h2>
+    <div style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; align-items: start">
+      <div class="card">
+        <div class="ch"><b>memory_provenance</b>fact 9f87ed20
+          <span class="st go"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"></path></svg>1 source</span>
+          <span class="dur"><span class="track"><span style="width: 10%"></span></span>0.21 s</span></div>
+        <p style="margin: 0; padding: 14px; font-size: 16px; line-height: 1.5; font-weight: 600">From 1 July 2024, the base rate of Family Benefit is 150 dollars per fortnight for each child.</p>
+        <dl class="kv" style="margin: 0; border-top: 1px solid #eceef3">
+          <dt>Holds</dt><dd style="font-family: 'Public Sans'">1 Jul 2024 – now</dd>
+          <dt>Recorded</dt><dd style="font-family: 'Public Sans'">11 Nov 2026 07:31</dd>
+          <dt>Document</dt><dd><span class="dc" style="font-family: 'Public Sans'"><b>B</b>docs/rate-2024.md</span> chunk 1</dd>
+          <dt>Date from</dt><dd style="font-family: 'Public Sans'">Front matter effective_date</dd>
+        </dl>
+        <blockquote style="margin: 0; padding: 12px 14px; font-size: 14px; line-height: 1.55; background: #f7f8fb; color: #2b2e38">“The base rate for each eligible child is $150 per fortnight. This schedule applies from 1 July 2024.”</blockquote>
+      </div>
+      <div class="card">
+        <div class="ch"><b>memory_provenance</b>fact 00000000
+          <span class="st" style="color: #555b6b"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"></circle><path d="M6 4v2.5M6 8v.5" stroke="currentColor" stroke-width="1.5"></path></svg>Not found</span></div>
+        <p style="margin: 0; padding: 14px; font-size: 13.5px; line-height: 1.55">No fact with this id is in memory. It may have been purged or belong to another namespace.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2240}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

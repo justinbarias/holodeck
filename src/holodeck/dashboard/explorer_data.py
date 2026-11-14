@@ -31,7 +31,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from holodeck.models.eval_run import EvalRun
+from holodeck.dashboard.loaded_run import LoadedRun
 from holodeck.models.test_result import (
     MetricResult,
     TestResult,
@@ -158,6 +158,7 @@ class ExpectedToolsCoverage:
     unexpected: int
     rows: list[tuple[str, bool]]  # (tool_name, was_called)
     per_turn: list[TurnCoverage] = field(default_factory=list)
+    unexpected_names: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -179,6 +180,7 @@ class MetricRow:
     threshold: float | None
     passed: bool
     reasoning: str | None
+    model_used: str | None = None
 
 
 @dataclass(frozen=True)
@@ -198,20 +200,23 @@ class CaseDetail:
 # --------------------------------------------------------------------------- #
 
 
-def select_run(runs: list[EvalRun], run_id: str | None) -> EvalRun | None:
-    """Return the run whose id matches ``run_id``.
+def select_run(runs: list[LoadedRun], ref: str | None) -> LoadedRun | None:
+    """Return the run that ``ref`` names.
 
-    ``run_id`` is matched against ``report.timestamp`` (the id the dashboard
-    uses to address a run). Returns ``None`` when no match is found or when
-    ``run_id`` is ``None``.
+    ``ref`` is a :attr:`LoadedRun.run_id`. Links copied before runs had ids
+    carry the saved timestamp instead, so a ``ref`` that matches no id
+    resolves to the one run with that timestamp. Returns ``None`` when
+    ``ref`` is empty, matches nothing, or is a timestamp several runs share:
+    callers must not put a different run in its place.
     """
 
-    if not run_id:
+    if not ref:
         return None
-    for run in runs:
-        if run.report.timestamp == run_id:
-            return run
-    return None
+    by_id = next((run for run in runs if run.run_id == ref), None)
+    if by_id is not None:
+        return by_id
+    by_time = [run for run in runs if run.report.timestamp == ref]
+    return by_time[0] if len(by_time) == 1 else None
 
 
 def _geval_score(case: TestResult) -> float | None:
@@ -228,7 +233,7 @@ def _rag_avg(case: TestResult) -> float | None:
     return sum(scores) / len(scores)
 
 
-def list_case_summaries(run: EvalRun) -> list[CaseSummary]:
+def list_case_summaries(run: LoadedRun) -> list[CaseSummary]:
     """One row per case in the run's report, ready for the cases column."""
 
     out: list[CaseSummary] = []
@@ -457,16 +462,17 @@ def _build_expected_tools_coverage(case: TestResult) -> ExpectedToolsCoverage:
     rows = [(e, any(_tool_name_matches(e, c) for c in called)) for e in expected]
     matched = sum(1 for _, ok in rows if ok)
     missed = len(expected) - matched
-    unexpected = sum(
-        1 for c in called if not any(_tool_name_matches(e, c) for e in expected)
-    )
+    unexpected_names = [
+        c for c in called if not any(_tool_name_matches(e, c) for e in expected)
+    ]
     return ExpectedToolsCoverage(
         total=len(expected),
         matched=matched,
         missed=missed,
-        unexpected=unexpected,
+        unexpected=len(unexpected_names),
         rows=rows,
         per_turn=[],
+        unexpected_names=unexpected_names,
     )
 
 
@@ -478,6 +484,7 @@ def _metric_row(m: MetricResult) -> MetricRow:
         threshold=float(m.threshold) if m.threshold is not None else None,
         passed=bool(m.passed) if m.passed is not None else False,
         reasoning=m.reasoning,
+        model_used=m.model_used,
     )
 
 
@@ -502,7 +509,7 @@ def _code_metric_average(case: TestResult) -> tuple[float, int] | None:
     return sum(scores) / len(scores), len(scores)
 
 
-def _agent_snapshot(run: EvalRun) -> AgentSnapshot:
+def _agent_snapshot(run: LoadedRun) -> AgentSnapshot:
     cfg = run.metadata.agent_config
     pv = run.metadata.prompt_version
 
@@ -536,7 +543,7 @@ def _agent_snapshot(run: EvalRun) -> AgentSnapshot:
     )
 
 
-def _case_header(run: EvalRun, case: TestResult) -> CaseHeader:
+def _case_header(run: LoadedRun, case: TestResult) -> CaseHeader:
     cfg = run.metadata.agent_config
     return CaseHeader(
         case_name=case.test_name or "",
@@ -550,7 +557,7 @@ def _case_header(run: EvalRun, case: TestResult) -> CaseHeader:
 
 
 def build_case_detail(
-    run: EvalRun,
+    run: LoadedRun,
     case_name: str,
     conversations_map: dict[str, Any],
 ) -> CaseDetail | None:
