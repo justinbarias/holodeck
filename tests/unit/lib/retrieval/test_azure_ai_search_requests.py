@@ -47,7 +47,7 @@ from holodeck.lib.retrieval.adapters.azure_ai_search import (
 
 ENDPOINT = "https://svc.search.windows.net"
 API_KEY = "AzureKey-SECRET-123"
-API_VERSION = "2026-04-01"  # azure-search-documents 12.0.0 default
+API_VERSION = "2026-10-01"  # azure-search-documents 12.1.0 default
 
 SCHEMA = CollectionSchema(
     "docs_dim4",
