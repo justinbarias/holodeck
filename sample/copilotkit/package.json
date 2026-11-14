@@ -10,7 +10,7 @@
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@ag-ui/client": "1.0.2",
+    "@ag-ui/client": "1.0.4",
     "@copilotkit/react-core": "1.87.1",
     "@copilotkit/react-ui": "1.87.1",
     "@copilotkit/runtime": "1.87.1",
