@@ -1,59 +1,51 @@
 "use client";
 
-import { useRenderToolCall } from "@copilotkit/react-core";
 import { ToolCallCard, type ToolCallStatus } from "@/components/ToolCallCard";
 import { AsOfResults } from "@/components/memory/AsOfResults";
 import { FactTimeline } from "@/components/memory/FactTimeline";
 import { isToolNamed } from "@/components/memory/parse";
 import { ProvenanceCard } from "@/components/memory/ProvenanceCard";
 
-interface WildcardRenderProps {
+export interface ToolCallViewProps {
   name: string;
-  args: Record<string, unknown>;
+  args?: Record<string, unknown>;
   status: ToolCallStatus;
   result?: unknown;
+  error?: string | null;
+  stopped?: boolean;
 }
 
 /**
- * ToolCallRenderer - Renders tool calls from the AG-UI backend (v2 API)
- *
- * Uses useRenderToolCall with wildcard "*" to catch all backend tool calls
- * and render them inline in the chat message stream.
+ * Picks the view for one tool call. The conversation draws tool calls itself
+ * (so it can number them in the cue margin), and calls this for each one.
  *
  * Memory tools get a dedicated view, matched by exact name: HoloDeck's
  * backends send the bare names (`memory_timeline`, `memory_search`,
  * `memory_provenance`) on the AG-UI wire. An MCP tool from another server
  * that happens to end in the same name keeps the generic card, as does every
- * other tool.
+ * other tool. A tool message with an `error` field always uses the generic
+ * card, which shows the error.
  */
-export function ToolCallRenderer() {
-  useRenderToolCall({
-    name: "*",
-    render: (props) => {
-      const { name, status, result } = props as unknown as WildcardRenderProps;
-      const args = (props as unknown as WildcardRenderProps).args as
-        | Record<string, unknown>
-        | undefined;
-
-      if (isToolNamed(name, "memory_timeline")) {
-        return (
-          <FactTimeline name={name} args={args} status={status} result={result} />
-        );
-      }
-
-      if (isToolNamed(name, "memory_search")) {
-        return <AsOfResults name={name} args={args} status={status} result={result} />;
-      }
-
-      if (isToolNamed(name, "memory_provenance")) {
-        return (
-          <ProvenanceCard name={name} args={args} status={status} result={result} />
-        );
-      }
-
-      return <ToolCallCard name={name} args={args} status={status} result={result} />;
-    },
-  });
-
-  return null;
+export function ToolCallView({ name, args, status, result, error, stopped }: ToolCallViewProps) {
+  if (!error && !stopped) {
+    if (isToolNamed(name, "memory_timeline")) {
+      return <FactTimeline name={name} args={args} status={status} result={result} />;
+    }
+    if (isToolNamed(name, "memory_search")) {
+      return <AsOfResults name={name} args={args} status={status} result={result} />;
+    }
+    if (isToolNamed(name, "memory_provenance")) {
+      return <ProvenanceCard name={name} args={args} status={status} result={result} />;
+    }
+  }
+  return (
+    <ToolCallCard
+      name={name}
+      args={args}
+      status={status}
+      result={result}
+      error={error}
+      stopped={stopped}
+    />
+  );
 }

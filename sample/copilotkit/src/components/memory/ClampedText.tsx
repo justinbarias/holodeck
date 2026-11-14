@@ -24,7 +24,7 @@ export function ClampedText({ text, className }: { text: string; className?: str
       {long ? (
         <button
           type="button"
-          className="holodeck-asof__expand"
+          className="pb-link pb-link--tight"
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded((value) => !value)}
