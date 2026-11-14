@@ -1,18 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ToolCallCard, type ToolCallStatus } from "@/components/ToolCallCard";
+import { ToolCardShell } from "@/components/tool-card/ToolCardShell";
 import { ClampedText } from "./ClampedText";
-import { MemoryCardHeader } from "./MemoryCardHeader";
+import { chunkLabel, letterSources, shortPeriod } from "./card-view";
 import { parseToolResult } from "./parse";
-import { describeDocumentDate, plural } from "./search-view";
-import {
-  FACT_STATUS_LABEL,
-  describePeriod,
-  factStatus,
-  fileName,
-} from "./timeline-layout";
-import type { MemoryProvenanceResult, MemorySource } from "./types";
+import { describeReferenceTimeSource, plural, shortFactId } from "./search-view";
+import { MemoryErrorBody, SourceChip, memoryErrorHeadline } from "./shared";
+import { FACT_STATUS_LABEL, factStatus, formatIsoDate } from "./timeline-layout";
+import type { MemoryProvenanceResult } from "./types";
 
 export interface ProvenanceCardProps {
   /** Tool name as it arrived. */
@@ -26,20 +23,25 @@ export interface ProvenanceCardProps {
 }
 
 const TOOL_NAME = "memory_provenance";
-const EYEBROW = "Fact provenance";
-const TITLE = "Where this fact comes from";
 
 /**
- * Generative-UI view of a `memory_provenance` result: the fact, then each
- * source document with its date and the passage it came from.
+ * Generative-UI view of a `memory_provenance` result. Collapsed: the fact
+ * text. Expanded: when it holds, when it was recorded, and each source
+ * document with its date and the passage it came from.
  */
 export function ProvenanceCard({ name, args, status, result, now }: ProvenanceCardProps) {
+  const toolName = name ?? TOOL_NAME;
+  const factArg = typeof args?.fact_id === "string" ? args.fact_id : "";
+
   if (status !== "complete") {
     return (
-      <section className="holodeck-tool-call holodeck-timeline" aria-busy="true">
-        <MemoryCardHeader eyebrow={EYEBROW} title={TITLE} status={status} />
-        <p className="holodeck-timeline__status-line">Looking up the sources…</p>
-      </section>
+      <ToolCardShell
+        name={toolName}
+        headline={factArg ? `Looking up fact ${shortFactId(factArg)}` : "Looking up the sources…"}
+        tone="running"
+        status="Running"
+        expandable={false}
+      />
     );
   }
 
@@ -47,108 +49,129 @@ export function ProvenanceCard({ name, args, status, result, now }: ProvenanceCa
 
   if (parsed.kind === "error") {
     return (
-      <section className="holodeck-tool-call holodeck-timeline">
-        <MemoryCardHeader eyebrow={EYEBROW} title={TITLE} status={status} failed />
-        <div className="holodeck-timeline__error">
-          <p>{parsed.message}</p>
-          <span className="holodeck-timeline__code">{parsed.code}</span>
-        </div>
-      </section>
+      <ToolCardShell
+        name={toolName}
+        headline={memoryErrorHeadline(parsed.message, args)}
+        tone="failed"
+        status="Failed"
+        expandable
+      >
+        <MemoryErrorBody code={parsed.code} message={parsed.message} args={args} />
+      </ToolCardShell>
     );
   }
 
   if (parsed.kind !== "provenance") {
+    return <ToolCallCard name={toolName} args={args} status={status} result={result} />;
+  }
+
+  const provenance = parsed.result;
+  if (!provenance.found || !provenance.fact) {
     return (
-      <ToolCallCard name={name ?? TOOL_NAME} args={args} status={status} result={result} />
+      <ToolCardShell
+        name={toolName}
+        headline={factArg ? `No fact with id ${shortFactId(factArg)}` : "This fact was not found"}
+        tone="quiet"
+        status="Not found"
+        expandable
+      >
+        <p className="pb-card__message pb-card__pad">
+          No fact with this id is in memory. It may have been purged or belong to another
+          namespace.
+          {factArg ? (
+            <>
+              {" "}
+              <span className="pb-data">{factArg}</span>
+            </>
+          ) : null}
+        </p>
+      </ToolCardShell>
     );
   }
 
-  return <ProvenanceView provenance={parsed.result} now={now} />;
+  return (
+    <ToolCardShell
+      name={toolName}
+      headline={provenance.fact.text}
+      tone="done"
+      status={plural(provenance.sources.length, "source", "sources")}
+      expandable
+      label="Sources of a fact"
+    >
+      <ProvenanceBody provenance={provenance} now={now} />
+    </ToolCardShell>
+  );
 }
 
-function ProvenanceView({
+function ProvenanceBody({
   provenance,
   now: nowProp,
 }: {
   provenance: MemoryProvenanceResult;
   now?: number;
 }) {
-  const { fact, sources } = provenance;
   const [now] = useState(() => nowProp ?? Date.now());
+  const fact = provenance.fact;
+  if (!fact) return null;
+  const sources = provenance.sources;
+  const letters = letterSources(sources.map((source) => source.source_uri));
+  const holds =
+    fact.valid_to === null && factStatus(fact, now) === "current"
+      ? `${shortPeriod(fact.valid_from, null)} now`
+      : shortPeriod(fact.valid_from, fact.valid_to);
 
-  if (!provenance.found || !fact) {
-    return (
-      <section className="holodeck-tool-call holodeck-timeline holodeck-asof">
-        <MemoryCardHeader eyebrow={EYEBROW} title={TITLE} status="complete" />
-        <p className="holodeck-timeline__status-line">This fact was not found.</p>
-      </section>
-    );
-  }
-
-  return (
-    <section
-      className="holodeck-tool-call holodeck-timeline holodeck-asof"
-      aria-label="Sources of a fact"
-    >
-      <MemoryCardHeader
-        eyebrow={EYEBROW}
-        title={TITLE}
-        status="complete"
-        summary={plural(sources.length, "source", "sources")}
-      />
-
-      <div className="holodeck-asof__fact">
-        <p className="holodeck-asof__text">{fact.text}</p>
-        <p className="holodeck-timeline__fact-meta">
-          <span
-            className={
-              factStatus(fact, now) === "current"
-                ? "holodeck-timeline__tag holodeck-timeline__tag--open"
-                : "holodeck-timeline__tag"
-            }
-          >
-            {FACT_STATUS_LABEL[factStatus(fact, now)]}
-          </span>
-          <span>{capitalise(describePeriod(fact, now))}</span>
-        </p>
-      </div>
-
-      {sources.length === 0 ? (
-        <p className="holodeck-timeline__status-line">No source passage is recorded.</p>
-      ) : (
-        <div className="holodeck-timeline__facts">
-          <h4 className="holodeck-timeline__facts-title">Sources</h4>
-          <ol className="holodeck-asof__hits">
-            {sources.map((source) => (
-              <li key={source.episode_id + source.chunk_id} className="holodeck-asof__hit">
-                <SourceBlock source={source} />
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function SourceBlock({ source }: { source: MemorySource }) {
   return (
     <>
-      <p className="holodeck-asof__source-file">
-        <span className="holodeck-timeline__file">{fileName(source.source_uri)}</span>
-      </p>
-      <p className="holodeck-timeline__fact-meta">{describeDocumentDate(source)}</p>
-      {source.text ? (
-        <blockquote className="holodeck-asof__quote">
-          <ClampedText text={source.text} className="holodeck-asof__quote-text" />
-        </blockquote>
-      ) : (
-        <p className="holodeck-timeline__quiet">No passage text is recorded for this source.</p>
-      )}
+      <p className="pb-prov__fact">{fact.text}</p>
+      <dl className="pb-kv pb-kv--prose">
+        <div className="pb-kv__row">
+          <dt>Holds</dt>
+          <dd>
+            {holds}{" "}
+            <span className="pb-quiet">· {FACT_STATUS_LABEL[factStatus(fact, now)]}</span>
+          </dd>
+        </div>
+        {fact.recorded_at ? (
+          <div className="pb-kv__row">
+            <dt>Recorded</dt>
+            <dd>{formatIsoDate(fact.recorded_at)}</dd>
+          </div>
+        ) : null}
+        <div className="pb-kv__row">
+          <dt>Fact id</dt>
+          <dd className="pb-data">{fact.fact_id}</dd>
+        </div>
+        {sources.map((source) => (
+          <Fragment key={source.episode_id + source.chunk_id}>
+            <div className="pb-kv__row">
+              <dt>Document</dt>
+              <dd>
+                <SourceChip letter={letters.get(source.source_uri) ?? "?"}>
+                  <span className="pb-data">{source.source_uri}</span>
+                </SourceChip>{" "}
+                <span className="pb-quiet">{chunkLabel(source.chunk_id)}</span>
+              </dd>
+            </div>
+            <div className="pb-kv__row">
+              <dt>Dated</dt>
+              <dd>
+                {formatIsoDate(source.reference_time)},{" "}
+                {describeReferenceTimeSource(source.reference_time_source)}
+              </dd>
+            </div>
+            {source.text ? (
+              <div className="pb-kv__quote">
+                <blockquote className="pb-quote">
+                  <ClampedText text={source.text} className="pb-quote__text" />
+                </blockquote>
+              </div>
+            ) : null}
+          </Fragment>
+        ))}
+      </dl>
+      {sources.length === 0 ? (
+        <p className="pb-card__message pb-card__pad">No source passage is recorded.</p>
+      ) : null}
     </>
   );
-}
-
-function capitalise(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

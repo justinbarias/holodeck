@@ -22,6 +22,8 @@ from typing import Literal
 import pandas as pd
 
 from holodeck.config.context import STORED_SNAPSHOT
+from holodeck.dashboard.loaded_run import LoadedRun
+from holodeck.dashboard.revisions import chronological, run_time
 from holodeck.dashboard.seed_data import build_seed_runs
 from holodeck.models.eval_run import EvalRun
 
@@ -42,34 +44,34 @@ def _pass_rate_fraction(run: EvalRun) -> float:
     return (s.passed / s.total_tests) if s.total_tests > 0 else 0.0
 
 
-def load_all(results_dir: Path) -> list[EvalRun]:
-    """Load every `*.json` file under `results_dir` as an EvalRun.
+def load_all(results_dir: Path) -> list[LoadedRun]:
+    """Load every `*.json` file under `results_dir` as a LoadedRun.
 
+    Each run's id is its file name without ``.json`` (unique in the
+    directory), so runs saved with the same timestamp stay distinct.
     Corrupt or schema-violating files are logged and skipped (FR-024, R6).
     Missing directory returns [] without error (FR-023).
-    Results sorted by `report.timestamp` ascending.
+    Results sorted oldest first by parsed run time (`revisions.chronological`).
     """
     if not results_dir.exists() or not results_dir.is_dir():
         return []
 
-    runs: list[EvalRun] = []
+    runs: list[LoadedRun] = []
     for path in sorted(results_dir.glob("*.json")):
         try:
-            runs.append(
-                EvalRun.model_validate_json(
-                    path.read_text(encoding="utf-8"),
-                    # A stored run may be opened away from its agent's files.
-                    context={STORED_SNAPSHOT: True},
-                )
+            run = EvalRun.model_validate_json(
+                path.read_text(encoding="utf-8"),
+                # A stored run may be opened away from its agent's files.
+                context={STORED_SNAPSHOT: True},
             )
+            runs.append(LoadedRun.from_run(run, path.stem))
         except Exception as exc:
             logger.warning("Skipping %s — failed to load EvalRun: %s", path.name, exc)
             continue
-    runs.sort(key=lambda r: r.report.timestamp)
-    return runs
+    return chronological(runs)
 
 
-def load_runs_for_app() -> list[EvalRun]:
+def load_runs_for_app() -> list[LoadedRun]:
     """Load runs according to env vars.
 
     - `HOLODECK_DASHBOARD_USE_SEED=1` → seed dataset.
@@ -104,8 +106,11 @@ def _tags_list(run: EvalRun) -> list[str]:
     return list(run.metadata.prompt_version.tags or [])
 
 
-def to_summary_dataframe(runs: list[EvalRun]) -> pd.DataFrame:
-    """One row per run, sorted newest-first; pass_rate on 0..1 scale."""
+def to_summary_dataframe(runs: list[LoadedRun]) -> pd.DataFrame:
+    """One row per run, sorted newest-first; pass_rate on 0..1 scale.
+
+    ``id`` is the run id, so runs with the same timestamp keep their own row.
+    """
     if not runs:
         return pd.DataFrame(
             columns=[
@@ -124,12 +129,12 @@ def to_summary_dataframe(runs: list[EvalRun]) -> pd.DataFrame:
         )
 
     rows = []
-    for run in runs:
+    for run in chronological(runs):
         pr = _pass_rate_fraction(run)
         rows.append(
             {
-                "id": run.report.timestamp,
-                "timestamp": pd.to_datetime(run.report.timestamp),
+                "id": run.run_id,
+                "timestamp": pd.Timestamp(run_time(run)).tz_convert("UTC"),
                 "pass_rate": pr,
                 "passed": run.report.summary.passed,
                 "total": run.report.summary.total_tests,
@@ -141,9 +146,8 @@ def to_summary_dataframe(runs: list[EvalRun]) -> pd.DataFrame:
                 "pass_rate_tier": _pass_rate_tier(pr),
             }
         )
-    df = pd.DataFrame(rows)
-    df = df.sort_values("timestamp", ascending=False).reset_index(drop=True)
-    return df
+    # Newest first; built in chronological order so equal times stay stable.
+    return pd.DataFrame(rows).iloc[::-1].reset_index(drop=True)
 
 
 def _iter_metric_results(run: EvalRun, kind: MetricKind | None = None):
@@ -162,8 +166,10 @@ def to_metric_trend_dataframe(runs: list[EvalRun], kind: MetricKind) -> pd.DataF
         return pd.DataFrame()
 
     per_run: list[dict] = []
-    for run in runs:
-        row: dict[str, object] = {"timestamp": pd.to_datetime(run.report.timestamp)}
+    for run in chronological(runs):
+        row: dict[str, object] = {
+            "timestamp": pd.Timestamp(run_time(run)).tz_convert("UTC")
+        }
         bucket: dict[str, list[float]] = {}
         for m in _iter_metric_results(run, kind):
             bucket.setdefault(m.metric_name, []).append(float(m.score))
@@ -171,8 +177,7 @@ def to_metric_trend_dataframe(runs: list[EvalRun], kind: MetricKind) -> pd.DataF
             row[name] = sum(scores) / len(scores) if scores else None
         per_run.append(row)
 
-    df = pd.DataFrame(per_run).sort_values("timestamp").reset_index(drop=True)
-    return df
+    return pd.DataFrame(per_run)
 
 
 def to_breakdown_dataframe(
@@ -182,7 +187,7 @@ def to_breakdown_dataframe(
     if not runs:
         return pd.DataFrame(columns=["metric_name", "avg_score", "pass_count", "total"])
 
-    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp)[-recent_n:]
+    sorted_runs = chronological(runs)[-recent_n:]
 
     agg: dict[str, dict] = {}
     for run in sorted_runs:
@@ -216,11 +221,33 @@ def to_breakdown_dataframe(
     )
 
 
+def metric_thresholds(runs: list[EvalRun], kind: MetricKind) -> dict[str, float | None]:
+    """Threshold per metric name of ``kind``; ``None`` when runs disagree or
+    no threshold was saved."""
+    seen: dict[str, set[float | None]] = {}
+    for run in runs:
+        for m in _iter_metric_results(run, kind):
+            value = float(m.threshold) if m.threshold is not None else None
+            seen.setdefault(m.metric_name, set()).add(value)
+    return {
+        name: next(iter(values)) if len(values) == 1 else None
+        for name, values in seen.items()
+    }
+
+
+def shared_threshold(runs: list[EvalRun], kind: MetricKind) -> float | None:
+    """The one threshold every metric of ``kind`` uses, else ``None``."""
+    values = set(metric_thresholds(runs, kind).values())
+    if len(values) == 1:
+        return next(iter(values))
+    return None
+
+
 def detect_regressions(runs: list[EvalRun], drop_threshold: float = 0.04) -> list[int]:
     """Indices (chronological) where pass_rate drops more than `drop_threshold`."""
     if len(runs) < 2:
         return []
-    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp)
+    sorted_runs = chronological(runs)
     rates = [_pass_rate_fraction(r) for r in sorted_runs]
     out = []
     for i in range(1, len(rates)):
@@ -233,7 +260,7 @@ def detect_version_boundaries(runs: list[EvalRun]) -> list[tuple[int, str]]:
     """Indices (chronological) where prompt_version changes, + the new version."""
     if not runs:
         return []
-    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp)
+    sorted_runs = chronological(runs)
     out: list[tuple[int, str]] = []
     prev = None
     for i, run in enumerate(sorted_runs):

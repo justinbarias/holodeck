@@ -635,6 +635,48 @@ class TestAgentServerAGUIEndpoint:
         )
         assert response.status_code == 422
 
+    def test_agui_endpoint_rejects_legacy_binary_part(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """The pre-1.0 flat ``binary`` part fails RunAgentInput validation (422)."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+        client = TestClient(app)
+
+        response = client.post(
+            "/awp",
+            json={
+                "threadId": "thread-123",
+                "runId": "run-456",
+                "messages": [
+                    {
+                        "id": "msg-1",
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "What's in this image?"},
+                            {
+                                "type": "binary",
+                                "mimeType": "image/png",
+                                "data": "aGVsbG8=",
+                                "filename": "test.png",
+                            },
+                        ],
+                    },
+                ],
+                "state": None,
+                "tools": [],
+                "context": [],
+                "forwardedProps": None,
+            },
+        )
+
+        assert response.status_code == 422
+        errors = response.json()["detail"]
+        assert any("binary" in str(error) for error in errors)
+
     def test_agui_endpoint_exists_on_ag_ui_protocol(
         self, mock_agent_config: MagicMock
     ) -> None:

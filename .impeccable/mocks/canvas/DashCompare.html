@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HoloDeck test view · Compare</title>
+</head>
+<body>
+
+
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&amp;family=Courier+Prime:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f6f9}
+a{color:#1d2347}a:hover{color:#3d4a99}
+.cue{font-family:"Courier Prime",ui-monospace,monospace}
+.rv{font-size:12px;font-weight:600;padding:3px 7px;border-radius:3px;white-space:nowrap}
+.rv-blue{background:#cfe0f8;color:#234f99}.rv-yellow{background:#f7e8a6;color:#6b5200}.rv-green{background:#d2ecd9;color:#1d6337}.rv-gold{background:#f1d7a4;color:#6e4700}.rv-buff{background:#e8dcc4;color:#5b4a2a}
+.panel{background:#fff;border:1px solid #dde0e8;border-radius:8px}
+.ph{padding:14px 18px 4px}.ph h3{margin:0;font-size:15px;font-weight:600}.ph p{margin:3px 0 10px;font-size:12.5px;color:#555b6b}
+.btn{font:600 13px "Public Sans",sans-serif;border-radius:6px;padding:0 12px;min-height:36px;border:1px solid #8a90a3;background:#fff;color:#15171e}
+.seg{display:inline-flex;border:1px solid #8a90a3;border-radius:6px;overflow:hidden}
+.seg button{font:13px "Public Sans",sans-serif;border:0;background:#fff;color:#555b6b;padding:0 12px;min-height:34px;border-right:1px solid #dde0e8}
+.seg button:last-child{border-right:0}.seg button.on{background:#1d2347;color:#fff;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:600;font-size:12px;color:#555b6b;padding:8px 12px;border-bottom:1px solid #dde0e8}
+td{padding:8px 12px;border-bottom:1px solid #eceef3}
+.up{color:#17703c;font-weight:600}.dn{color:#c2312a;font-weight:600}.eq{color:#555b6b}
+.cell{display:inline-flex;align-items:center;justify-content:center;gap:4px;width:100%;height:30px;border-radius:3px;font-size:12px;font-weight:600}
+.pass{background:#d2ecd9;color:#1d6337}.fail{background:#f8d5d2;color:#8f1f19}.miss{background:#eceef3;color:#555b6b}
+h2{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+</style>
+
+<div style="font-family: 'Public Sans', system-ui, sans-serif; color: #15171e; background: #f5f6f9; padding: 40px 48px; display: flex; flex-direction: column; gap: 32px">
+
+  <section class="panel" style="padding: 40px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px">
+    <h2>Pick runs to compare</h2>
+    <p style="margin: 0; font-size: 14.5px; color: #555b6b; max-width: 60ch; line-height: 1.55">Add runs with the + button in the Summary runs table, or start from a quick pick. The first run you add is the baseline; up to four runs fit side by side.</p>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 4px">
+      <button class="btn" style="min-height: 44px">Latest vs previous</button><button class="btn" style="min-height: 44px">Best vs worst in range</button><button class="btn" style="min-height: 44px">Latest run of each revision</button>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 16px">
+    <div class="panel" style="padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+      <span style="font-weight: 600; font-size: 14px">Comparing 3 runs</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid #8a90a3; border-radius: 6px; padding: 4px 4px 4px 8px; font-size: 13px"><b class="cue">R14</b><span class="rv rv-green">v1.2.1</span><span style="font-size: 12px; color: #555b6b">baseline</span><button aria-label="Remove R14" style="width: 28px; height: 28px; border: 0; background: none"><svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="#555b6b" stroke-width="1.6"></path></svg></button></span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid #8a90a3; border-radius: 6px; padding: 4px 4px 4px 8px; font-size: 13px"><b class="cue">R18</b><span class="rv rv-gold">v1.3</span><button aria-label="Remove R18" style="width: 28px; height: 28px; border: 0; background: none"><svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="#555b6b" stroke-width="1.6"></path></svg></button></span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid #8a90a3; border-radius: 6px; padding: 4px 4px 4px 8px; font-size: 13px"><b class="cue">R24</b><span class="rv rv-buff">v1.4</span><button aria-label="Remove R24" style="width: 28px; height: 28px; border: 0; background: none"><svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="#555b6b" stroke-width="1.6"></path></svg></button></span>
+      <span style="margin-left: auto; font-size: 12.5px; color: #555b6b">Layout</span>
+      <div class="seg" role="group" aria-label="Layout"><button class="on">Side by side</button><button>Baseline + deltas</button><button>Matrix first</button></div>
+      <button class="btn">Clear</button>
+    </div>
+    <div style="display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start">
+      <div class="panel"><div class="ph"><h3>Headline stats</h3><p>Change is measured against the baseline, R14.</p></div>
+        <table><thead><tr><th>Measure</th><th><span class="cue">R14</span> <span class="rv rv-green">v1.2.1</span></th><th><span class="cue">R18</span> <span class="rv rv-gold">v1.3</span></th><th><span class="cue">R24</span> <span class="rv rv-buff">v1.4</span></th></tr></thead><tbody>
+          <tr><td>Pass rate</td><td>75.0%</td><td>83.3% <span class="up">+8.3</span></td><td>91.7% <span class="up">+16.7</span></td></tr>
+          <tr><td>Cases passed</td><td>9 / 12</td><td>10 / 12 <span class="up">+1</span></td><td>11 / 12 <span class="up">+2</span></td></tr>
+          <tr><td>Mean G-Eval</td><td>0.84</td><td>0.88 <span class="up">+0.04</span></td><td>0.92 <span class="up">+0.08</span></td></tr>
+          <tr><td>Faithfulness</td><td>0.88</td><td>0.86 <span class="dn">−0.02</span></td><td>0.86 <span class="dn">−0.02</span></td></tr>
+          <tr><td>Median duration</td><td>25.0 s</td><td>26.5 s <span class="dn">+1.5 s</span></td><td>20.5 s <span class="up">−4.5 s</span></td></tr>
+          <tr><td>Tokens per case</td><td>3,410</td><td>3,520 <span class="eq">+110</span></td><td>2,980 <span class="up">−430</span></td></tr>
+        </tbody></table></div>
+      <div class="panel"><div class="ph"><h3>What changed between runs</h3><p>Configuration differences from each run's snapshot.</p></div>
+        <dl style="margin: 0; font-size: 13.5px">
+          <div style="padding: 9px 18px; border-top: 1px solid #eceef3"><dt style="font-size: 12px; color: #555b6b">Prompt revision</dt><dd style="margin: 3px 0 0; display: flex; gap: 6px; align-items: center"><span class="rv rv-green">v1.2.1</span><svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true"><path d="M1 5h11M8 1.5 12 5 8 8.5" stroke="#555b6b" stroke-width="1.4" fill="none"></path></svg><span class="rv rv-gold">v1.3</span><svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true"><path d="M1 5h11M8 1.5 12 5 8 8.5" stroke="#555b6b" stroke-width="1.4" fill="none"></path></svg><span class="rv rv-buff">v1.4</span></dd></div>
+          <div style="padding: 9px 18px; border-top: 1px solid #eceef3"><dt style="font-size: 12px; color: #555b6b">Temperature</dt><dd class="cue" style="margin: 3px 0 0"><s style="color: #6b7080">0.4</s> 0.2 from R24</dd></div>
+          <div style="padding: 9px 18px; border-top: 1px solid #eceef3"><dt style="font-size: 12px; color: #555b6b">kb_search top_k</dt><dd class="cue" style="margin: 3px 0 0"><s style="color: #6b7080">8</s> 5 from R18</dd></div>
+          <div style="padding: 9px 18px; border-top: 1px solid #eceef3"><dt style="font-size: 12px; color: #555b6b">Tags</dt><dd class="cue" style="margin: 3px 0 0">#rewrite → #rag-tuning</dd></div>
+        </dl></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>Test cases across runs</h3><p>Each cell says pass or fail in words; colour only repeats it.</p></div>
+      <div style="overflow-x: auto; padding: 0 18px 16px"><table style="min-width: 640px"><thead><tr><th style="padding-left: 0">Case</th><th style="text-align: center">R14 <span class="rv rv-green">v1.2.1</span></th><th style="text-align: center">R18 <span class="rv rv-gold">v1.3</span></th><th style="text-align: center">R24 <span class="rv rv-buff">v1.4</span></th></tr></thead><tbody>
+        <tr><td class="cue" style="padding-left: 0">refund_eligible_standard</td><td><span class="cell pass">Pass</span></td><td><span class="cell pass">Pass</span></td><td><span class="cell pass">Pass</span></td></tr>
+        <tr><td class="cue" style="padding-left: 0">billing_dispute</td><td><span class="cell fail">Fail</span></td><td><span class="cell fail">Fail</span></td><td><span class="cell fail">Fail</span></td></tr>
+        <tr><td class="cue" style="padding-left: 0">escalate_to_human</td><td><span class="cell fail">Fail</span></td><td><span class="cell pass">Pass · fixed</span></td><td><span class="cell pass">Pass</span></td></tr>
+        <tr><td class="cue" style="padding-left: 0">multi_item_return</td><td><span class="cell fail">Fail</span></td><td><span class="cell fail">Fail</span></td><td><span class="cell pass">Pass · fixed</span></td></tr>
+        <tr><td class="cue" style="padding-left: 0">out_of_scope_question</td><td><span class="cell pass">Pass</span></td><td><span class="cell pass">Pass</span></td><td><span class="cell miss">Not run</span></td></tr>
+      </tbody></table></div></div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h2>Layout · baseline + deltas</h2>
+      <div class="panel" style="padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center"><span style="font-size: 12px; font-weight: 600; color: #555b6b">Baseline</span><b class="cue">R14</b><span class="rv rv-green">v1.2.1</span><span style="font-size: 13.5px">75.0% · 9 / 12 · 25.0 s · claude-sonnet-4.5</span></div>
+      <div class="panel" style="padding: 14px 16px; display: grid; grid-template-columns: 120px repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 13.5px; align-items: center">
+        <span><b class="cue">R18</b> <span class="rv rv-gold">v1.3</span></span><span>Pass rate <span class="up">+8.3 pp</span></span><span>G-Eval <span class="up">+0.04</span></span><span>Duration <span class="dn">+1.5 s</span></span>
+        <span><b class="cue">R24</b> <span class="rv rv-buff">v1.4</span></span><span>Pass rate <span class="up">+16.7 pp</span></span><span>G-Eval <span class="up">+0.08</span></span><span>Duration <span class="up">−4.5 s</span></span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h2>Layout · matrix first</h2>
+      <div class="panel" style="padding: 12px 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; font-size: 13px">
+        <div><b class="cue">R14</b> <span class="rv rv-green">v1.2.1</span><div style="font-size: 20px; font-weight: 600; margin-top: 4px">75.0%</div></div>
+        <div><b class="cue">R18</b> <span class="rv rv-gold">v1.3</span><div style="font-size: 20px; font-weight: 600; margin-top: 4px">83.3% <span class="up" style="font-size: 13px">+8.3</span></div></div>
+        <div><b class="cue">R24</b> <span class="rv rv-buff">v1.4</span><div style="font-size: 20px; font-weight: 600; margin-top: 4px">91.7% <span class="up" style="font-size: 13px">+16.7</span></div></div>
+      </div>
+      <div class="panel" style="padding: 12px 16px; font-size: 13.5px; line-height: 1.5; display: flex; flex-direction: column; gap: 8px">
+        <div><b>2 cases fixed</b> since the baseline: escalate_to_human (R18), multi_item_return (R24).</div>
+        <div><b class="dn">1 case still fails</b> in every run: billing_dispute, policy_compliance 0.64.</div>
+        <div><b>Faster at v1.4:</b> median duration down 4.5 s with temperature 0.2.</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

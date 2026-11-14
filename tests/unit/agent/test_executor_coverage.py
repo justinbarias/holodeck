@@ -549,7 +549,7 @@ class TestTaskBoundSession:
             asyncio.get_running_loop().create_future()
         )
         future.cancel()
-        await actor._queue.put(("ghost", future, None))
+        await actor._queue.put(("ghost", future, None, False))
 
         await actor.start()
 

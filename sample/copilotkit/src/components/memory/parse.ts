@@ -1,7 +1,7 @@
 /**
  * Turn a raw tool result into a typed memory result.
  *
- * CopilotKit 1.54 hands a renderer the tool message content after
+ * CopilotKit (1.54 through 1.87, checked) hands a renderer the tool message content after
  * `parseJson(content, content)` (see @copilotkit/react-core
  * src/hooks/use-render-tool-call.ts), so a result arrives as an object when
  * the content was valid JSON and as the original string when it was not.

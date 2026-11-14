@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>HoloDeck · The Prompt Book (mockup)</title>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --house:#1d2347;--house-2:#283063;--house-ink:#eef0f9;--house-muted:#a9b0d4;
+  --page:#f5f6f9;--sheet:#fff;--rule:#dde0e8;--rule-2:#eceef3;--ink:#15171e;--ink-2:#555b6b;
+  --rev-blue:#cfe0f8;--rev-blue-ink:#234f99;--rev-pink:#f9d6e4;--rev-pink-ink:#93305e;
+  --rev-yellow:#f7e8a6;--rev-yellow-ink:#6b5200;--rev-green:#d2ecd9;--rev-green-ink:#1d6337;
+  --rev-gold:#f1d7a4;--rev-gold-ink:#6e4700;
+  --go:#1f8a4c;--standby:#d23a32;--warn:#b07300;
+  --sans:"Public Sans",system-ui,sans-serif;--cue:"Courier Prime",ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);color:var(--ink);background:#c9ccd6;padding:32px;display:grid;gap:32px;justify-content:center}
+.frame{width:1440px;height:900px;overflow:hidden;background:var(--page);display:grid;grid-template-columns:264px 1fr;box-shadow:0 18px 50px rgba(20,24,40,.25)}
+.cap{font:600 13px var(--sans);color:#3a3f52;margin-bottom:-22px}
+::selection{background:var(--rev-yellow)}
+.cue{font-family:var(--cue)}
+/* rail */
+.rail{background:var(--house);color:var(--house-ink);padding:20px 16px;display:flex;flex-direction:column;gap:24px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:18px;letter-spacing:-.01em}
+.brand svg{flex:none}
+.agent{background:var(--house-2);border-radius:8px;padding:12px 12px 10px}
+.agent b{display:block;font-size:14.5px;font-weight:600}
+.agent span{display:block;font-size:12.5px;color:var(--house-muted);margin-top:2px}
+.live{display:flex;align-items:center;gap:7px;font-size:12px;color:#cfe9d8;margin-top:10px}
+.light{width:8px;height:8px;border-radius:50%;background:#3fbf6f;box-shadow:0 0 0 3px rgba(63,191,111,.18)}
+.group h2{font-size:12px;font-weight:600;color:var(--house-muted);margin-bottom:6px;padding-left:10px}
+.nav a{display:flex;justify-content:space-between;align-items:baseline;padding:8px 10px;border-radius:6px;font-size:14px;color:#d3d7ee;text-decoration:none}
+.nav a.on{background:#323a74;color:#fff}
+.nav a small{font-family:var(--cue);font-size:12px;color:var(--house-muted)}
+.rail .foot{margin-top:auto;font-size:12px;color:var(--house-muted);line-height:1.5}
+/* main */
+main{display:grid;grid-template-rows:64px 1fr auto;min-width:0}
+header{display:flex;align-items:center;gap:24px;padding:0 36px;background:var(--sheet);border-bottom:1px solid var(--rule)}
+header h1{font-size:17px;font-weight:600;letter-spacing:-.005em}
+header p{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.revs{margin-left:auto;display:flex;gap:6px}
+.rev{font-size:12px;font-weight:600;padding:4px 9px;border-radius:3px 3px 0 0;position:relative}
+.rev.blue{background:var(--rev-blue);color:var(--rev-blue-ink)}.rev.pink{background:var(--rev-pink);color:var(--rev-pink-ink)}
+.rev.yellow{background:var(--rev-yellow);color:var(--rev-yellow-ink)}.rev.green{background:var(--rev-green);color:var(--rev-green-ink)}.rev.gold{background:var(--rev-gold);color:var(--rev-gold-ink)}
+/* conversation */
+.conv{overflow:hidden;padding:26px 36px 0;display:grid;grid-template-columns:76px minmax(0,860px);column-gap:22px}
+.margin{position:relative;border-right:1px solid #c6cad6}
+.q{position:absolute;right:14px;display:flex;align-items:center;gap:6px;font-family:var(--cue);font-weight:700;font-size:14px;color:var(--house)}
+.q i{width:9px;height:9px;border-radius:50%}
+.br{position:absolute;right:-1px;width:7px;border:1.5px solid var(--house);border-right:0}
+.user{justify-self:end;margin-left:auto;background:var(--house);color:#fff;padding:11px 15px;border-radius:12px 12px 3px 12px;max-width:600px;font-size:15px;line-height:1.5;margin-bottom:18px}
+.card{background:var(--sheet);border:1px solid var(--rule);border-radius:8px;margin-bottom:10px;box-shadow:0 1px 2px rgba(20,24,40,.04)}
+.ch{display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--rule-2);font-size:13px;color:var(--ink-2)}
+.ch b{font-family:var(--cue);font-size:14px;color:var(--ink)}
+.ok{display:inline-flex;align-items:center;gap:5px;color:var(--go);font-weight:600;font-size:12px}
+.dur{margin-left:auto;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.track{width:140px;height:5px;background:var(--rule-2);border-radius:1px;overflow:hidden}.track span{display:block;height:100%;background:var(--house)}
+.lanes{display:grid;grid-template-columns:118px 1fr;font-size:14px}
+.lane-k{padding:10px 12px;font-weight:600;font-size:12.5px}
+.lane-v{padding:10px 14px;line-height:1.45;border-bottom:1px solid var(--rule-2)}
+.lane-v s{color:#80859a}
+.stamp{display:inline-block;margin-left:8px;font:700 11px var(--cue);color:var(--standby);border:1.5px solid var(--standby);padding:0 5px;border-radius:2px;transform:rotate(-1.5deg);vertical-align:1px}
+.ans{font-size:15.5px;line-height:1.62;padding:8px 0 0;max-width:72ch}
+.ans b{font-weight:600}
+.cite{font-size:12.5px;color:var(--ink-2);margin-top:6px}.cite .cue{color:var(--house);font-weight:700}
+.compose{padding:16px 36px 20px;background:var(--sheet);border-top:1px solid var(--rule);display:grid;grid-template-columns:76px 1fr;column-gap:22px}
+.box{display:flex;align-items:center;gap:12px;border:1px solid #c6cad6;border-radius:10px;padding:12px 12px 12px 16px;font-size:15px;color:#7d8292}
+.box .send{margin-left:auto;background:var(--house);color:#fff;border-radius:7px;padding:9px 16px;font-weight:600;font-size:14px}
+.next{font-family:var(--cue);font-weight:700;color:#9aa0b3;font-size:14px;align-self:center;text-align:right;padding-right:14px}
+/* dashboard */
+.dash{overflow:hidden;padding:24px 36px;display:grid;grid-template-columns:1fr 340px;gap:20px;align-content:start}
+.strip{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);background:var(--sheet);border:1px solid var(--rule);border-radius:8px}
+.strip div{padding:14px 18px;border-right:1px solid var(--rule-2)}.strip div:last-child{border:0}
+.strip dt{font-size:12.5px;color:var(--ink-2)}.strip dd{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:4px;letter-spacing:-.01em}
+.strip dd small{font-size:13px;font-weight:400;color:var(--ink-2);margin-left:6px}
+.up{color:var(--go)}.down{color:var(--standby)}
+.panel{background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:16px 18px}
+.panel h3{font-size:15px;font-weight:600}.panel p.sub{font-size:12.5px;color:var(--ink-2);margin:3px 0 12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:600;font-size:12px;color:var(--ink-2);padding:7px 8px;border-bottom:1px solid var(--rule)}
+td{padding:7px 8px;border-bottom:1px solid var(--rule-2)}
+.res{display:inline-flex;align-items:center;gap:5px;font-weight:600;font-size:12.5px}
+.filters{display:grid;gap:14px;align-content:start}
+.f h4{font-size:12.5px;font-weight:600;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips span{font-size:12.5px;padding:4px 9px;border-radius:5px;border:1px solid var(--rule);background:var(--sheet)}
+.chips span.on{border-color:var(--house);background:#eef0fa;color:var(--house);font-weight:600}
+</style></head><body>
+
+<div class="cap">The Prompt Book · CopilotKit chat</div>
+<section class="frame">
+  <aside class="rail">
+    <div class="brand"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="3" stroke="#eef0f9" stroke-width="1.6"/><path d="M7 2v20M12 2v20M17 2v20" stroke="#eef0f9" stroke-opacity=".35"/><path d="M2 15h20" stroke="#eef0f9" stroke-width="1.6"/></svg>HoloDeck</div>
+    <div class="agent"><b>Family Assistance memory</b><span>Family Assistance law as it stood on a date</span><div class="live"><span class="light"></span>Live · holodeck serve /awp</div></div>
+    <div class="group nav"><h2>Threads</h2>
+      <a class="on" href="#">CCS lowest band <small>4 cues</small></a>
+      <a href="#">Internal review deadline <small>2 cues</small></a>
+      <a href="#">Shared care at 50% <small>3 cues</small></a>
+      <a href="#">Tribunal review source <small>2 cues</small></a></div>
+    <div class="foot">OpenAI Agents backend · gpt-6-luna<br>Memory: graphiti · family-assistance</div>
+  </aside>
+  <main>
+    <header><div><h1>CCS lowest band, 2020 vs 2026</h1><p>Thread 7f3a · started 14:02</p></div>
+      <div class="revs"><span class="rev blue">1 Jul 2020 compilation</span><span class="rev pink">1 Jul 2026 compilation</span></div></header>
+    <section class="conv">
+      <div class="margin">
+        <div class="q" style="top:96px"><i style="background:var(--go)"></i>Q1</div>
+        <div class="q" style="top:300px"><i style="background:var(--go)"></i>Q2</div>
+        <div class="br" style="top:362px;height:76px"></div>
+      </div>
+      <div>
+        <div style="display:flex"><div class="user">How did the child care subsidy applicable percentage for the lowest income band change between the 2020 and 2026 compilations?</div></div>
+        <div class="card">
+          <div class="ch"><b>memory_timeline</b>child care subsidy · lowest income band<span class="ok"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>2 facts</span>
+            <span class="dur"><span class="track"><span style="width:64%"></span></span>2.31 s</span></div>
+          <div class="lanes">
+            <div class="lane-k rev blue" style="border-radius:0">1 Jul 2020</div><div class="lane-v"><s>Applicable percentage 85% at or below the lower income threshold of $65,710.</s><span class="stamp">CLOSED 1 JUL 2026</span></div>
+            <div class="lane-k rev pink" style="border-radius:0 0 0 7px">1 Jul 2026</div><div class="lane-v" style="border:0">Applicable percentage 90% at or below the lower income threshold; base $80,000, indexed under cl. 3(4).</div>
+          </div>
+        </div>
+        <div class="card"><div class="ch"><b>family_assistance_act_search</b>Schedule 2, clause 3(1), table item 1<span class="ok"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>3 passages</span>
+          <span class="dur"><span class="track"><span style="width:24%"></span></span>0.88 s</span></div></div>
+        <div class="ans">It rose by <b>5 percentage points</b>: from <b>85%</b> in the compilation in force from 1 July 2020 to <b>90%</b> in the compilation in force from 1 July 2026.
+          <div class="cite">Family Assistance Act 1999, Schedule 2, clause 3(1), table item 1 · <span class="cue">Q1 Q2</span></div></div>
+      </div>
+    </section>
+    <div class="compose"><span class="next cue">Q3</span><div class="box"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M12 5.5 6.6 10.9a1.6 1.6 0 0 0 2.3 2.3l5.6-5.6a3 3 0 0 0-4.3-4.3L4.6 8.9a4.4 4.4 0 0 0 6.2 6.2" stroke="#7d8292" stroke-width="1.5" stroke-linecap="round"/></svg>Ask about Family Assistance law as at a date…<span class="send">Send</span></div></div>
+  </main>
+</section>
+
+<div class="cap">The Prompt Book · test view dashboard</div>
+<section class="frame">
+  <aside class="rail">
+    <div class="brand"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="3" stroke="#eef0f9" stroke-width="1.6"/><path d="M7 2v20M12 2v20M17 2v20" stroke="#eef0f9" stroke-opacity=".35"/><path d="M2 15h20" stroke="#eef0f9" stroke-width="1.6"/></svg>HoloDeck</div>
+    <div class="agent"><b>customer-support</b><span>results/customer-support/ · 24 runs</span><div class="live" style="color:var(--house-muted)"><span class="light" style="background:#8a92bf;box-shadow:none"></span>Saved results · nothing runs here</div></div>
+    <div class="group nav"><h2>Views</h2>
+      <a class="on" href="#">Summary <small>24</small></a><a href="#">Explorer <small>24</small></a><a href="#">Compare <small>0</small></a></div>
+    <div class="group filters" style="padding:0 10px">
+      <div class="f"><h4 style="color:var(--house-muted)">Prompt version</h4><div class="chips">
+        <span class="rev blue" style="border-radius:4px">v1.0</span><span class="rev pink" style="border-radius:4px">v1.1</span><span class="rev yellow" style="border-radius:4px">v1.2</span><span class="rev green" style="border-radius:4px">v1.3</span><span class="rev gold" style="border-radius:4px">v1.4</span></div></div>
+    </div>
+    <div class="foot">Revision colours follow the script sequence: blue, pink, yellow, green, goldenrod.</div>
+  </aside>
+  <main style="grid-template-rows:64px 1fr">
+    <header><div><h1>Summary</h1><p>7 Mar – 18 Apr 2026 · claude-sonnet-4.5, gpt-4o</p></div>
+      <div class="revs"><span class="rev gold">Latest: v1.4</span></div></header>
+    <section class="dash">
+      <dl class="strip">
+        <div><dt>Latest pass rate</dt><dd>91.7%<small class="up">+8.0 pp</small></dd></div>
+        <div><dt>Runs in range</dt><dd>24<small>6 weeks</small></dd></div>
+        <div><dt>Mean G-Eval</dt><dd>0.92<small>threshold 0.70</small></dd></div>
+        <div><dt>Median duration</dt><dd>20.8 s<small class="down">+1.9 s</small></dd></div>
+      </dl>
+      <div class="panel">
+        <h3>Pass rate by run</h3><p class="sub">Background bands are prompt revisions; red cue marks a regression.</p>
+        <svg viewBox="0 0 760 250" width="100%" height="250" font-family="Public Sans" font-size="11">
+          <rect x="40" y="10" width="120" height="210" fill="#cfe0f8" opacity=".55"/><rect x="160" y="10" width="140" height="210" fill="#f9d6e4" opacity=".55"/>
+          <rect x="300" y="10" width="130" height="210" fill="#f7e8a6" opacity=".55"/><rect x="430" y="10" width="150" height="210" fill="#d2ecd9" opacity=".55"/><rect x="580" y="10" width="170" height="210" fill="#f1d7a4" opacity=".55"/>
+          <g stroke="#dde0e8"><line x1="40" y1="10" x2="750" y2="10"/><line x1="40" y1="62" x2="750" y2="62"/><line x1="40" y1="115" x2="750" y2="115"/><line x1="40" y1="168" x2="750" y2="168"/><line x1="40" y1="220" x2="750" y2="220"/></g>
+          <g fill="#555b6b"><text x="8" y="14">100%</text><text x="14" y="66">75%</text><text x="14" y="119">50%</text><text x="14" y="172">25%</text><text x="22" y="224">0%</text></g>
+          <g font-family="Courier Prime" font-weight="700" fill="#15171e"><text x="48" y="26">v1.0</text><text x="168" y="26">v1.1</text><text x="308" y="26">v1.2</text><text x="438" y="26">v1.3</text><text x="588" y="26">v1.4</text></g>
+          <polyline fill="none" stroke="#1d2347" stroke-width="2.2" points="55,108 85,108 115,108 145,108 175,124 205,100 235,74 265,74 295,74 325,74 355,62 385,92 415,62 445,62 475,50 505,50 535,50 565,40 595,28 625,28 655,28 685,28 715,28 745,28"/>
+          <g fill="#1d2347"><circle cx="295" cy="74" r="3"/><circle cx="445" cy="62" r="3"/><circle cx="595" cy="28" r="3"/></g>
+          <circle cx="175" cy="124" r="6" fill="none" stroke="#d23a32" stroke-width="2"/><circle cx="385" cy="92" r="6" fill="none" stroke="#d23a32" stroke-width="2"/>
+          <g fill="#555b6b"><text x="50" y="240">7 Mar</text><text x="250" y="240">21 Mar</text><text x="450" y="240">4 Apr</text><text x="690" y="240">18 Apr</text></g>
+        </svg>
+      </div>
+      <div class="panel" style="padding:12px 14px">
+        <h3>Latest runs</h3><p class="sub">Run numbers read like cues.</p>
+        <table><thead><tr><th>Run</th><th>Rev.</th><th>Result</th><th>Duration</th></tr></thead><tbody>
+          <tr><td class="cue"><b>R24</b></td><td><span class="rev gold" style="border-radius:3px">v1.4</span></td><td><span class="res" style="color:var(--go)">● 11/12</span></td><td>19.6 s</td></tr>
+          <tr><td class="cue"><b>R23</b></td><td><span class="rev gold" style="border-radius:3px">v1.4</span></td><td><span class="res" style="color:var(--go)">● 11/12</span></td><td>21.0 s</td></tr>
+          <tr><td class="cue"><b>R22</b></td><td><span class="rev gold" style="border-radius:3px">v1.4</span></td><td><span class="res" style="color:var(--go)">● 11/12</span></td><td>20.2 s</td></tr>
+          <tr><td class="cue"><b>R21</b></td><td><span class="rev green" style="border-radius:3px">v1.3</span></td><td><span class="res" style="color:var(--warn)">▲ 10/12</span></td><td>22.4 s</td></tr>
+          <tr><td class="cue"><b>R12</b></td><td><span class="rev yellow" style="border-radius:3px">v1.2</span></td><td><span class="res" style="color:var(--standby)">✕ 7/12 regression</span></td><td>24.9 s</td></tr>
+        </tbody></table>
+      </div>
+    </section>
+  </main>
+</section>
+</body></html>

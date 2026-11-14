@@ -28,7 +28,7 @@ All configuration is via environment variables in `.env.local` (dev) or containe
 | `AGENT_TITLE` | Yes | Header and browser tab title | `My Agent` |
 | `AGENT_DESCRIPTION` | Yes | Subtitle below title | `What my agent does` |
 | `HOLODECK_BACKEND_URL` | No | HoloDeck serve endpoint | `http://127.0.0.1:8000/awp` |
-| `FILE_ACCEPT` | No | MIME types for uploads | `image/*,application/pdf,.doc,.docx,.txt` |
+| `FILE_ACCEPT` | No | MIME types for uploads | Every type `holodeck serve` accepts (see `src/lib/supported-mime.ts`) |
 
 **Note:** These variables do NOT use the `NEXT_PUBLIC_` prefix. They are injected at runtime via server-side rendering, making them compatible with Docker containers.
 
@@ -56,7 +56,7 @@ Or use docker-compose (see root `docker-compose.yml`).
 - **Streaming responses** — Real-time token streaming via AG-UI protocol
 - **Tool call visualization** — See tool names, arguments, and results inline
 - **Memory timeline view** — `memory_timeline` results render as a fact timeline with an as-of date slider; open http://localhost:3000/memory-demo to see every state from fixtures, with no backend
-- **Multimodal uploads** — Attach images, PDFs, and documents (also supports clipboard paste)
+- **Multimodal uploads** — Attach images, PDFs, Office documents and text files (also supports clipboard paste). Files of a type `holodeck serve` does not accept are not attached; a notice names them.
 - **Dark/light mode** — System-aware theme toggle
 - **Generic** — Works with any HoloDeck agent via environment variables
 
