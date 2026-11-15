@@ -2,7 +2,7 @@
 
 **Feature Branch**: `019-deploy-command`
 **Created**: 2026-01-24
-**Status**: Shipped for Azure Container Apps (registry push, AWS, GCP not built; issues #237–#240)
+**Status**: Superseded by [045 Deploy v2](../045-deploy-v2/spec.md) on 2026-11-15. Shipped for Azure Container Apps (registry push, AWS, GCP not built; issues #237–#240)
 **Input**: User description: "Build a deployment pipeline for HoloDeck agents that enables developers to containerize and deploy their agents to cloud platforms through a single CLI command."
 
 ## User Scenarios & Testing *(mandatory)*
