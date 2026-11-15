@@ -18,8 +18,9 @@ jobs:
     # Keep the required check name "test (3.11)" (the default would add the runner).
     name: test (${{ matrix.python-version }})
     # The required 3.11 lane runs on an ephemeral Azure Container Apps runner
-    # (label "aca", 4 vCPU / 8 GiB; see infra/ci-runners). The 3.13 lane runs
-    # on a GitHub-hosted runner.
+    # (label "aca", 4 vCPU / 8 GiB). Its infrastructure lives in the private
+    # repository draftworkslabs/ci-runners. The 3.13 lane runs on a
+    # GitHub-hosted runner.
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
