@@ -1,0 +1,6 @@
+# Local values for `npm run preview:workers`. Copy to .dev.vars.
+# These override the `vars` block in wrangler.jsonc for local runs only.
+AGENT_ID=my_agent_replace_me
+AGENT_TITLE=My Agent
+AGENT_DESCRIPTION=What my agent does
+HOLODECK_BACKEND_URL=http://127.0.0.1:8000/awp
