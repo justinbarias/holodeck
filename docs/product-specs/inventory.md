@@ -28,7 +28,7 @@ The original CLI feature README is now `001-cli-core-engine/overview.md`.
 | [016](016-graphrag-integration/index.md) | GraphRAG Integration | archived | no task list | Research only; not scheduled. Supersedes legacy `graph-rag-integration/` |
 | [017](017-agent-local-server/index.md) | Agent Local Server | shipped | 54/98 | AG-UI + REST serve, health/ready, session delete, CORS exist; phase issues #190–#195 predate them |
 | [018](018-otel-observability/index.md) | OTel Observability | shipped | 65/134 | OTLP + console exporters and redaction shipped; Prometheus, Azure Monitor, multiple exporters not built (#208, #209, #211) |
-| [019](019-deploy-command/index.md) | Deploy Command | shipped | 24/52 | `deploy build/run/status/destroy` on Azure Container Apps; registry push, AWS, GCP not built (#237–#240) |
+| [019](019-deploy-command/index.md) | Deploy Command | archived | 24/52 | Superseded by 045 on 2026-11-15. Shipped `deploy build/run/status/destroy` on Azure Container Apps; registry push, AWS, GCP not built (#237–#240) |
 | [020](020-structured-document-tool/index.md) | HierarchicalDocumentTool | shipped | 84/130 | Hybrid search, definitions, cross-references shipped; optional reranking not built (#252); polish #253, #254 |
 | [021](021-claude-agent-sdk/index.md) | Native Claude Agent SDK | shipped | 154/163 | Phase 5 tool adapters exist (`lib/backends/tool_adapters.py`) |
 | [022](022-otel-genai-semconv/index.md) | OTel GenAI Semconv in Claude Backend | shipped | 28/28 | |
@@ -53,6 +53,8 @@ The original CLI feature README is now `001-cli-core-engine/overview.md`.
 | [041](041-temporal-file-inputs/index.md) | File and Bytestream Inputs for Temporal Agents | draft | 0/0 | Depends on 040; parse_document activity + pass-through attachments + gate-schema codegen (moved from 040 T14); decisions settled 2026-08-30 |
 | [042](042-dependency-stack-revamp/index.md) | Dependency Stack Revamp (Semantic Kernel removal) | pending | 67/73 | Implemented 2026-11-10 (25 of 25 tasks); live evidence open: no hosted-service run for Pinecone, Azure AI Search and Cosmos DB, CopilotKit step, FR-029 review. [Execution plan](../exec-plans/active/042-dependency-stack-revamp/2026-11-10-remove-semantic-kernel.md) stays active; H-008 resolved, follow-ups H-023 to H-031 |
 | [043](043-temporal-memory/index.md) | Temporal Knowledge Graph Memory | shipped | 28/28 | Merged to main 2026-11-12 (stack #447, #448, #449, #451, #452, #453, #457; last commit 24b34a3); `temporal_memory` tool on a Graphiti backend behind a `MemoryBackend` port, with a closure check and opt-in text closing; evals moved to a domain playbook; native PostgreSQL backend deferred to Phase 2. [Records](../exec-plans/completed/043-temporal-memory/index.md) |
+| [045](045-deploy-v2/index.md) | Deploy v2 (target matrix, Cloudflare Containers) | draft | no task list | Supersedes 019. Azure supported; Cloudflare new; AWS and GCP planned, not implemented. Decisions settled 2026-11-15; revised after adversarial review the same day |
+| [046](046-cloudflare-native-stores/index.md) | Cloudflare-native stores | draft | no task list | For agents hosted on Cloudflare (bindings; REST for local tests): Vectorize vector store, D1 keyword index, Workers AI embeddings; graph store stays external. Decisions settled 2026-11-15; revised after adversarial review the same day |
 | [—](graph-rag-integration/index.md) | GraphRAG Integration Plan (legacy) | archived | no task list | Early unnumbered feature directory; superseded by 016 |
 
-Numbers 002 and 003 have no spec directory (stale branches only).
+Numbers 002 and 003 have no spec directory (stale branches only). Number 044 is reserved for the durable chat thread store.

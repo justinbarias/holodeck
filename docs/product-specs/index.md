@@ -15,6 +15,7 @@ This index supplies navigation without duplicating requirements.
 | Evaluation and comparison | [Evaluations](../guides/evaluations.md), [dashboard](../guides/dashboard.md), [eval-run spec](031-eval-runs-dashboard/index.md) |
 | Optimization | [Optimizer guide](../guides/optimizer.md), [optimizer spec](033-holodeck-test-optimizer/index.md) |
 | Serving and deployment | [Server guide](../guides/serve.md), [deployment guide](../guides/deployment.md) |
+| Proposed Deploy v2 and Cloudflare target | [Spec 045](045-deploy-v2/spec.md), [Cloudflare-native stores, spec 046](046-cloudflare-native-stores/spec.md), currently draft |
 | Temporal activities | [Spec 040](040-holodeck-temporal/spec.md), [Temporal guide](../guides/temporal.md), [worker guide](../guides/temporal-worker.md) |
 | Proposed Temporal file inputs | [Spec 041](041-temporal-file-inputs/spec.md), currently draft |
 | Dependency stack revamp (implemented; live evidence open) | [Spec 042](042-dependency-stack-revamp/index.md): native SDKs, HoloDeck-owned native retrieval adapters, retained DeepEval, Microsoft/legacy evaluation removal; [upgrade guide](../guides/upgrading-to-0.8.md) |
