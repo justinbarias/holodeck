@@ -33,9 +33,15 @@ updates:
     open-pull-requests-limit: 5
     groups:
       copilotkit:
-        patterns: ["@copilotkit/*", "@ag-ui/*"]
+        patterns: ["@copilotkit/*"]
       npm-minor-patch:
         update-types: ["minor", "patch"]
+    # CopilotKit pins exact @ag-ui/* versions, and the sample imports
+    # @ag-ui/client directly. A bump on its own installs two copies and
+    # `next build` fails on duplicate AbstractAgent types (#481). When a
+    # CopilotKit PR lands, set @ag-ui/client to the version CopilotKit pins.
+    ignore:
+      - dependency-name: "@ag-ui/*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
