@@ -7,6 +7,7 @@ Supersedes [019 Deploy Command](../019-deploy-command/index.md).
 ## Documents
 
 - [spec.md](spec.md)
+- [reference-architecture-copilotkit.md](reference-architecture-copilotkit.md)
 
 ## Related records
 

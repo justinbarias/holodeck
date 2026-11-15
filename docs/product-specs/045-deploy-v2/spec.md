@@ -8,7 +8,8 @@
 the durable chat thread store (specified separately; number 044 is reserved for it)
 **Decision history:** The decisions in §4 were settled in a design interview on
 2026-11-15. An adversarial review on the same day (gpt-6-astra, 24 findings)
-changed D5, D7, D8 and D9 and added D10. Each rationale line records why.
+changed D5, D7, D8 and D9 and added D10. D11 (Cloudflare Access mode) was added
+on 2026-11-16. Each rationale line records why.
 
 ## 1. Objective
 
@@ -110,8 +111,9 @@ reads the values from the local environment and sets them as Worker secrets.
 The Durable Object passes them to the container when it starts.
 *Why:* values stay out of the image, the config file and the dashboard's plain variables.
 
-**D7 — Endpoint auth: a bearer token is required by default.** `deploy run`
-fails unless `auth.token_secret` is set or `auth.public` is `true`.
+**D7 — Endpoint auth is required by default.** `deploy run` fails unless the
+config selects one mode: a bearer token (`auth.token_secret`), Cloudflare
+Access (`auth.access`, D11), or an explicit public endpoint (`auth.public`).
 *(Changed in review.)*
 *Why:* a Worker URL is always public. Azure defaults to private ingress
 (`ingress_external=False`) so that an agent is not exposed by accident. The
@@ -133,6 +135,17 @@ the config does not prove that the deployment owns its contents.
 container application cannot change later. `durable_object` is in public beta.
 *Cost:* the generated code selects the image and instance size, and a new
 image does not restart running containers. `deploy run` must restart them (FR-C13).
+
+**D11 — Cloudflare Access is an auth mode.** *(Added 2026-11-16.)* With
+`auth.access`, Cloudflare Access sits in front of the Worker. Access sends
+users to an identity provider (for example Google, Microsoft Entra or GitHub)
+and admits service tokens. The Worker verifies the Access token on each request.
+*Why:* a static bearer token cannot identify a user, cannot be revoked for one
+caller, and must not be given to a browser. Access gives per-user and
+per-service identity without login code in HoloDeck.
+*Limits:* Access has no user store and no sign-up. It suits a known set of
+users. The user creates the Access application and its policies; HoloDeck does
+not (identity policy is the account owner's decision).
 
 ## 5. Architecture
 
@@ -179,6 +192,8 @@ client ──HTTPS──▶ Worker (generated)
   | `startup_timeout` | duration | `120s` | Longest wait for the container to become ready. |
   | `secrets` | list of names | `[]` | Environment variables to set as Worker secrets (D6). |
   | `auth.token_secret` | name | unset | Secret that holds the bearer token (D7). |
+  | `auth.access.team_domain` | string | unset | The Access team domain, `https://<team>.cloudflareaccess.com` (D11). |
+  | `auth.access.audience` | string | unset | The AUD tag of the Access application that covers the Worker. |
   | `auth.public` | boolean | `false` | Explicit opt-in to an endpoint with no token. |
 
 - **FR-C3:** `DeploymentConfig.registry` MUST be optional when the provider is
@@ -186,8 +201,9 @@ client ──HTTPS──▶ Worker (generated)
   and tag strategy MUST be available to `deploy build` without a `registry` block.
 - **FR-C4:** `platform` MUST be `linux/amd64` for this target. Any other value
   is a validation error.
-- **FR-C5:** Validation MUST fail when neither `auth.token_secret` nor
-  `auth.public: true` is set, and when both are set.
+- **FR-C5:** Validation MUST fail unless exactly one auth mode is set:
+  `auth.token_secret`, `auth.access`, or `auth.public: true`. `auth.access`
+  needs both `team_domain` and `audience`.
 - **FR-C6:** The published schema MUST be regenerated (`make schema`).
 
 **Build and image handoff**
@@ -283,9 +299,9 @@ client ──HTTPS──▶ Worker (generated)
 
 - **FR-C36:** `GET /health` MUST be answered by the Worker. It MUST NOT require
   the token and MUST NOT start or wake a container.
-- **FR-C37:** `/ready` and every other path MUST require the token unless
-  `auth.public` is `true`. A request without a valid `Authorization: Bearer`
-  token MUST get `401` and MUST NOT start a container.
+- **FR-C37:** In token mode, `/ready` and every other path MUST require the
+  token. A request without a valid `Authorization: Bearer` token MUST get `401`
+  and MUST NOT start a container.
 - **FR-C38:** The Worker MUST answer CORS preflight (`OPTIONS`) requests
   itself, from the CORS settings of the serve configuration, without the token
   and without starting a container.
@@ -293,6 +309,38 @@ client ──HTTPS──▶ Worker (generated)
   headers, so that a browser client can read them.
 - **FR-C40:** When `auth.public` is `true`, `deploy run` MUST print a warning
   that the endpoint is public.
+
+**Access mode (D11)**
+
+- **FR-C48:** In Access mode, the Worker MUST verify the Access token in the
+  `Cf-Access-Jwt-Assertion` header on every request that reaches it: the
+  signature against the keys published at the team domain, the issuer against
+  `team_domain`, and the audience against `audience`. It MUST NOT trust the
+  header without verification, and MUST NOT read the token from a cookie.
+- **FR-C49:** A request with a missing or invalid Access token MUST get `403`
+  and MUST NOT start a container.
+- **FR-C50:** The Worker MUST fetch the signing keys from the team domain and
+  MUST follow key rotation. It MUST NOT hold a fixed key.
+- **FR-C51:** The Worker MUST pass the verified caller identity to the
+  container in request headers that HoloDeck defines. It MUST remove any
+  header of the same name that the client sent. The identity is the user's
+  email and subject for a user, and the token's identifier for a service token.
+- **FR-C52:** The Durable Object MUST record the identity that first used a
+  conversation key. A request for that key from a different identity MUST get
+  `403`. The record MUST survive container sleep and restart.
+- **FR-C53:** `deploy run` MUST NOT create or change Access applications,
+  policies or identity providers. Before it deploys, it MUST check that the
+  team domain serves signing keys, and fail with a clear message when it does not.
+- **FR-C54:** After it deploys, `deploy run` MUST send one request without
+  credentials to the endpoint. When that request reaches the Worker, no Access
+  application covers the URL: `deploy run` MUST report this as an error and
+  name the step the user must do.
+- **FR-C55:** In Access mode, `GET /health` and CORS preflight reach the Worker
+  only when the user's Access configuration lets them through. Documentation
+  MUST explain the two Access settings for this (a bypass policy for
+  `/health`, and the option that passes `OPTIONS` requests to the origin).
+- **FR-C56:** Documentation MUST include the reference architecture in
+  [reference-architecture-copilotkit.md](reference-architecture-copilotkit.md).
 
 **Status and destroy**
 
@@ -336,7 +384,9 @@ client ──HTTPS──▶ Worker (generated)
 ## 8. Out of scope
 
 - AWS and GCP deployers.
-- Custom domains, Cloudflare Access, WAF rules.
+- Custom domains and WAF rules.
+- Creating or managing Access applications, policies and identity providers.
+- Public sign-up and a user store. Access admits a known set of users only.
 - Autoscaling, blue/green and canary releases.
 - Kubernetes, multi-agent containers, GPU images, custom Dockerfiles (as in 019).
 - A port of `holodeck serve` to the Workers runtime.
@@ -364,6 +414,11 @@ client ──HTTPS──▶ Worker (generated)
   in the account. With `--include-data`, a table that HoloDeck did not create
   in a shared D1 database is still there afterwards.
 - **SC-9:** `provider: aws` and `provider: gcp` fail with the FR-M2 message.
+- **SC-10:** In Access mode, a user who signs in through an identity provider
+  completes a conversation in the CopilotKit app, a caller with a service token
+  completes one with `curl`, a request with no Access token never reaches a
+  container, and a second identity that sends the first identity's
+  conversation key gets `403`.
 
 ## 10. Verification
 
@@ -392,3 +447,11 @@ These are facts to confirm at plan time, not product decisions:
    `hash mod N`, to move fewer keys when `instances` changes. Neither keeps
    sessions that are already lost.
 4. How the Worker reaches each slot to stop it on redeploy (FR-C13).
+5. Which claim in the Access token identifies a service token (FR-C51). The
+   validation page documents `email` for users only.
+6. Whether the Worker should use the built-in `ctx.access` check or verify the
+   token itself (FR-C48). Cloudflare lists limits for `ctx.access` with
+   service bindings; read them first.
+7. Whether `/awp` over a `workers.dev` URL under Access works for a browser
+   that calls it across origins. The reference architecture avoids this: only
+   the app's server calls the agent.
