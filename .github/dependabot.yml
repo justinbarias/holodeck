@@ -42,6 +42,10 @@ updates:
     # CopilotKit PR lands, set @ag-ui/client to the version CopilotKit pins.
     ignore:
       - dependency-name: "@ag-ui/*"
+      # TypeScript 7 (the Go compiler) breaks `npm run lint`: typescript-eslint
+      # does not support it yet (#484). Drop this when it does.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
