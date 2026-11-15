@@ -52,3 +52,4 @@ These records retain their historical claims. Migration does not establish curre
 - [Dependency Stack Revamp selection evidence](042-dependency-stack-revamp/selection-evidence.md)
 - [Temporal memory: design](043-temporal-memory/design.md)
 - [Temporal memory: Graphiti evidence](043-temporal-memory/graphiti-evidence.md)
+- [Thread store: design](044-thread-store/design.md)
