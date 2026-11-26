@@ -31,6 +31,7 @@ An earlier release does not close unfinished work. The inventory remains the sou
 | Test Optimizer | [033-holodeck-test-optimizer](exec-plans/active/033-holodeck-test-optimizer/index.md) |
 | Production Hardening | [034-production-hardening](exec-plans/active/034-production-hardening/index.md) |
 | Dependency Stack Revamp (Semantic Kernel removal) | Implementation complete 2026-11-10; live evidence open, so the plan stays active. [Execution plan](exec-plans/active/042-dependency-stack-revamp/2026-11-10-remove-semantic-kernel.md); [records](exec-plans/active/042-dependency-stack-revamp/index.md) |
+| Native A2UI Surfaces | Not started; plan written 2026-11-27. [Execution plan](exec-plans/active/044-a2ui-surfaces/2026-11-27-native-a2ui-surfaces.md); [records](exec-plans/active/044-a2ui-surfaces/index.md) |
 | OpenAI Agents SDK Backend | [Completion execution plan](exec-plans/active/035-openai-agents-backend/2026-09-06-complete-035.md); [historical records](exec-plans/active/035-openai-agents-backend/index.md) |
 
 Drafts without an execution plan yet: [037](product-specs/037-gepa-optimizer/index.md), [041](product-specs/041-temporal-file-inputs/index.md).
