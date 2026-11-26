@@ -233,6 +233,7 @@ src/holodeck/serve/protocols/agui_a2ui.py   projector and action ingestion
 tests/unit/lib/a2ui/
 tests/unit/serve/test_agui_a2ui.py
 tests/fixtures/a2ui/                         catalogs and recorded event streams
+sample/a2ui-experiment/                      Claude and OpenAI agent files, catalog, tests, demo script
 sample/copilotkit/                           catalog, surface rows, actions; no A2UI middleware
 docs/guides/a2ui.md                          user guide
 ```

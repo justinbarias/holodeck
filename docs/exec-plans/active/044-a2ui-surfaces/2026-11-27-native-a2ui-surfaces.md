@@ -119,7 +119,7 @@ This table is the status record for each task and checkpoint. Set `Status` to `I
 | T10 | A2UITool configuration (ASK) | 044.3 Tool and adapters | Fable inline | Model rules; make schema-check (R1) | To do |
 | T11 | Run binding | 044.3 Tool and adapters | Opus medium | No binding leak across sessions | To do |
 | T12 | render_a2ui tool adapters on both backends | 044.3 Tool and adapters | Opus medium | rendered, invalid, failed on both (R4, R5) | To do |
-| T13 | holodeck test and chat support | 044.3 Tool and adapters | Sonnet medium | holodeck test run passes on both (R11) | To do |
+| T13 | holodeck test and chat support, sample/a2ui-experiment | 044.3 Tool and adapters | Sonnet medium | holodeck test run passes on both agent files (R11) | To do |
 | CP-C | Checkpoint C: live step 1 and review | 044.3 Tool and adapters | Maintainer | make verify, schema-check, live step 1 | To do |
 | T14 | A2UIProjector | 044.4 Serve projector | Opus medium | Contract test matches T0 fixtures (R6 to R8) | To do |
 | T15 | Action ingestion | 044.4 Serve projector | Sonnet high | Action reaches agent on both (R9) | To do |
@@ -129,10 +129,10 @@ This table is the status record for each task and checkpoint. Set `Status` to `I
 | T18 | Catalog and registration | 044.5 CopilotKit sample | Sonnet medium | Catalog parity test passes | To do |
 | T19 | Surface rows in the transcript | 044.5 CopilotKit sample | Sonnet high | conversation.test.ts; npm run build | To do |
 | T20 | User actions from surfaces | 044.5 CopilotKit sample | Sonnet high | forwardedProps builder test | To do |
-| T21 | Runtime route and sample docs | 044.5 CopilotKit sample | Sonnet medium | No A2UI middleware; build, lint, test | To do |
+| T21 | Runtime route and demo script | 044.5 CopilotKit sample | Sonnet medium | No A2UI middleware; demo script dry run | To do |
 | CP-E | Checkpoint E: sample browser check and review | 044.5 CopilotKit sample | Maintainer | Surface and action in the browser pane | To do |
 | T22 | User guide | 044.6 Guide and evidence | Sonnet medium | harness-check, mkdocs build | To do |
-| T23 | Live validation and closeout | 044.6 Guide and evidence | Fable inline | Acceptance table filled | To do |
+| T23 | Live validation, demo videos, and closeout | 044.6 Guide and evidence | Fable inline | Two demo videos linked; acceptance table filled | To do |
 | CP-F | Checkpoint F: integrated review before merge | 044.6 Guide and evidence | Maintainer | Six criteria with evidence | To do |
 
 ## Ordered work and verification
@@ -298,10 +298,11 @@ Present the model and the loader rules before the code. This changes the publish
 #### T13. `holodeck test` and `holodeck chat` support
 
 - Load fails with `a2ui tool '<name>': default_catalog '<id>' needs a schema for test and chat` when the default catalog has no schema.
-- A sample agent with the `a2ui` tool, a local catalog, and test cases that assert the `render_a2ui` tool call.
+- `sample/a2ui-experiment/` is the one sample that `holodeck test`, `holodeck serve` and the CopilotKit app all use. It has `agent.yaml` (Claude), `agent.openai.yaml` (OpenAI Agents), and `catalogs/booking.json`.
+- Both agent files share test cases that assert the `render_a2ui` call, one repair case, and evaluations, so each run also lands on the eval dashboard.
 
-**Verify:** unit test for the load error. `cd sample/a2ui-booking && uv run holodeck test run agent.yaml` on both backends. R11.
-**Files:** `models/tool.py` or the loader that builds the binding, `sample/a2ui-booking/agent.yaml`, `sample/a2ui-booking/catalogs/booking.json`, `tests/unit/models/test_tool_a2ui.py`.
+**Verify:** unit test for the load error. `cd sample/a2ui-experiment && uv run holodeck test run agent.yaml` and `uv run holodeck test run agent.openai.yaml`. R11.
+**Files:** `models/tool.py` or the loader that builds the binding, `sample/a2ui-experiment/agent.yaml`, `sample/a2ui-experiment/agent.openai.yaml`, `sample/a2ui-experiment/catalogs/booking.json`, `tests/unit/models/test_tool_a2ui.py`.
 **Depends on:** T12. **Size:** M. **Model:** Sonnet `medium`. **Spec:** R11, criterion 6.
 
 #### Checkpoint C (after T10 to T13)
@@ -363,7 +364,7 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### T18. Catalog and registration
 
-- `src/lib/a2ui-catalog.ts` defines the booking catalog with the same ID and component names as `sample/a2ui-booking/catalogs/booking.json`.
+- `src/lib/a2ui-catalog.ts` defines the booking catalog with the same ID and component names as `sample/a2ui-experiment/catalogs/booking.json`.
 - `src/app/layout.tsx` registers it with the API from T17.
 - A test fails if the TypeScript catalog and the agent catalog differ in ID or component names.
 
@@ -390,19 +391,20 @@ If the client does not send the context entry, or the renderer cannot run outsid
 **Files:** `src/lib/a2ui-action.ts` (new), `src/lib/a2ui-action.test.ts` (new), `src/components/a2ui/SurfaceCard.tsx`.
 **Depends on:** T19. **Size:** S. **Model:** Sonnet `high`. **Spec:** R9, criterion 4.
 
-#### T21. Runtime route and sample docs
+#### T21. Runtime route and demo script
 
 - `src/app/api/copilotkit/route.ts` keeps a plain `HttpAgent` to `holodeck serve /awp`, with no A2UI middleware and no second `render_a2ui` tool, using the T17 answer.
-- `README.md` explains how to run the sample against `sample/a2ui-booking`, with `HOLODECK_BACKEND_URL` and `AGENT_ID`.
+- `sample/a2ui-experiment/README.md` has the demo script: start `holodeck serve` on each agent file, start the CopilotKit app with `HOLODECK_BACKEND_URL` and `AGENT_ID`, then one fixed path: ask for a booking, watch the surface build, see one invalid-then-repaired render, click Book, see the surface update.
+- `sample/copilotkit/README.md` links to that demo script.
 
-**Verify:** `npm run build`, `npm run lint`, `npm test`. A request to the route forwards `context` and `forwardedProps` unchanged (check with `holodeck serve` debug logging).
-**Files:** `src/app/api/copilotkit/route.ts`, `README.md`.
+**Verify:** `npm run build`, `npm run lint`, `npm test`. A request to the route forwards `context` and `forwardedProps` unchanged (check with `holodeck serve` debug logging). A dry run of the demo script on one backend.
+**Files:** `src/app/api/copilotkit/route.ts`, `README.md`, `../a2ui-experiment/README.md`.
 **Depends on:** T17. **Size:** S. **Model:** Sonnet `medium`. **Spec:** D2, criterion 1.
 
 #### Checkpoint E (after T17 to T21)
 
 - `npm test`, `npm run lint`, and `npm run build` pass in `sample/copilotkit`.
-- Against a local `holodeck serve` on the `a2ui-booking` sample, the browser pane shows one surface and the action reaches the agent. A screenshot is recorded.
+- Against a local `holodeck serve` on `sample/a2ui-experiment`, the browser pane shows one surface and the action reaches the agent. A screenshot is recorded.
 - Adversarial review of PR 044.5.
 
 ### Phase 6: PR 044.6, guide and live evidence
@@ -418,11 +420,12 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### T23. Live validation and closeout
 
-- Live loop step 3: the maintainer drives the CopilotKit sample on Claude and on OpenAI and confirms the surface, the repair, and the action. Record what the UI showed.
+- Live loop step 3: run the `sample/a2ui-experiment` demo script in the CopilotKit app on Claude and on OpenAI. The maintainer starts the session with live credentials. Record what the UI showed.
+- Record one video per backend of the demo path, with the Chrome DevTools screencast tools or the Claude in Chrome GIF recorder. Do not commit the videos. Attach them to the PR 044.6 description and link them from the acceptance table.
 - Fill the acceptance table. Update the spec status, the inventory row, and `docs/PLANS.md`.
 - Move this plan to `completed/` only when all six criteria pass.
 
-**Verify:** the acceptance table has evidence for every row. `make harness-check`.
+**Verify:** the acceptance table has evidence for every row, with the two video links for criteria 1, 3, and 4. `make harness-check`.
 **Files:** this plan, `docs/product-specs/044-a2ui-surfaces/spec.md`, `docs/product-specs/inventory.md`, `docs/PLANS.md`.
 **Depends on:** Checkpoint E, T22. **Size:** S. **Model:** Fable inline. **Spec:** section 11.
 
@@ -463,10 +466,10 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 | Criterion | Evidence | Status |
 | --- | --- | --- |
-| 1. CopilotKit renders on both backends, no middleware | Checkpoint E, T23 | Open |
+| 1. CopilotKit renders on both backends, no middleware | Checkpoint E, T23 videos | Open |
 | 2. First snapshot before `TOOL_CALL_END` | Checkpoint D | Open |
-| 3. Repair in one run | Checkpoint D | Open |
-| 4. Action round trip | Checkpoint D, T20, T23 | Open |
+| 3. Repair in one run | Checkpoint D, T23 videos | Open |
+| 4. Action round trip | Checkpoint D, T20, T23 videos | Open |
 | 5. Contract test passes | T14 | Open |
 | 6. `holodeck test run` passes | T13, Checkpoint C | Open |
 
@@ -476,6 +479,8 @@ If the client does not send the context entry, or the renderer cannot run outsid
 - 2026-11-27: Plan revised to the task breakdown standard. T11 (L) split into T11 run binding and T12 adapters. Later tasks renumbered by one. Added files per task, the dependency graph, parallel-work notes, the slicing decision, a risk table, and Checkpoint E.
 - 2026-11-27: Added a task index table and turned the acceptance checkboxes into plain bullets, so the command center shows one row per task. Status is now recorded in the task index.
 - 2026-11-27: Maintainer asked for native A2UI support in the CopilotKit sample as part of this plan. The sample renders its own transcript (`src/lib/conversation.ts`), so the one sample task became T17 to T21 (API check, catalog, surface rows, actions, route) in a new PR 044.5. The guide and closeout moved to PR 044.6 as T22 and T23. Checkpoint E covers the sample; the final checkpoint is now F.
+
+- 2026-11-27: Maintainer asked for one sample experiment and a recorded demo. The sample agent is now `sample/a2ui-experiment` with a Claude and an OpenAI agent file (T13). T21 adds the demo script. T23 records one video per backend and links it from the acceptance table. Videos are not committed.
 
 ## Validation results and remaining blockers
 
