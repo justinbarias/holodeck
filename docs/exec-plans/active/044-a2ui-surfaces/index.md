@@ -6,4 +6,4 @@ Feature: `044-a2ui-surfaces`. Product contract: [spec 044](../../../product-spec
 
 ## Documents
 
-- [2026-11-27-native-a2ui-surfaces.md](2026-11-27-native-a2ui-surfaces.md) — execution checklist: 19 tasks (T0 to T18), four checkpoints, five PRs, acceptance table
+- [2026-11-27-native-a2ui-surfaces.md](2026-11-27-native-a2ui-surfaces.md) — execution checklist: 24 tasks (T0 to T23), six checkpoints, six PRs, dependency graph, risks, acceptance table

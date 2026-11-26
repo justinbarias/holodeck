@@ -42,6 +42,7 @@ User stories:
 | Streaming | Progressive paint | Paint when the `components` array closes, then stream data. |
 | Backends | Claude and OpenAI Agents | The OpenAI path gains AG-UI parity first (section 4.6). |
 | Hosts | `serve` AG-UI, `test`, `chat` | REST `serve` returns operations in the tool result only. |
+| Frontend sample | `sample/copilotkit` | Registers the catalog, draws `a2ui-surface` activity messages in its own transcript, and sends actions. No A2UI middleware in the runtime route. |
 
 Out of scope: A2UI v0.9, `callRendererFunction`, `callAgentFunction` and the function-response messages, A2A and MCP bindings of A2UI, a HoloDeck renderer, server-side catalog hosting, Temporal activities, and new `holodeck test` assertion types for surfaces.
 
@@ -232,7 +233,7 @@ src/holodeck/serve/protocols/agui_a2ui.py   projector and action ingestion
 tests/unit/lib/a2ui/
 tests/unit/serve/test_agui_a2ui.py
 tests/fixtures/a2ui/                         catalogs and recorded event streams
-sample/copilotkit/                           A2UI catalog and renderer demo
+sample/copilotkit/                           catalog, surface rows, actions; no A2UI middleware
 docs/guides/a2ui.md                          user guide
 ```
 
@@ -275,7 +276,7 @@ Fixtures for the contract test come from one run of the TypeScript middleware, r
 
 ## 11. Success criteria
 
-1. The CopilotKit sample, with only `a2ui={{ catalog }}` added and no Node middleware, renders a surface from `holodeck serve` on Claude and on OpenAI.
+1. The CopilotKit sample, with no A2UI middleware in its runtime route, renders a surface from `holodeck serve` on Claude and on OpenAI. An app that uses `CopilotChat` needs only the catalog registration.
 2. The first `ACTIVITY_SNAPSHOT` for a surface arrives before `TOOL_CALL_END` for that call, on both backends, in the raw `curl -N` stream.
 3. An invalid component tree gets `status: "invalid"`, and the model's second call renders in the same run, with one `RUN_STARTED` and one `RUN_FINISHED`.
 4. A button click reaches the agent as an action message, and the next turn updates the same `surfaceId`.
@@ -284,7 +285,7 @@ Fixtures for the contract test come from one run of the TypeScript middleware, r
 
 ## 12. Delivery
 
-A stack of five PRs, bottom first:
+A stack of six PRs, bottom first:
 
 | PR | Layer | Depends on |
 | --- | --- | --- |
@@ -292,7 +293,8 @@ A stack of five PRs, bottom first:
 | 044.2 | A2UI core: catalog, validation, parser, operations | none |
 | 044.3 | `A2UITool` config, schema, run binding, tool adapters for both backends | 044.2 |
 | 044.4 | Projector and action ingestion in serve | 044.1, 044.3 |
-| 044.5 | CopilotKit sample, user guide, live validation | 044.4 |
+| 044.5 | Native A2UI in the CopilotKit sample: catalog, surface rows, actions, route | 044.4 |
+| 044.6 | User guide, live validation | 044.5 |
 
 044.1 and 044.2 are independent and can target `main` in parallel.
 
