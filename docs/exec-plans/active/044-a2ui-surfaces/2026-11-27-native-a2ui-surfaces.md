@@ -98,6 +98,43 @@ From the user-level model guidance. Escalate in order: add a self-check, raise e
 
 Each subagent spawn needs maintainer approval first, as the user-level guidance requires.
 
+## Task index
+
+This table is the status record for each task and checkpoint. Set `Status` to `In progress`, `Blocked`, or `Done 2026-MM-DD` as work moves. The sections below hold the detail and acceptance bullets. Dependencies for the command center are in [command-center.toml](command-center.toml).
+
+| # | Task | Feature | Model | Acceptance | Status |
+| --- | --- | --- | --- | --- | --- |
+| T0 | Record middleware wire fixtures | 044.2 A2UI core | Sonnet high | Four fixture cases load as AG-UI events | To do |
+| T1 | Spike: OpenAI frontend-tool stop and resume (ASK on failure) | 044.1 OpenAI parity | Opus medium | Resume result recorded in this plan | To do |
+| T2 | Tool-argument deltas on the OpenAI path | 044.1 OpenAI parity | Sonnet high | TOOL_CALL_ARGS between START and END | To do |
+| T3 | OpenAI send_agui: context, state, forwardedProps | 044.1 OpenAI parity | Opus medium | Shared addendum; Claude tests unchanged | To do |
+| T4 | OpenAI frontend tools | 044.1 OpenAI parity | Opus medium | Stop, resume, no repeated call (R10) | To do |
+| T5 | One handle_request path for both providers (ASK) | 044.1 OpenAI parity | Fable inline | No provider branch; serve tests pass | To do |
+| CP-A | Checkpoint A: OpenAI parity live loop and review | 044.1 OpenAI parity | Maintainer | make verify, live step 2, review | To do |
+| T6 | Catalog contract and resolution (ASK) | 044.2 A2UI core | Fable inline | Allowlist, client-wins, size limit (R2, R3, R12) | To do |
+| T7 | Component validation | 044.2 A2UI core | Sonnet high | One issue per error with a JSON pointer (R5) | To do |
+| T8 | Incremental argument parser | 044.2 A2UI core | Sonnet high | Every-byte split gives the same steps | To do |
+| T9 | A2UI 1.0 operation builders | 044.2 A2UI core | Sonnet medium | Output matches T0 operations | To do |
+| CP-B | Checkpoint B: core import boundary and review | 044.2 A2UI core | Maintainer | Structural test, make verify, review | To do |
+| T10 | A2UITool configuration (ASK) | 044.3 Tool and adapters | Fable inline | Model rules; make schema-check (R1) | To do |
+| T11 | Run binding | 044.3 Tool and adapters | Opus medium | No binding leak across sessions | To do |
+| T12 | render_a2ui tool adapters on both backends | 044.3 Tool and adapters | Opus medium | rendered, invalid, failed on both (R4, R5) | To do |
+| T13 | holodeck test and chat support | 044.3 Tool and adapters | Sonnet medium | holodeck test run passes on both (R11) | To do |
+| CP-C | Checkpoint C: live step 1 and review | 044.3 Tool and adapters | Maintainer | make verify, schema-check, live step 1 | To do |
+| T14 | A2UIProjector | 044.4 Serve projector | Opus medium | Contract test matches T0 fixtures (R6 to R8) | To do |
+| T15 | Action ingestion | 044.4 Serve projector | Sonnet high | Action reaches agent on both (R9) | To do |
+| T16 | Wire binding, projector, actions into handle_request | 044.4 Serve projector | Opus medium | Integration tests on both providers | To do |
+| CP-D | Checkpoint D: live SSE evidence and review | 044.4 Serve projector | Maintainer | Criteria 2 to 4 SSE excerpts | To do |
+| T17 | CopilotKit A2UI API check (ASK on surprise) | 044.5 CopilotKit sample | Sonnet medium | Three API answers recorded | To do |
+| T18 | Catalog and registration | 044.5 CopilotKit sample | Sonnet medium | Catalog parity test passes | To do |
+| T19 | Surface rows in the transcript | 044.5 CopilotKit sample | Sonnet high | conversation.test.ts; npm run build | To do |
+| T20 | User actions from surfaces | 044.5 CopilotKit sample | Sonnet high | forwardedProps builder test | To do |
+| T21 | Runtime route and sample docs | 044.5 CopilotKit sample | Sonnet medium | No A2UI middleware; build, lint, test | To do |
+| CP-E | Checkpoint E: sample browser check and review | 044.5 CopilotKit sample | Maintainer | Surface and action in the browser pane | To do |
+| T22 | User guide | 044.6 Guide and evidence | Sonnet medium | harness-check, mkdocs build | To do |
+| T23 | Live validation and closeout | 044.6 Guide and evidence | Fable inline | Acceptance table filled | To do |
+| CP-F | Checkpoint F: integrated review before merge | 044.6 Guide and evidence | Maintainer | Six criteria with evidence | To do |
+
 ## Ordered work and verification
 
 Sizes: XS is one function, S is 1 to 2 files, M is 3 to 5 files. No task is L or larger. Every task also runs focused Black, Ruff, MyPy and pytest (`-n auto`) on the files it changes.
@@ -108,8 +145,8 @@ Sizes: XS is one function, S is 1 to 2 files, M is 3 to 5 files. No task is L or
 
 Run `@ag-ui/a2ui-middleware` 0.0.16 once, in a scratch Node project outside the repository, over scripted AG-UI input streams. Commit only the JSON input and output.
 
-- [ ] Four cases: a valid surface with data, an invalid tree then a valid tree, data that streams in parts, and an action request. Each has `input.json` and `expected.json`.
-- [ ] A fixture `README.md` names the package version, the commit `ed94ca4`, the script, and the volatile fields (timestamps, generated IDs).
+- Four cases: a valid surface with data, an invalid tree then a valid tree, data that streams in parts, and an action request. Each has `input.json` and `expected.json`.
+- A fixture `README.md` names the package version, the commit `ed94ca4`, the script, and the volatile fields (timestamps, generated IDs).
 
 **Verify:** a test loads each fixture as a list of AG-UI `BaseEvent` with `ag-ui-protocol` 1.0.0.
 **Files:** `tests/fixtures/a2ui/middleware/<case>/{input,expected}.json`, `tests/fixtures/a2ui/middleware/README.md`, `tests/unit/lib/a2ui/test_fixtures.py`.
@@ -119,9 +156,9 @@ Run `@ag-ui/a2ui-middleware` 0.0.16 once, in a scratch Node project outside the 
 
 Prove D9 against a live model before the parity work starts.
 
-- [ ] A throwaway script stops an OpenAI Agents run with `tool_use_behavior=StopAtTools([...])` at one frontend tool, then resumes from the history plus a `tool` message.
-- [ ] The resumed run uses the tool output and does not call the tool again.
-- [ ] The result and the exact SDK calls are recorded under "Progress and decisions".
+- A throwaway script stops an OpenAI Agents run with `tool_use_behavior=StopAtTools([...])` at one frontend tool, then resumes from the history plus a `tool` message.
+- The resumed run uses the tool output and does not call the tool again.
+- The result and the exact SDK calls are recorded under "Progress and decisions".
 
 **Verify:** the script output, recorded in this plan.
 **Files:** this plan only. The script stays in the session scratchpad.
@@ -132,9 +169,9 @@ If resume fails, stop and ask the maintainer: defer OpenAI frontend tools, or ch
 
 #### T2. Tool-argument deltas on the OpenAI path
 
-- [ ] `ToolEvent.kind` gains `"args_delta"` with a `text` delta. The Claude backend is unchanged.
-- [ ] The OpenAI stream maps Responses function-call argument deltas to `ToolEvent(kind="args_delta")`.
-- [ ] `_tool_event_to_agui` emits `TOOL_CALL_ARGS` between `TOOL_CALL_START` and `TOOL_CALL_END` of the same call.
+- `ToolEvent.kind` gains `"args_delta"` with a `text` delta. The Claude backend is unchanged.
+- The OpenAI stream maps Responses function-call argument deltas to `ToolEvent(kind="args_delta")`.
+- `_tool_event_to_agui` emits `TOOL_CALL_ARGS` between `TOOL_CALL_START` and `TOOL_CALL_END` of the same call.
 
 **Verify:** `uv run pytest tests/unit/serve/test_agui_openai_streaming.py -n auto -q` with a recorded stream that asserts the event order.
 **Files:** `lib/backends/base.py`, `lib/backends/openai_agents_events.py`, `serve/protocols/agui.py`, `tests/unit/serve/test_agui_openai_streaming.py`.
@@ -142,9 +179,9 @@ If resume fails, stop and ask the maintainer: defer OpenAI frontend tools, or ch
 
 #### T3. OpenAI `send_agui`: context, state, and `forwardedProps`
 
-- [ ] The OpenAI session implements `send_agui(input_data, message_override)` with the Claude session contract.
-- [ ] AG-UI `context` and `state` go into the run instructions. The addendum builder moves to one shared module that both backends call.
-- [ ] An OpenAI `forwardedProps` allowlist, with a warning for unknown keys.
+- The OpenAI session implements `send_agui(input_data, message_override)` with the Claude session contract.
+- AG-UI `context` and `state` go into the run instructions. The addendum builder moves to one shared module that both backends call.
+- An OpenAI `forwardedProps` allowlist, with a warning for unknown keys.
 
 **Verify:** unit tests for the shared addendum, the allowlist warning, and one AG-UI turn through a fake model. Claude AG-UI tests unchanged.
 **Files:** `lib/backends/agui_context.py` (new), `lib/backends/claude_backend.py`, `lib/backends/openai_agents_backend.py`, `tests/unit/lib/backends/test_openai_agents_agui.py` (new).
@@ -152,9 +189,9 @@ If resume fails, stop and ask the maintainer: defer OpenAI frontend tools, or ch
 
 #### T4. OpenAI frontend tools
 
-- [ ] AG-UI `tools` become OpenAI function tools that the run stops at, with the T1 design.
-- [ ] The run emits the frontend tool's `TOOL_CALL_*` events and ends without a tool result.
-- [ ] A request whose latest message has role `tool` resumes the run, as on Claude.
+- AG-UI `tools` become OpenAI function tools that the run stops at, with the T1 design.
+- The run emits the frontend tool's `TOOL_CALL_*` events and ends without a tool result.
+- A request whose latest message has role `tool` resumes the run, as on Claude.
 
 **Verify:** unit tests for stop, resume, and no repeated call. R10.
 **Files:** `lib/backends/openai_agents_backend.py`, `lib/backends/openai_agents_tool_adapters.py`, `tests/unit/lib/backends/test_openai_agents_agui.py`.
@@ -164,9 +201,9 @@ If resume fails, stop and ask the maintainer: defer OpenAI frontend tools, or ch
 
 Present the merged handler before the edit. Both providers go through `execute_turn_agui`.
 
-- [ ] `handle_request` has no branch on the provider.
-- [ ] The OpenAI text-only branch and the post-hoc fallback branch are removed only if no backend still needs them.
-- [ ] Existing serve tests pass unchanged, or each changed assertion is explained in "Progress and decisions".
+- `handle_request` has no branch on the provider.
+- The OpenAI text-only branch and the post-hoc fallback branch are removed only if no backend still needs them.
+- Existing serve tests pass unchanged, or each changed assertion is explained in "Progress and decisions".
 
 **Verify:** `uv run pytest tests/unit/serve -n auto -q`.
 **Files:** `serve/protocols/agui.py`, `chat/executor.py`, `tests/unit/serve/test_protocols_agui.py`.
@@ -174,9 +211,9 @@ Present the merged handler before the edit. Both providers go through `execute_t
 
 #### Checkpoint A (after T2 to T5)
 
-- [ ] `make verify` passes.
-- [ ] Live loop step 2 on an OpenAI sample: two threads, two turns each, one frontend tool call and resume, argument deltas in the SSE stream.
-- [ ] Adversarial review of PR 044.1. Findings resolved or accepted by the maintainer.
+- `make verify` passes.
+- Live loop step 2 on an OpenAI sample: two threads, two turns each, one frontend tool call and resume, argument deltas in the SSE stream.
+- Adversarial review of PR 044.1. Findings resolved or accepted by the maintainer.
 
 ### Phase 2: PR 044.2, A2UI core (independent of Phase 1)
 
@@ -184,9 +221,9 @@ Present the merged handler before the edit. Both providers go through `execute_t
 
 Present the models before the code: `CatalogEntry`, `ResolvedCatalog`, `ClientCatalogEntry`, `CatalogRejected`.
 
-- [ ] `resolve_catalog(tool, client_entry)` implements D1 and the working assumptions: allowlist, client wins over YAML, `max_catalog_bytes`.
-- [ ] The basic catalog ships as a package resource and loads with `importlib.resources`.
-- [ ] The client context entry is found by the middleware `description` constant and parsed into `ClientCatalogEntry`.
+- `resolve_catalog(tool, client_entry)` implements D1 and the working assumptions: allowlist, client wins over YAML, `max_catalog_bytes`.
+- The basic catalog ships as a package resource and loads with `importlib.resources`.
+- The client context entry is found by the middleware `description` constant and parsed into `ClientCatalogEntry`.
 
 **Verify:** unit tests for allowed, rejected, oversize, client-wins, and YAML-fallback cases. R2, R3, R12.
 **Files:** `lib/a2ui/__init__.py`, `lib/a2ui/catalog.py`, `lib/a2ui/resources/basic_catalog_v1_0.json`, `tests/unit/lib/a2ui/test_catalog.py`.
@@ -194,8 +231,8 @@ Present the models before the code: `CatalogEntry`, `ResolvedCatalog`, `ClientCa
 
 #### T7. Component validation
 
-- [ ] `validate_components(components, catalog) -> list[A2UIIssue]` with `jsonschema`. One issue per error, each with a JSON pointer into the tool arguments.
-- [ ] Checks: unknown component type, property schema, duplicate IDs, missing child references, `max_components`.
+- `validate_components(components, catalog) -> list[A2UIIssue]` with `jsonschema`. One issue per error, each with a JSON pointer into the tool arguments.
+- Checks: unknown component type, property schema, duplicate IDs, missing child references, `max_components`.
 
 **Verify:** unit tests per check, with the expected pointer and message text. R5.
 **Files:** `lib/a2ui/validate.py`, `tests/unit/lib/a2ui/test_validate.py`.
@@ -203,8 +240,8 @@ Present the models before the code: `CatalogEntry`, `ResolvedCatalog`, `ClientCa
 
 #### T8. Incremental argument parser
 
-- [ ] `jiter` becomes a direct dependency within the version range already in `uv.lock`. `uv lock --check` passes with no new package.
-- [ ] `SurfaceStreamParser.feed(delta)` uses `jiter` partial mode and returns a step when `surfaceId` is known, when `components` closes, and when `data` closes.
+- `jiter` becomes a direct dependency within the version range already in `uv.lock`. `uv lock --check` passes with no new package.
+- `SurfaceStreamParser.feed(delta)` uses `jiter` partial mode and returns a step when `surfaceId` is known, when `components` closes, and when `data` closes.
 
 **Verify:** a test splits each T0 payload at every byte offset and gets the same steps in the same order.
 **Files:** `lib/a2ui/stream.py`, `pyproject.toml`, `uv.lock`, `tests/unit/lib/a2ui/test_stream.py`.
@@ -212,7 +249,7 @@ Present the models before the code: `CatalogEntry`, `ResolvedCatalog`, `ClientCa
 
 #### T9. A2UI 1.0 operation builders
 
-- [ ] `build_operations` returns `createSurface`, `updateComponents`, and `updateDataModel` messages with `version: "1.0"`, in the order of the middleware's `streamedOps`.
+- `build_operations` returns `createSurface`, `updateComponents`, and `updateDataModel` messages with `version: "1.0"`, in the order of the middleware's `streamedOps`.
 
 **Verify:** unit tests compare output to the operations in the T0 fixtures.
 **Files:** `lib/a2ui/ops.py`, `tests/unit/lib/a2ui/test_ops.py`.
@@ -220,9 +257,9 @@ Present the models before the code: `CatalogEntry`, `ResolvedCatalog`, `ClientCa
 
 #### Checkpoint B (after T6 to T9)
 
-- [ ] A structural test fails if `lib/a2ui` imports from `ag_ui`, `serve`, or `lib/backends`.
-- [ ] `make verify` passes.
-- [ ] Adversarial review of PR 044.2.
+- A structural test fails if `lib/a2ui` imports from `ag_ui`, `serve`, or `lib/backends`.
+- `make verify` passes.
+- Adversarial review of PR 044.2.
 
 ### Phase 3: PR 044.3, tool configuration and adapters
 
@@ -230,9 +267,9 @@ Present the models before the code: `CatalogEntry`, `ResolvedCatalog`, `ClientCa
 
 Present the model and the loader rules before the code. This changes the published schema.
 
-- [ ] `A2UITool` (`type: a2ui`) in `ToolUnion`, with `catalogs`, `default_catalog`, `accept_client_catalogs`, and `limits`, as in spec section 4.3.
-- [ ] Validation: at least one catalog, unique IDs, `default_catalog` in the list, at most one `a2ui` tool per agent.
-- [ ] `make schema` and `make schema-check` pass.
+- `A2UITool` (`type: a2ui`) in `ToolUnion`, with `catalogs`, `default_catalog`, `accept_client_catalogs`, and `limits`, as in spec section 4.3.
+- Validation: at least one catalog, unique IDs, `default_catalog` in the list, at most one `a2ui` tool per agent.
+- `make schema` and `make schema-check` pass.
 
 **Verify:** model tests for each rule. R1.
 **Files:** `models/tool.py`, `models/agent.py`, `schemas/agent.schema.json` (generated), `tests/unit/models/test_tool_a2ui.py`.
@@ -240,9 +277,9 @@ Present the model and the loader rules before the code. This changes the publish
 
 #### T11. Run binding
 
-- [ ] `A2UIRunBinding` holds the resolved catalog and the per-`surfaceId` repair count for one run.
-- [ ] A binding provider gives the in-process tool the binding of its own session. Record the mechanism on each backend under "Progress and decisions".
-- [ ] Two concurrent sessions with different catalogs never see each other's binding.
+- `A2UIRunBinding` holds the resolved catalog and the per-`surfaceId` repair count for one run.
+- A binding provider gives the in-process tool the binding of its own session. Record the mechanism on each backend under "Progress and decisions".
+- Two concurrent sessions with different catalogs never see each other's binding.
 
 **Verify:** unit tests, including a concurrency test with two sessions.
 **Files:** `lib/a2ui/binding.py`, `tests/unit/lib/a2ui/test_binding.py`.
@@ -250,9 +287,9 @@ Present the model and the loader rules before the code. This changes the publish
 
 #### T12. `render_a2ui` tool adapters on both backends
 
-- [ ] Both adapter modules build `render_a2ui` from `A2UITool` and the binding. The description lists the catalog components.
-- [ ] Results: `rendered`, `invalid` with issues, and `failed` after `max_repair_attempts` for one `surfaceId`.
-- [ ] One shared function computes the result, so both backends return the same JSON.
+- Both adapter modules build `render_a2ui` from `A2UITool` and the binding. The description lists the catalog components.
+- Results: `rendered`, `invalid` with issues, and `failed` after `max_repair_attempts` for one `surfaceId`.
+- One shared function computes the result, so both backends return the same JSON.
 
 **Verify:** unit tests on both backends with a fake model: valid, invalid then valid, and three invalid calls. R4, R5.
 **Files:** `lib/a2ui/tool.py` (new, shared result logic), `lib/backends/tool_adapters.py`, `lib/backends/openai_agents_tool_adapters.py`, `tests/unit/lib/backends/test_a2ui_tool_adapters.py`.
@@ -260,8 +297,8 @@ Present the model and the loader rules before the code. This changes the publish
 
 #### T13. `holodeck test` and `holodeck chat` support
 
-- [ ] Load fails with `a2ui tool '<name>': default_catalog '<id>' needs a schema for test and chat` when the default catalog has no schema.
-- [ ] A sample agent with the `a2ui` tool, a local catalog, and test cases that assert the `render_a2ui` tool call.
+- Load fails with `a2ui tool '<name>': default_catalog '<id>' needs a schema for test and chat` when the default catalog has no schema.
+- A sample agent with the `a2ui` tool, a local catalog, and test cases that assert the `render_a2ui` tool call.
 
 **Verify:** unit test for the load error. `cd sample/a2ui-booking && uv run holodeck test run agent.yaml` on both backends. R11.
 **Files:** `models/tool.py` or the loader that builds the binding, `sample/a2ui-booking/agent.yaml`, `sample/a2ui-booking/catalogs/booking.json`, `tests/unit/models/test_tool_a2ui.py`.
@@ -269,16 +306,16 @@ Present the model and the loader rules before the code. This changes the publish
 
 #### Checkpoint C (after T10 to T13)
 
-- [ ] `make verify`, `make schema-check` pass.
-- [ ] Live loop step 1 passes for the sample on Claude and OpenAI.
-- [ ] Adversarial review of PR 044.3.
+- `make verify`, `make schema-check` pass.
+- Live loop step 1 passes for the sample on Claude and OpenAI.
+- Adversarial review of PR 044.3.
 
 ### Phase 4: PR 044.4, projector and actions in serve
 
 #### T14. `A2UIProjector`
 
-- [ ] `serve/protocols/agui_a2ui.py`: an async generator over AG-UI events that applies spec section 4.5 rules 1 to 6.
-- [ ] It uses `SurfaceStreamParser`, `validate_components`, and `build_operations`. It keeps no backend state.
+- `serve/protocols/agui_a2ui.py`: an async generator over AG-UI events that applies spec section 4.5 rules 1 to 6.
+- It uses `SurfaceStreamParser`, `validate_components`, and `build_operations`. It keeps no backend state.
 
 **Verify:** the contract test replays each T0 input and compares the output to `expected.json`, ignoring only the volatile fields in the fixture README. R6, R7, R8.
 **Files:** `serve/protocols/agui_a2ui.py`, `tests/unit/serve/test_agui_a2ui.py`.
@@ -286,8 +323,8 @@ Present the model and the loader rules before the code. This changes the publish
 
 #### T15. Action ingestion
 
-- [ ] Serve validates `forwardedProps.a2uiAction.userAction`, removes it before the backend allowlists, and sends `A2UI user action:\n<json>` as the turn message. It is not echoed as `TEXT_MESSAGE_*`.
-- [ ] An invalid action gives `RUN_ERROR` with a sanitized message.
+- Serve validates `forwardedProps.a2uiAction.userAction`, removes it before the backend allowlists, and sends `A2UI user action:\n<json>` as the turn message. It is not echoed as `TEXT_MESSAGE_*`.
+- An invalid action gives `RUN_ERROR` with a sanitized message.
 
 **Verify:** unit tests for a valid action on both providers, an invalid action, and no allowlist warning. R9.
 **Files:** `serve/protocols/agui_a2ui.py`, `serve/protocols/agui.py`, `tests/unit/serve/test_agui_a2ui.py`.
@@ -295,8 +332,8 @@ Present the model and the loader rules before the code. This changes the publish
 
 #### T16. Wire binding, projector, and actions into `handle_request`
 
-- [ ] `handle_request` builds the run binding, applies action ingestion, and wraps the backend events in the projector when the agent has an `a2ui` tool.
-- [ ] Agents without an `a2ui` tool produce the same events as before.
+- `handle_request` builds the run binding, applies action ingestion, and wraps the backend events in the projector when the agent has an `a2ui` tool.
+- Agents without an `a2ui` tool produce the same events as before.
 
 **Verify:** integration tests with a fake backend stream on both providers. Existing serve tests unchanged.
 **Files:** `serve/protocols/agui.py`, `tests/integration/serve/test_agui_a2ui_flow.py` (new).
@@ -304,8 +341,8 @@ Present the model and the loader rules before the code. This changes the publish
 
 #### Checkpoint D (after T14 to T16)
 
-- [ ] Live loop step 2 on Claude and OpenAI: two threads, two turns each, one surface with data, one invalid-then-valid repair, one action. Record the SSE excerpts for criteria 2, 3, and 4.
-- [ ] Adversarial review of PR 044.4.
+- Live loop step 2 on Claude and OpenAI: two threads, two turns each, one surface with data, one invalid-then-valid repair, one action. Record the SSE excerpts for criteria 2, 3, and 4.
+- Adversarial review of PR 044.4.
 
 ### Phase 5: PR 044.5, native A2UI in the CopilotKit sample
 
@@ -315,9 +352,9 @@ The sample does not use `CopilotChat`. `src/lib/conversation.ts` builds transcri
 
 Read the installed `@copilotkit/react-core`, `@copilotkit/runtime`, and `@copilotkit/a2ui-renderer` 1.87.1 types. Record the answers under "Progress and decisions" before T18 starts.
 
-- [ ] How the app registers a catalog (`<CopilotKit a2ui={{ catalog }}>` or another prop), and whether the client sends the `A2UI_SCHEMA_CONTEXT_DESCRIPTION` context entry that HoloDeck reads (D1).
-- [ ] Which component renders one `a2ui-surface` activity message outside `CopilotChat`, and how it reports a user action.
-- [ ] Whether `CopilotRuntime` wraps agents in the A2UI middleware or injects `render_a2ui` by default, and how to turn that off.
+- How the app registers a catalog (`<CopilotKit a2ui={{ catalog }}>` or another prop), and whether the client sends the `A2UI_SCHEMA_CONTEXT_DESCRIPTION` context entry that HoloDeck reads (D1).
+- Which component renders one `a2ui-surface` activity message outside `CopilotChat`, and how it reports a user action.
+- Whether `CopilotRuntime` wraps agents in the A2UI middleware or injects `render_a2ui` by default, and how to turn that off.
 
 **Verify:** the three answers, with the type names and file paths that prove them, are in this plan.
 **Files:** this plan only. `package.json` and the lock file do not change.
@@ -326,9 +363,9 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### T18. Catalog and registration
 
-- [ ] `src/lib/a2ui-catalog.ts` defines the booking catalog with the same ID and component names as `sample/a2ui-booking/catalogs/booking.json`.
-- [ ] `src/app/layout.tsx` registers it with the API from T17.
-- [ ] A test fails if the TypeScript catalog and the agent catalog differ in ID or component names.
+- `src/lib/a2ui-catalog.ts` defines the booking catalog with the same ID and component names as `sample/a2ui-booking/catalogs/booking.json`.
+- `src/app/layout.tsx` registers it with the API from T17.
+- A test fails if the TypeScript catalog and the agent catalog differ in ID or component names.
 
 **Verify:** `npm test` and `npm run lint`.
 **Files:** `src/lib/a2ui-catalog.ts` (new), `src/lib/a2ui-catalog.test.ts` (new), `src/app/layout.tsx`.
@@ -336,9 +373,9 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### T19. Surface rows in the transcript
 
-- [ ] `buildRows` in `src/lib/conversation.ts` adds a `surface` row for each activity message with `activityType` `"a2ui-surface"`, in run order, keyed by `messageId` so a new snapshot replaces the old one.
-- [ ] `src/components/a2ui/SurfaceCard.tsx` renders the row with the T17 renderer, and shows the `building`, `retrying`, and `failed` states.
-- [ ] Rows for other activity types and existing tool rows do not change.
+- `buildRows` in `src/lib/conversation.ts` adds a `surface` row for each activity message with `activityType` `"a2ui-surface"`, in run order, keyed by `messageId` so a new snapshot replaces the old one.
+- `src/components/a2ui/SurfaceCard.tsx` renders the row with the T17 renderer, and shows the `building`, `retrying`, and `failed` states.
+- Rows for other activity types and existing tool rows do not change.
 
 **Verify:** `npm test` with a new `conversation.test.ts` that feeds messages from the T0 fixtures. `npm run build`.
 **Files:** `src/lib/conversation.ts`, `src/lib/conversation.test.ts` (new), `src/components/a2ui/SurfaceCard.tsx` (new), `src/components/chat/Conversation.tsx`.
@@ -346,8 +383,8 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### T20. User actions from surfaces
 
-- [ ] A user action from a surface starts a new run on the same thread with `forwardedProps.a2uiAction.userAction` set, using the T17 mechanism or `useAgent`.
-- [ ] The UI does not show the action as a user bubble, because serve does not echo it (section 4.7).
+- A user action from a surface starts a new run on the same thread with `forwardedProps.a2uiAction.userAction` set, using the T17 mechanism or `useAgent`.
+- The UI does not show the action as a user bubble, because serve does not echo it (section 4.7).
 
 **Verify:** `npm test` with a unit test for the `forwardedProps` builder. The browser check is in T24.
 **Files:** `src/lib/a2ui-action.ts` (new), `src/lib/a2ui-action.test.ts` (new), `src/components/a2ui/SurfaceCard.tsx`.
@@ -355,8 +392,8 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### T21. Runtime route and sample docs
 
-- [ ] `src/app/api/copilotkit/route.ts` keeps a plain `HttpAgent` to `holodeck serve /awp`, with no A2UI middleware and no second `render_a2ui` tool, using the T17 answer.
-- [ ] `README.md` explains how to run the sample against `sample/a2ui-booking`, with `HOLODECK_BACKEND_URL` and `AGENT_ID`.
+- `src/app/api/copilotkit/route.ts` keeps a plain `HttpAgent` to `holodeck serve /awp`, with no A2UI middleware and no second `render_a2ui` tool, using the T17 answer.
+- `README.md` explains how to run the sample against `sample/a2ui-booking`, with `HOLODECK_BACKEND_URL` and `AGENT_ID`.
 
 **Verify:** `npm run build`, `npm run lint`, `npm test`. A request to the route forwards `context` and `forwardedProps` unchanged (check with `holodeck serve` debug logging).
 **Files:** `src/app/api/copilotkit/route.ts`, `README.md`.
@@ -364,16 +401,16 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### Checkpoint E (after T17 to T21)
 
-- [ ] `npm test`, `npm run lint`, and `npm run build` pass in `sample/copilotkit`.
-- [ ] Against a local `holodeck serve` on the `a2ui-booking` sample, the browser pane shows one surface and the action reaches the agent. A screenshot is recorded.
-- [ ] Adversarial review of PR 044.5.
+- `npm test`, `npm run lint`, and `npm run build` pass in `sample/copilotkit`.
+- Against a local `holodeck serve` on the `a2ui-booking` sample, the browser pane shows one surface and the action reaches the agent. A screenshot is recorded.
+- Adversarial review of PR 044.5.
 
 ### Phase 6: PR 044.6, guide and live evidence
 
 #### T22. User guide
 
-- [ ] `docs/guides/a2ui.md`: configuration, catalog sources and the allowlist, the event sequence, actions, limits, and troubleshooting.
-- [ ] Links from the tools guide, the serve guide, and the docsite navigation.
+- `docs/guides/a2ui.md`: configuration, catalog sources and the allowlist, the event sequence, actions, limits, and troubleshooting.
+- Links from the tools guide, the serve guide, and the docsite navigation.
 
 **Verify:** `make harness-check` and `uv run mkdocs build` with no new warnings.
 **Files:** `docs/guides/a2ui.md` (new), `docs/guides/tools.md`, `docs/guides/serve.md`, `mkdocs.yml`.
@@ -381,9 +418,9 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### T23. Live validation and closeout
 
-- [ ] Live loop step 3: the maintainer drives the CopilotKit sample on Claude and on OpenAI and confirms the surface, the repair, and the action. Record what the UI showed.
-- [ ] Fill the acceptance table. Update the spec status, the inventory row, and `docs/PLANS.md`.
-- [ ] Move this plan to `completed/` only when all six criteria pass.
+- Live loop step 3: the maintainer drives the CopilotKit sample on Claude and on OpenAI and confirms the surface, the repair, and the action. Record what the UI showed.
+- Fill the acceptance table. Update the spec status, the inventory row, and `docs/PLANS.md`.
+- Move this plan to `completed/` only when all six criteria pass.
 
 **Verify:** the acceptance table has evidence for every row. `make harness-check`.
 **Files:** this plan, `docs/product-specs/044-a2ui-surfaces/spec.md`, `docs/product-specs/inventory.md`, `docs/PLANS.md`.
@@ -391,12 +428,12 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 #### Checkpoint F (complete)
 
-- [ ] All six acceptance criteria have evidence.
-- [ ] One integrated adversarial pass over `git diff main...<top of stack>` before the stack merges.
+- All six acceptance criteria have evidence.
+- One integrated adversarial pass over `git diff main...<top of stack>` before the stack merges.
 
 ## Delivery
 
-| PR | Tasks | Base |
+| PR | Covers | Base |
 | --- | --- | --- |
 | 044.1 OpenAI AG-UI parity | T1 to T5 | `main` |
 | 044.2 A2UI core | T0, T6 to T9 | `main` |
@@ -437,6 +474,7 @@ If the client does not send the context entry, or the renderer cannot run outsid
 
 - 2026-11-27: Spec decisions D1 to D11 settled with the maintainer. `jsonschema` 4.26 is already a core dependency. `jiter` 0.19 is in `uv.lock` through the Anthropic and OpenAI SDKs. `openai-agents` 0.24 exports `StopAtTools` and `Agent(tool_use_behavior=...)`, which T1 must still prove for resume.
 - 2026-11-27: Plan revised to the task breakdown standard. T11 (L) split into T11 run binding and T12 adapters. Later tasks renumbered by one. Added files per task, the dependency graph, parallel-work notes, the slicing decision, a risk table, and Checkpoint E.
+- 2026-11-27: Added a task index table and turned the acceptance checkboxes into plain bullets, so the command center shows one row per task. Status is now recorded in the task index.
 - 2026-11-27: Maintainer asked for native A2UI support in the CopilotKit sample as part of this plan. The sample renders its own transcript (`src/lib/conversation.ts`), so the one sample task became T17 to T21 (API check, catalog, surface rows, actions, route) in a new PR 044.5. The guide and closeout moved to PR 044.6 as T22 and T23. Checkpoint E covers the sample; the final checkpoint is now F.
 
 ## Validation results and remaining blockers
