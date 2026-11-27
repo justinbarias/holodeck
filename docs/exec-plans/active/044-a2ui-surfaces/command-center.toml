@@ -1,0 +1,85 @@
+# Command center extension for plan 044. See index.md for the build command.
+name = "HoloDeck 044: Native A2UI surfaces"
+recent_days = 7
+
+[features]
+order = [
+  "044.1 OpenAI parity",
+  "044.2 A2UI core",
+  "044.3 Tool and adapters",
+  "044.4 Serve projector",
+  "044.5 CopilotKit sample",
+  "044.6 Guide and evidence",
+]
+
+[tasks."044-T3"]
+waits_for = ["044-T2"]
+[tasks."044-T4"]
+waits_for = ["044-T1", "044-T3"]
+[tasks."044-T5"]
+waits_for = ["044-T4"]
+[tasks."044-CP-A"]
+waits_for = ["044-T1", "044-T2", "044-T3", "044-T4", "044-T5"]
+
+[tasks."044-T7"]
+waits_for = ["044-T6"]
+[tasks."044-T8"]
+waits_for = ["044-T0"]
+[tasks."044-T9"]
+waits_for = ["044-T0", "044-T6"]
+[tasks."044-CP-B"]
+waits_for = ["044-T0", "044-T6", "044-T7", "044-T8", "044-T9"]
+
+[tasks."044-T10"]
+waits_for = ["044-T6"]
+[tasks."044-T11"]
+waits_for = ["044-T6", "044-T10"]
+[tasks."044-T12"]
+waits_for = ["044-T7", "044-T9", "044-T11"]
+[tasks."044-T13"]
+waits_for = ["044-T12"]
+[tasks."044-CP-C"]
+waits_for = ["044-T10", "044-T11", "044-T12", "044-T13"]
+
+[tasks."044-T14"]
+waits_for = ["044-T0", "044-T7", "044-T8", "044-T9"]
+[tasks."044-T15"]
+waits_for = ["044-T5"]
+[tasks."044-T16"]
+waits_for = ["044-T5", "044-T12", "044-T14", "044-T15"]
+[tasks."044-CP-D"]
+waits_for = ["044-T14", "044-T15", "044-T16"]
+
+[tasks."044-T18"]
+waits_for = ["044-T13", "044-T17"]
+[tasks."044-T19"]
+waits_for = ["044-T0", "044-T18"]
+[tasks."044-T20"]
+waits_for = ["044-T19"]
+[tasks."044-T21"]
+waits_for = ["044-T17"]
+[tasks."044-CP-E"]
+waits_for = ["044-T16", "044-T17", "044-T18", "044-T19", "044-T20", "044-T21"]
+
+[tasks."044-T22"]
+waits_for = ["044-T16", "044-T21"]
+[tasks."044-T23"]
+waits_for = ["044-CP-E", "044-T22"]
+[tasks."044-CP-F"]
+waits_for = ["044-T23"]
+
+[handoff]
+read = [
+  "docs/product-specs/044-a2ui-surfaces/spec.md",
+  "docs/exec-plans/active/044-a2ui-surfaces/2026-11-27-native-a2ui-surfaces.md (the task section and its Files line)",
+]
+rules = [
+  "A task marked ASK stops for a maintainer checkpoint before any code is written.",
+  "Spawning a subagent needs maintainer approval first.",
+  "Keep src/holodeck/lib/a2ui free of ag_ui, serve, and lib/backends imports.",
+  "Commit or push only when the maintainer asks.",
+]
+done = [
+  "Run focused Black, Ruff, MyPy, and uv run pytest -n auto on the changed files, plus the task's Verify command.",
+  "Set the task Status in the task index and record evidence under Progress and decisions.",
+]
