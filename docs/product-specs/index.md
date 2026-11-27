@@ -19,6 +19,7 @@ This index supplies navigation without duplicating requirements.
 | Proposed Temporal file inputs | [Spec 041](041-temporal-file-inputs/spec.md), currently draft |
 | Dependency stack revamp (implemented; live evidence open) | [Spec 042](042-dependency-stack-revamp/index.md): native SDKs, HoloDeck-owned native retrieval adapters, retained DeepEval, Microsoft/legacy evaluation removal; [upgrade guide](../guides/upgrading-to-0.8.md) |
 | Proposed A2UI surfaces | [Spec 044](044-a2ui-surfaces/spec.md), currently draft |
+| Durable chat threads (draft) | [Spec 045](045-thread-store/index.md): one thread store for both backends, with in-memory, SQLite and PostgreSQL adapters |
 
 Read the target feature's requirements, decisions, and relevant acceptance tests before implementation.
 Older status labels and unchecked tasks can lag merged code. Resolve uncertainty through code and git evidence.
