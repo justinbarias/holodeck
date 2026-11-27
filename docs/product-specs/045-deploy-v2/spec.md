@@ -5,7 +5,7 @@
 **Supersedes:** [019 Deploy Command](../019-deploy-command/spec.md)
 **Related:** [024 Claude Serve & Deploy Parity](../024-claude-serve-deploy/index.md) (unchanged),
 [046 Cloudflare-native stores](../046-cloudflare-native-stores/spec.md),
-the durable chat thread store (specified separately; number 044 is reserved for it)
+the durable chat thread store (specified separately; it has no spec number yet)
 **Decision history:** The decisions in §4 were settled in a design interview on
 2026-11-15. An adversarial review on the same day (gpt-6-astra, 24 findings)
 changed D5, D7, D8 and D9 and added D10. D11 (Cloudflare Access mode) was added
