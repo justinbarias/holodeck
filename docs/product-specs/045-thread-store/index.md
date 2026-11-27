@@ -1,6 +1,6 @@
 # Backend-Agnostic Chat Thread Store — specification
 
-Feature: `044-thread-store`. **Status:** draft 2026-11-15; not built.
+Feature: `045-thread-store`. **Status:** draft 2026-11-15; not built.
 
 ## Documents
 
@@ -8,7 +8,7 @@ Feature: `044-thread-store`. **Status:** draft 2026-11-15; not built.
 
 ## Related records
 
-- [Design](../../design-docs/044-thread-store/design.md)
+- [Design](../../design-docs/045-thread-store/design.md)
 - [Feature inventory](../inventory.md)
 - [Agent local server](../017-agent-local-server/index.md)
 - [Production hardening](../034-production-hardening/index.md)

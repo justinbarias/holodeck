@@ -4,7 +4,7 @@
 **Date:** 2026-11-15.
 **Code baseline:** `a903683`.
 **SDK baseline:** `claude-agent-sdk` 0.2.179, `openai-agents` 0.24.0.
-**Related:** [017 agent local server](../017-agent-local-server/index.md), [021 Claude Agent SDK](../021-claude-agent-sdk/index.md), [034 production hardening](../034-production-hardening/index.md), [035 OpenAI Agents backend](../035-openai-agents-backend/index.md), [040 Temporal](../040-holodeck-temporal/index.md). Design: [thread store design](../../design-docs/044-thread-store/design.md).
+**Related:** [017 agent local server](../017-agent-local-server/index.md), [021 Claude Agent SDK](../021-claude-agent-sdk/index.md), [034 production hardening](../034-production-hardening/index.md), [035 OpenAI Agents backend](../035-openai-agents-backend/index.md), [040 Temporal](../040-holodeck-temporal/index.md). Design: [thread store design](../../design-docs/045-thread-store/design.md).
 
 ## 1. Objective
 

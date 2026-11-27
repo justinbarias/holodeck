@@ -1,7 +1,7 @@
 # Thread store: design
 
 **Status:** Draft, 2026-11-15. Not built.
-**Spec:** [044 thread store](../../product-specs/044-thread-store/spec.md). Decision numbers (D1 to D37), assumptions (A1 to A8) and requirement ids (TS, CFG, MIG) refer to that spec.
+**Spec:** [045 thread store](../../product-specs/045-thread-store/spec.md). Decision numbers (D1 to D37), assumptions (A1 to A8) and requirement ids (TS, CFG, MIG) refer to that spec.
 **SDK baseline:** `claude-agent-sdk` 0.2.179, `openai-agents` 0.24.0. Protocol facts below were read from the installed packages.
 
 ## Overview
