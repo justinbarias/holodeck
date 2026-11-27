@@ -6,9 +6,9 @@ on:
   pull_request:
     branches: [main]
 
-# One self-hosted runner serves every run, so a superseded PR run only delays
-# the next one. Cancel it on a new push. Push runs key on the commit SHA, so
-# main and develop runs never cancel each other.
+# A superseded PR run only uses runner minutes. Cancel it on a new push.
+# Push runs key on the commit SHA, so main and develop runs never cancel each
+# other.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -17,10 +17,10 @@ jobs:
   test:
     # Keep the required check name "test (3.11)" (the default would add the runner).
     name: test (${{ matrix.python-version }})
-    # The required 3.11 lane runs on an ephemeral Azure Container Apps runner
-    # (label "aca", 4 vCPU / 8 GiB). Its infrastructure lives in the private
-    # repository draftworkslabs/ci-runners. The 3.13 lane runs on a
-    # GitHub-hosted runner.
+    # Both lanes run on GitHub-hosted runners. The required 3.11 lane moved
+    # back from the Azure Container Apps runner (label "aca", infrastructure in
+    # the private repository draftworkslabs/ci-runners) when its Azure credits
+    # ran out. To move it back, set its runner to aca.
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -29,11 +29,11 @@ jobs:
       matrix:
         include:
           - python-version: "3.11"
-            runner: aca
+            runner: ubuntu-latest
           - python-version: "3.13"
             runner: ubuntu-latest
     env:
-      PYTEST_XDIST_WORKERS: 4 # Match runner CPU count (aca and hosted runners have 4 vCPU)
+      PYTEST_XDIST_WORKERS: 4 # Match runner CPU count (hosted runners have 4 vCPU)
       UV_PYTHON: ${{ matrix.python-version }} # make uv sync/run use this lane's interpreter
 
     steps:
