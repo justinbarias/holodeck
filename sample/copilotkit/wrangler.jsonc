@@ -1,0 +1,29 @@
+/**
+ * Cloudflare Workers config for the OpenNext build of this sample.
+ * The Node and Docker path does not read this file.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "holodeck-copilotkit",
+  "main": ".open-next/worker.js",
+  // next-themes serialises a function into an inline script. With Wrangler's
+  // default keep_names, that script calls a __name helper the browser lacks.
+  "keep_names": false,
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true },
+  // Runtime configuration. The Worker copies these into process.env, where
+  // src/lib/runtime-config.ts reads them, the same as on Node.
+  // HOLODECK_BACKEND_URL must be reachable from Cloudflare (not 127.0.0.1).
+  // For local preview, put overrides in .dev.vars (see .dev.vars.example).
+  "vars": {
+    "AGENT_ID": "my_agent_replace_me",
+    "AGENT_TITLE": "My Agent",
+    "AGENT_DESCRIPTION": "What my agent does",
+    "HOLODECK_BACKEND_URL": "https://holodeck-agent.example.com/awp"
+  }
+}

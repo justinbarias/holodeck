@@ -87,11 +87,20 @@ CopilotKit's CSS bundles its own **full Tailwind v4 build** which sets theme var
 - Multi-stage `Dockerfile` (node:22-alpine): deps → build → standalone runner
 - `.dockerignore` excludes node_modules, .next, .env files
 
+### Cloudflare Workers Support
+- A second deployment path beside Node: the OpenNext Cloudflare adapter (`@opennextjs/cloudflare`) with `wrangler.jsonc` and `open-next.config.ts`
+- `npm run build:workers` runs `next build` and writes the Worker to `.open-next/`; `npm run preview:workers` serves it in workerd
+- Worker `vars` and secrets arrive in `process.env`, so `getServerRuntimeConfig()` is the same on both paths; `.dev.vars` holds local preview values
+- Keep `keep_names: false` in `wrangler.jsonc`: without it the next-themes inline script fails in the browser
+- vinext 1.4.5 was tried first and failed in workerd with CopilotKit 1.87 (Lit's browser build in SSR; telemetry calls `randomUUID()` at module scope)
+
 ## Commands
 
 ```bash
 npm run dev     # Start dev server (port 3000)
 npm run build   # Production build (standalone)
+npm run build:workers    # Cloudflare Workers build (OpenNext)
+npm run preview:workers  # Workers build + local workerd preview
 npm run lint    # ESLint
 ```
 
